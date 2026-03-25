@@ -478,4 +478,118 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({ success: true, data: characters, meta: { page: Number(page), limit: Number(limit), total } });
     },
   });
+
+  // ─────────────────────────────────────────────
+  // AI-ASSISTED CHARACTER GENERATION
+  // Generates system prompt + greeting from brief concept
+  // ─────────────────────────────────────────────
+  fastify.post('/generate', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const schema = z.object({
+        name: z.string().min(1).max(50),
+        concept: z.string().min(5).max(300),
+        category: z.enum(['ANIME', 'GAME', 'MOVIE', 'BOOK', 'ORIGINAL', 'CELEBRITY', 'HISTORICAL', 'VTUBER', 'OTHER']),
+        language: z.string().default('ko'),
+      });
+
+      const body = schema.safeParse(request.body);
+      if (!body.success) {
+        return reply.code(400).send({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: body.error.issues[0].message },
+        });
+      }
+
+      const { name, concept, category, language } = body.data;
+
+      const Anthropic = (await import('@anthropic-ai/sdk')).default;
+      const { config: cfg } = await import('../config');
+      const anthropic = new Anthropic({ apiKey: cfg.ANTHROPIC_API_KEY });
+
+      const langInstruction = language === 'ko' ? '한국어로 작성해주세요.' : 'Write in English.';
+
+      const response = await anthropic.messages.create({
+        model: cfg.ANTHROPIC_HAIKU_MODEL,
+        max_tokens: 1500,
+        messages: [
+          {
+            role: 'user',
+            content: `당신은 AI 캐릭터 제작 전문가입니다. 다음 정보를 바탕으로 캐릭터의 시스템 프롬프트와 첫 인사말을 생성해주세요.
+
+캐릭터 이름: ${name}
+캐릭터 개념: ${concept}
+카테고리: ${category}
+
+다음 JSON 형식으로 응답해주세요 (${langInstruction}):
+{
+  "systemPrompt": "캐릭터의 성격, 말투, 배경, 특징을 상세히 설명하는 시스템 프롬프트 (200-500자)",
+  "greeting": "캐릭터가 처음 인사하는 말 (50-150자)",
+  "description": "캐릭터 한 줄 소개 (50-100자)",
+  "tags": ["태그1", "태그2", "태그3"]
+}
+
+JSON만 응답하고, 다른 텍스트는 포함하지 마세요.`,
+          },
+        ],
+      });
+
+      const text = response.content[0].type === 'text' ? response.content[0].text : '';
+
+      try {
+        // Extract JSON from response (handle markdown code blocks)
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error('No JSON found');
+        const generated = JSON.parse(jsonMatch[0]);
+
+        return reply.send({
+          success: true,
+          data: {
+            systemPrompt: generated.systemPrompt || '',
+            greeting: generated.greeting || '',
+            description: generated.description || '',
+            tags: Array.isArray(generated.tags) ? generated.tags.slice(0, 5) : [],
+          },
+        });
+      } catch {
+        logger.warn({ text }, 'Failed to parse AI generation response');
+        return reply.code(500).send({
+          success: false,
+          error: { code: 'GENERATION_FAILED', message: 'AI 생성에 실패했습니다. 직접 입력해주세요.' },
+        });
+      }
+    },
+  });
+
+  // ─────────────────────────────────────────────
+  // REPORT CHARACTER
+  // ─────────────────────────────────────────────
+  fastify.post('/:id/report', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const { reason, description } = request.body as { reason: string; description?: string };
+
+      const character = await prismaRead.character.findFirst({
+        where: { id, isActive: true },
+        select: { creatorId: true },
+      });
+
+      if (!character) {
+        return reply.code(404).send({ success: false, error: { code: 'NOT_FOUND' } });
+      }
+
+      await prisma.report.create({
+        data: {
+          reporterId: request.userId!,
+          reportedId: character.creatorId,
+          characterId: id,
+          reason,
+          description,
+        },
+      });
+
+      return reply.send({ success: true });
+    },
+  });
 };

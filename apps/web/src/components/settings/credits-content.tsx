@@ -25,23 +25,21 @@ export function CreditsContent() {
 
   const { data: transactionsData } = useQuery({
     queryKey: ['transactions'],
-    queryFn: () => api.get('/payments/transactions'),
+    queryFn: () => api.payments.transactions(),
   });
 
   const initiateMutation = useMutation({
-    mutationFn: (packageId: string) =>
-      api.post('/payments/toss/initiate', { packageId }),
+    mutationFn: (packageId: string) => api.payments.initiateTosse(packageId),
     onSuccess: (res: any) => {
-      window.location.href = res.data.checkoutUrl;
+      window.location.href = res.checkoutUrl;
     },
     onError: () => toast.error('오류', '결제를 시작할 수 없습니다.'),
   });
 
   const stripeIntentMutation = useMutation({
-    mutationFn: (packageId: string) =>
-      api.post('/payments/stripe/create-intent', { packageId }),
+    mutationFn: (packageId: string) => api.payments.initiateStripe(packageId),
     onSuccess: (res: any) => {
-      window.location.href = res.data.checkoutUrl;
+      window.location.href = res.checkoutUrl;
     },
     onError: () => toast.error('오류', '결제를 시작할 수 없습니다.'),
   });
@@ -57,7 +55,7 @@ export function CreditsContent() {
   const pkg = CREDIT_PACKAGES.find(p => p.id === selectedPackage)!;
   const isPending = initiateMutation.isPending || stripeIntentMutation.isPending;
 
-  const transactions = (transactionsData as any)?.data?.transactions ?? [];
+  const transactions = (transactionsData as any)?.transactions ?? [];
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
