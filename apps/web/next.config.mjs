@@ -1,6 +1,5 @@
-import type { NextConfig } from 'next';
-
-const nextConfig: NextConfig = {
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   reactStrictMode: true,
   transpilePackages: ['@characterverse/types', '@characterverse/utils', '@characterverse/ui'],
   images: {
@@ -39,7 +38,6 @@ const nextConfig: NextConfig = {
     ];
   },
   experimental: {
-    optimizeCss: true,
     optimizePackageImports: ['lucide-react', 'framer-motion'],
   },
 };

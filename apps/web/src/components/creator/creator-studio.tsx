@@ -139,13 +139,13 @@ export function CreatorStudio() {
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <Link
                     href={`/creator/edit/${char.id}`}
-                    className="p-2 rounded-xl hover:bg-surface-DEFAULT text-text-muted hover:text-text-primary transition-all"
+                    className="p-2 rounded-xl hover:bg-surface text-text-muted hover:text-text-primary transition-all"
                   >
                     <Settings className="w-4 h-4" />
                   </Link>
                   <Link
                     href={`/characters/${char.id}`}
-                    className="p-2 rounded-xl hover:bg-surface-DEFAULT text-text-muted hover:text-text-primary transition-all"
+                    className="p-2 rounded-xl hover:bg-surface text-text-muted hover:text-text-primary transition-all"
                   >
                     <ArrowRight className="w-4 h-4" />
                   </Link>

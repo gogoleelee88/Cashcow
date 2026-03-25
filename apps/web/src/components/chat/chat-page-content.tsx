@@ -120,7 +120,7 @@ function ConversationList({
       <div className="p-4 border-b border-border flex items-center justify-between">
         <h2 className="font-semibold text-text-primary">대화</h2>
         <Link href="/explore"
-          className="p-2 rounded-xl hover:bg-surface-DEFAULT text-text-muted hover:text-brand-light transition-all">
+          className="p-2 rounded-xl hover:bg-surface text-text-muted hover:text-brand-light transition-all">
           <Sparkles className="w-4.5 h-4.5" />
         </Link>
       </div>
@@ -184,7 +184,7 @@ function ConversationItem({
         'w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all duration-150',
         isActive
           ? 'bg-brand/15 border border-brand/25'
-          : 'hover:bg-surface-DEFAULT border border-transparent'
+          : 'hover:bg-surface border border-transparent'
       )}
     >
       <div className="relative flex-shrink-0">
@@ -378,7 +378,7 @@ function ChatWindow({
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-background-secondary/80 backdrop-blur-sm">
-        <Link href="/chat" className="p-2 rounded-xl hover:bg-surface-DEFAULT text-text-secondary hover:text-text-primary transition-all md:hidden">
+        <Link href="/chat" className="p-2 rounded-xl hover:bg-surface text-text-secondary hover:text-text-primary transition-all md:hidden">
           <ArrowLeft className="w-5 h-5" />
         </Link>
 
@@ -395,10 +395,10 @@ function ChatWindow({
         )}
 
         <div className="flex items-center gap-1 ml-auto">
-          <button className="p-2 rounded-xl hover:bg-surface-DEFAULT text-text-muted hover:text-text-primary transition-all">
+          <button className="p-2 rounded-xl hover:bg-surface text-text-muted hover:text-text-primary transition-all">
             <Settings className="w-4.5 h-4.5" />
           </button>
-          <button className="p-2 rounded-xl hover:bg-surface-DEFAULT text-text-muted hover:text-text-primary transition-all">
+          <button className="p-2 rounded-xl hover:bg-surface text-text-muted hover:text-text-primary transition-all">
             <MoreHorizontal className="w-4.5 h-4.5" />
           </button>
         </div>
@@ -500,7 +500,7 @@ function ChatWindow({
               rows={1}
               disabled={isStreaming}
               className={cn(
-                'w-full resize-none bg-surface-DEFAULT border border-border rounded-2xl px-4 py-3 pr-12',
+                'w-full resize-none bg-surface border border-border rounded-2xl px-4 py-3 pr-12',
                 'text-text-primary placeholder-text-muted text-sm leading-relaxed',
                 'focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand/50',
                 'transition-all duration-200 max-h-40',
@@ -527,7 +527,7 @@ function ChatWindow({
                 'flex-shrink-0 w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200',
                 inputValue.trim()
                   ? 'bg-brand hover:bg-brand-hover text-white shadow-brand hover:shadow-lg'
-                  : 'bg-surface-DEFAULT text-text-muted border border-border cursor-not-allowed'
+                  : 'bg-surface text-text-muted border border-border cursor-not-allowed'
               )}
             >
               <Send className="w-4.5 h-4.5" />
@@ -607,7 +607,7 @@ function MessageBubble({
           </span>
           <button
             onClick={onCopy}
-            className="p-1 rounded-lg hover:bg-surface-DEFAULT text-text-muted hover:text-text-primary transition-all"
+            className="p-1 rounded-lg hover:bg-surface text-text-muted hover:text-text-primary transition-all"
           >
             {isCopied ? (
               <Check className="w-3.5 h-3.5 text-emerald-400" />

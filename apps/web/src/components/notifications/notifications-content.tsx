@@ -25,7 +25,7 @@ const NOTIFICATION_COLORS: Record<string, string> = {
   FOLLOW: 'text-brand bg-brand/10',
   FAVORITE: 'text-amber-400 bg-amber-500/10',
   CHAT: 'text-emerald-400 bg-emerald-500/10',
-  SYSTEM: 'text-text-muted bg-surface-DEFAULT',
+  SYSTEM: 'text-text-muted bg-surface',
   ACHIEVEMENT: 'text-purple-400 bg-purple-500/10',
 };
 
@@ -115,7 +115,7 @@ export function NotificationsContent() {
                 className={cn(
                   'flex items-start gap-4 p-4 rounded-xl border transition-all cursor-pointer',
                   notification.isRead
-                    ? 'border-border bg-transparent hover:bg-surface-DEFAULT/50'
+                    ? 'border-border bg-transparent hover:bg-surface/50'
                     : 'border-brand/20 bg-brand/5 hover:bg-brand/10'
                 )}
               >

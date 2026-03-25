@@ -70,7 +70,7 @@ export function ProfileContent({ username }: { username: string }) {
       {/* Profile header */}
       <div className="px-6 pb-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-end gap-4 -mt-12">
-          <div className="w-24 h-24 rounded-full overflow-hidden ring-4 ring-background-DEFAULT flex-shrink-0 bg-brand/20">
+          <div className="w-24 h-24 rounded-full overflow-hidden ring-4 ring-background flex-shrink-0 bg-brand/20">
             {profile.avatarUrl ? (
               <Image src={profile.avatarUrl} alt={profile.displayName} width={96} height={96} className="object-cover" />
             ) : (

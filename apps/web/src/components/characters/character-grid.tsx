@@ -58,7 +58,7 @@ export function CharacterGrid({
       {/* Empty state */}
       {!isLoading && characters.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="w-16 h-16 rounded-full bg-surface-DEFAULT flex items-center justify-center mb-4">
+          <div className="w-16 h-16 rounded-full bg-surface flex items-center justify-center mb-4">
             <span className="text-3xl">🔍</span>
           </div>
           <p className="text-text-secondary font-medium mb-1">캐릭터를 찾을 수 없어요</p>

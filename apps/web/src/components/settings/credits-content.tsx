@@ -96,7 +96,7 @@ export function CreditsContent() {
               'relative p-4 rounded-2xl border text-left transition-all',
               selectedPackage === pkg.id
                 ? 'border-brand bg-brand/10 ring-1 ring-brand/30'
-                : 'border-border bg-surface-DEFAULT hover:border-brand/30'
+                : 'border-border bg-surface hover:border-brand/30'
             )}
           >
             {pkg.popular && (

@@ -98,7 +98,7 @@ export function SettingsContent() {
                   'w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all',
                   activeTab === tab.id
                     ? 'bg-brand/15 text-brand border border-brand/20'
-                    : 'text-text-muted hover:text-text-primary hover:bg-surface-DEFAULT'
+                    : 'text-text-muted hover:text-text-primary hover:bg-surface'
                 )}
               >
                 <tab.icon className="w-4 h-4" />
@@ -107,7 +107,7 @@ export function SettingsContent() {
             ))}
             <Link
               href="/settings/credits"
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-text-muted hover:text-text-primary hover:bg-surface-DEFAULT transition-all"
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-text-muted hover:text-text-primary hover:bg-surface transition-all"
             >
               <Coins className="w-4 h-4" />
               크레딧 충전
@@ -158,7 +158,7 @@ export function SettingsContent() {
                 <input
                   value={displayName}
                   onChange={e => setDisplayName(e.target.value)}
-                  className="w-full bg-surface-DEFAULT border border-border rounded-xl px-4 py-2.5 text-text-primary text-sm focus:outline-none focus:border-brand/50"
+                  className="w-full bg-surface border border-border rounded-xl px-4 py-2.5 text-text-primary text-sm focus:outline-none focus:border-brand/50"
                   maxLength={30}
                 />
               </div>
@@ -169,7 +169,7 @@ export function SettingsContent() {
                   value={bio}
                   onChange={e => setBio(e.target.value)}
                   rows={3}
-                  className="w-full bg-surface-DEFAULT border border-border rounded-xl px-4 py-2.5 text-text-primary text-sm focus:outline-none focus:border-brand/50 resize-none"
+                  className="w-full bg-surface border border-border rounded-xl px-4 py-2.5 text-text-primary text-sm focus:outline-none focus:border-brand/50 resize-none"
                   maxLength={200}
                   placeholder="자신을 소개해보세요..."
                 />
@@ -202,7 +202,7 @@ export function SettingsContent() {
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer ml-4 flex-shrink-0">
                     <input type="checkbox" defaultChecked className="sr-only peer" />
-                    <div className="w-10 h-6 bg-surface-DEFAULT peer-checked:bg-brand rounded-full transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:rounded-full after:bg-white after:transition-all peer-checked:after:translate-x-4" />
+                    <div className="w-10 h-6 bg-surface peer-checked:bg-brand rounded-full transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:rounded-full after:bg-white after:transition-all peer-checked:after:translate-x-4" />
                   </label>
                 </div>
               ))}
@@ -223,7 +223,7 @@ export function SettingsContent() {
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer ml-4 flex-shrink-0">
                     <input type="checkbox" defaultChecked className="sr-only peer" />
-                    <div className="w-10 h-6 bg-surface-DEFAULT peer-checked:bg-brand rounded-full transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:rounded-full after:bg-white after:transition-all peer-checked:after:translate-x-4" />
+                    <div className="w-10 h-6 bg-surface peer-checked:bg-brand rounded-full transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:rounded-full after:bg-white after:transition-all peer-checked:after:translate-x-4" />
                   </label>
                 </div>
               ))}

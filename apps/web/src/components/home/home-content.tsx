@@ -136,7 +136,7 @@ export function HomeContent() {
               'flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200',
               !activeCategory
                 ? 'bg-brand text-white shadow-brand'
-                : 'bg-surface-DEFAULT text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-border'
+                : 'bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-border'
             )}
           >
             전체
@@ -149,7 +149,7 @@ export function HomeContent() {
                 'flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200',
                 activeCategory === cat
                   ? 'bg-brand text-white shadow-brand'
-                  : 'bg-surface-DEFAULT text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-border'
+                  : 'bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary border border-border'
               )}
             >
               <span>{CATEGORY_ICONS[cat]}</span>
@@ -159,7 +159,7 @@ export function HomeContent() {
           <Link
             href="/explore"
             className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium
-                       bg-surface-DEFAULT text-text-muted hover:text-text-primary border border-border transition-all"
+                       bg-surface text-text-muted hover:text-text-primary border border-border transition-all"
           >
             더보기 <ChevronRight className="w-3.5 h-3.5" />
           </Link>
@@ -176,7 +176,7 @@ export function HomeContent() {
               'flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200',
               activeSort === value
                 ? 'bg-brand/15 text-brand-light border border-brand/30'
-                : 'text-text-muted hover:text-text-primary hover:bg-surface-DEFAULT'
+                : 'text-text-muted hover:text-text-primary hover:bg-surface'
             )}
           >
             <Icon className="w-4 h-4" />

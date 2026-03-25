@@ -108,7 +108,7 @@ export function CharacterCreateForm() {
               'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 transition-all',
               i < step ? 'bg-brand text-white' :
                 i === step ? 'bg-brand/20 text-brand-light ring-2 ring-brand/40' :
-                  'bg-surface-DEFAULT text-text-muted'
+                  'bg-surface text-text-muted'
             )}>
               {i < step ? <CheckCircle2 className="w-4 h-4" /> : i + 1}
             </div>
@@ -137,7 +137,7 @@ export function CharacterCreateForm() {
               className={cn(
                 'relative w-32 h-32 rounded-2xl overflow-hidden cursor-pointer',
                 'border-2 border-dashed border-border hover:border-brand/50',
-                'bg-surface-DEFAULT flex items-center justify-center',
+                'bg-surface flex items-center justify-center',
                 'transition-all duration-200 group'
               )}
               onClick={() => fileInputRef.current?.click()}
@@ -209,7 +209,7 @@ export function CharacterCreateForm() {
                     'py-2 px-3 rounded-xl text-sm font-medium transition-all',
                     formData.category === cat
                       ? 'bg-brand/20 text-brand-light border border-brand/40'
-                      : 'bg-surface-DEFAULT text-text-muted border border-border hover:border-brand/30'
+                      : 'bg-surface text-text-muted border border-border hover:border-brand/30'
                   )}
                 >
                   {CATEGORY_LABELS[cat]}
@@ -311,7 +311,7 @@ export function CharacterCreateForm() {
                     'w-full flex items-center gap-3 p-3.5 rounded-xl text-left transition-all border',
                     formData.visibility === value
                       ? 'bg-brand/15 border-brand/40 text-text-primary'
-                      : 'bg-surface-DEFAULT border-border hover:border-brand/30 text-text-secondary'
+                      : 'bg-surface border-border hover:border-brand/30 text-text-secondary'
                   )}
                 >
                   <Icon className="w-4.5 h-4.5 flex-shrink-0" />
@@ -339,7 +339,7 @@ export function CharacterCreateForm() {
                     'p-4 rounded-xl text-left border transition-all',
                     formData.model === value
                       ? 'bg-brand/15 border-brand/40'
-                      : 'bg-surface-DEFAULT border-border hover:border-brand/30'
+                      : 'bg-surface border-border hover:border-brand/30'
                   )}
                 >
                   <div className="flex items-center justify-between mb-2">
