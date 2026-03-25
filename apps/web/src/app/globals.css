@@ -100,13 +100,13 @@
   }
 
   .btn-secondary {
-    @apply bg-surface-DEFAULT hover:bg-surface-hover text-text-primary font-medium px-5 py-2.5 rounded-xl
+    @apply bg-surface hover:bg-surface-hover text-text-primary font-medium px-5 py-2.5 rounded-xl
            border border-border hover:border-brand/40 transition-all duration-200 active:scale-95
            disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .btn-ghost {
-    @apply hover:bg-surface-DEFAULT text-text-secondary hover:text-text-primary px-4 py-2 rounded-xl
+    @apply hover:bg-surface text-text-secondary hover:text-text-primary px-4 py-2 rounded-xl
            transition-all duration-200 active:scale-95;
   }
 
@@ -117,7 +117,7 @@
 
   /* Input base */
   .input-base {
-    @apply w-full bg-surface-DEFAULT border border-border rounded-xl px-4 py-3
+    @apply w-full bg-surface border border-border rounded-xl px-4 py-3
            text-text-primary placeholder-text-muted text-sm
            focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand/60
            transition-all duration-200;
@@ -139,12 +139,12 @@
   /* Sidebar item */
   .sidebar-item {
     @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-text-secondary
-           hover:bg-surface-DEFAULT hover:text-text-primary
+           hover:bg-surface hover:text-text-primary
            transition-all duration-150 cursor-pointer text-sm font-medium;
   }
 
   .sidebar-item-active {
-    @apply sidebar-item bg-surface-DEFAULT text-text-primary;
+    @apply sidebar-item bg-surface text-text-primary;
   }
 
   /* Chat message */
@@ -153,12 +153,12 @@
   }
 
   .message-assistant {
-    @apply bg-surface-DEFAULT border border-border text-text-primary;
+    @apply bg-surface border border-border text-text-primary;
   }
 
   /* Skeleton */
   .skeleton {
-    @apply bg-gradient-to-r from-surface-DEFAULT via-surface-hover to-surface-DEFAULT
+    @apply bg-gradient-to-r from-surface via-surface-hover to-surface
            bg-[length:200%_100%] animate-shimmer rounded-xl;
   }
 

@@ -52,7 +52,7 @@ export function FavoritesContent() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 bg-surface-DEFAULT p-1 rounded-xl w-fit">
+      <div className="flex gap-1 mb-6 bg-surface p-1 rounded-xl w-fit">
         <button
           onClick={() => setActiveTab('favorites')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${

@@ -39,7 +39,7 @@ export function MainLayout({ children, showSearch = true, title }: MainLayoutPro
         <header className="sticky top-0 z-30 h-14 bg-background/80 backdrop-blur-xl border-b border-border flex items-center px-4 gap-3">
           {/* Mobile menu button */}
           <button
-            className="lg:hidden p-2 rounded-xl hover:bg-surface-DEFAULT text-text-secondary hover:text-text-primary transition-all"
+            className="lg:hidden p-2 rounded-xl hover:bg-surface text-text-secondary hover:text-text-primary transition-all"
             onClick={() => setSidebarOpen(true)}
           >
             <Menu className="w-5 h-5" />
@@ -59,7 +59,7 @@ export function MainLayout({ children, showSearch = true, title }: MainLayoutPro
                   placeholder="캐릭터 검색..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 bg-surface-DEFAULT border border-border rounded-xl
+                  className="w-full pl-9 pr-4 py-2 bg-surface border border-border rounded-xl
                              text-text-primary placeholder-text-muted text-sm
                              focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand/50
                              transition-all duration-200"
@@ -73,7 +73,7 @@ export function MainLayout({ children, showSearch = true, title }: MainLayoutPro
             {isAuthenticated && user ? (
               <>
                 <Link href="/notifications"
-                  className="p-2 rounded-xl hover:bg-surface-DEFAULT text-text-secondary hover:text-text-primary transition-all relative">
+                  className="p-2 rounded-xl hover:bg-surface text-text-secondary hover:text-text-primary transition-all relative">
                   <Bell className="w-5 h-5" />
                   {/* Notification dot */}
                   <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-brand" />

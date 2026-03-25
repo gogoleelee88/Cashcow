@@ -20,7 +20,7 @@ export default function PaymentFailPage() {
   const displayMessage = ERROR_MESSAGES[errorCode] ?? errorMessage ?? '결제에 실패했습니다.';
 
   return (
-    <div className="min-h-screen bg-background-DEFAULT flex items-center justify-center px-4">
+    <div className="min-h-screen bg-background flex items-center justify-center px-4">
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}

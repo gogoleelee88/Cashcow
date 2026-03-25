@@ -1,3 +1,7 @@
+# Redis dump
+dump.rdb
+*.rdb
+
 # Dependencies
 node_modules
 .pnp

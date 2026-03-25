@@ -186,7 +186,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
               </Link>
 
               {/* User info */}
-              <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-surface-DEFAULT cursor-pointer transition-all duration-150 group"
+              <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-surface cursor-pointer transition-all duration-150 group"
                    onClick={() => { router.push('/profile'); onClose?.(); }}>
                 <div className="w-8 h-8 rounded-full overflow-hidden ring-2 ring-border group-hover:ring-brand/40 transition-all flex-shrink-0">
                   {user.avatarUrl ? (

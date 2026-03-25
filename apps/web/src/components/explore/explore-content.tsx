@@ -67,7 +67,7 @@ export function ExploreContent() {
           onClick={() => setCategory(undefined)}
           className={cn(
             'flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all',
-            !category ? 'bg-brand text-white shadow-brand' : 'bg-surface-DEFAULT text-text-secondary border border-border hover:bg-surface-hover'
+            !category ? 'bg-brand text-white shadow-brand' : 'bg-surface text-text-secondary border border-border hover:bg-surface-hover'
           )}
         >
           전체
@@ -78,7 +78,7 @@ export function ExploreContent() {
             onClick={() => setCategory(cat === category ? undefined : cat)}
             className={cn(
               'flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all',
-              category === cat ? 'bg-brand text-white shadow-brand' : 'bg-surface-DEFAULT text-text-secondary border border-border hover:bg-surface-hover'
+              category === cat ? 'bg-brand text-white shadow-brand' : 'bg-surface text-text-secondary border border-border hover:bg-surface-hover'
             )}
           >
             <span>{CATEGORY_ICONS[cat]}</span>
@@ -98,7 +98,7 @@ export function ExploreContent() {
                 'px-3.5 py-2 rounded-xl text-sm font-medium transition-all',
                 sort === opt.value
                   ? 'bg-brand/15 text-brand-light border border-brand/30'
-                  : 'text-text-muted hover:text-text-primary hover:bg-surface-DEFAULT'
+                  : 'text-text-muted hover:text-text-primary hover:bg-surface'
               )}
             >
               {opt.label}
@@ -111,7 +111,7 @@ export function ExploreContent() {
           <select
             value={language}
             onChange={(e) => setLanguage(e.target.value)}
-            className="bg-surface-DEFAULT border border-border rounded-xl px-3 py-2 text-sm text-text-secondary
+            className="bg-surface border border-border rounded-xl px-3 py-2 text-sm text-text-secondary
                        focus:outline-none focus:ring-2 focus:ring-brand/30 transition-all cursor-pointer"
           >
             {LANGUAGE_OPTIONS.map((opt) => (

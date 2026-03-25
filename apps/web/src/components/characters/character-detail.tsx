@@ -233,7 +233,7 @@ export function CharacterDetailContent({ characterId }: { characterId: string })
 
           {/* Creator */}
           {character.creator && (
-            <Link href={`/profile/${character.creator.username}`} className="flex items-center gap-3 p-3 rounded-xl hover:bg-surface-DEFAULT transition-all border border-border">
+            <Link href={`/profile/${character.creator.username}`} className="flex items-center gap-3 p-3 rounded-xl hover:bg-surface transition-all border border-border">
               <div className="w-9 h-9 rounded-full overflow-hidden ring-2 ring-border flex-shrink-0">
                 {character.creator.avatarUrl ? (
                   <Image src={character.creator.avatarUrl} alt={character.creator.displayName} width={36} height={36} className="object-cover" />

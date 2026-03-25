@@ -72,7 +72,7 @@ export function CharacterCard({ character, variant = 'default', index = 0 }: Cha
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2, delay: index * 0.03 }}
       >
-        <Link href={`/characters/${character.id}`} className="flex items-center gap-3 p-3 rounded-xl hover:bg-surface-DEFAULT transition-all duration-150 group">
+        <Link href={`/characters/${character.id}`} className="flex items-center gap-3 p-3 rounded-xl hover:bg-surface transition-all duration-150 group">
           <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 ring-1 ring-border group-hover:ring-brand/30 transition-all">
             <Image
               src={avatarSrc || fallbackSrc}

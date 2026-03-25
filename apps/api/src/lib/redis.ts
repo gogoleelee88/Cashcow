@@ -44,9 +44,16 @@ export function getSubscriber(): Redis {
   return subscriberInstance;
 }
 
-// Dedicated BullMQ client
+// Dedicated BullMQ client (maxRetriesPerRequest must be null)
 export function getBullRedis(): Redis {
-  if (!bullInstance) bullInstance = createRedisClient('bullmq');
+  if (!bullInstance) {
+    bullInstance = new IORedis(config.REDIS_URL, {
+      ...redisOptions,
+      maxRetriesPerRequest: null,
+    });
+    bullInstance.on('connect', () => logger.info({ label: 'bullmq' }, 'Redis connected'));
+    bullInstance.on('error', (err) => logger.error({ label: 'bullmq', err }, 'Redis error'));
+  }
   return bullInstance;
 }
 
