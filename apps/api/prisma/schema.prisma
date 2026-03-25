@@ -1,0 +1,563 @@
+// ============================================================
+// CharacterVerse — Production Prisma Schema
+// PostgreSQL with full normalization, indexes, and audit trails
+// ============================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearch", "metrics", "tracing"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_DIRECT_URL")
+}
+
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
+enum UserRole {
+  USER
+  CREATOR
+  ADMIN
+}
+
+enum SubscriptionTier {
+  FREE
+  BASIC
+  PRO
+  ENTERPRISE
+}
+
+enum OAuthProvider {
+  GOOGLE
+  KAKAO
+  APPLE
+}
+
+enum CharacterVisibility {
+  PUBLIC
+  PRIVATE
+  UNLISTED
+}
+
+enum CharacterCategory {
+  ANIME
+  GAME
+  MOVIE
+  BOOK
+  ORIGINAL
+  CELEBRITY
+  HISTORICAL
+  VTUBER
+  OTHER
+}
+
+enum AgeRating {
+  ALL
+  TEEN
+  MATURE
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+enum MessageStatus {
+  SENT
+  ERROR
+  FILTERED
+}
+
+enum TransactionType {
+  PURCHASE
+  USAGE
+  REFUND
+  BONUS
+  SETTLEMENT
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+enum PaymentProvider {
+  TOSS
+  STRIPE
+}
+
+enum NotificationType {
+  NEW_FOLLOWER
+  CHARACTER_LIKE
+  CHARACTER_COMMENT
+  SYSTEM
+  CREDIT_LOW
+  SETTLEMENT_COMPLETE
+}
+
+enum SettlementStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  PAYMENT
+  SETTLEMENT
+  SUSPENSION
+  RESTORE
+}
+
+// ─────────────────────────────────────────────
+// USERS
+// ─────────────────────────────────────────────
+model User {
+  id               String           @id @default(cuid())
+  email            String?          @unique
+  username         String           @unique
+  displayName      String
+  passwordHash     String?
+  avatarUrl        String?
+  bio              String?          @db.Text
+  role             UserRole         @default(USER)
+  subscriptionTier SubscriptionTier @default(FREE)
+  creditBalance    Int              @default(0)
+  isVerified       Boolean          @default(false)
+  isActive         Boolean          @default(true)
+  isBanned         Boolean          @default(false)
+  banReason        String?
+  ageVerified      Boolean          @default(false)
+  ageVerifiedAt    DateTime?
+  lastLoginAt      DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  // Relations
+  oauthAccounts    OAuthAccount[]
+  refreshTokens    RefreshToken[]
+  characters       Character[]
+  conversations    Conversation[]
+  transactions     Transaction[]
+  notifications    Notification[]
+  subscriptions    Subscription[]
+  settlements      Settlement[]
+  creatorProfile   CreatorProfile?
+  likes            CharacterLike[]
+  favorites        CharacterFavorite[]
+  followers        Follow[]         @relation("Following")
+  following        Follow[]         @relation("Follower")
+  reports          Report[]         @relation("Reporter")
+  reportedContent  Report[]         @relation("Reported")
+  auditLogs        AuditLog[]
+
+  @@index([email])
+  @@index([username])
+  @@index([role])
+  @@index([createdAt])
+  @@map("users")
+}
+
+model OAuthAccount {
+  id             String        @id @default(cuid())
+  userId         String
+  provider       OAuthProvider
+  providerId     String
+  accessToken    String?       @db.Text
+  refreshToken   String?       @db.Text
+  expiresAt      DateTime?
+  rawProfile     Json?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerId])
+  @@index([userId])
+  @@map("oauth_accounts")
+}
+
+model RefreshToken {
+  id          String    @id @default(cuid())
+  userId      String
+  tokenHash   String    @unique
+  family      String    // Token family for rotation detection
+  isUsed      Boolean   @default(false)
+  userAgent   String?
+  ipAddress   String?
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@index([family])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+// ─────────────────────────────────────────────
+// CREATOR PROFILE
+// ─────────────────────────────────────────────
+model CreatorProfile {
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  displayName      String
+  bio              String?   @db.Text
+  website          String?
+  socialLinks      Json?
+  totalEarnings    Int       @default(0)  // In KRW won
+  pendingEarnings  Int       @default(0)
+  isPublic         Boolean   @default(true)
+  bankInfo         Json?     // Encrypted bank account info
+  taxInfo          Json?     // Encrypted tax info
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  settlements      Settlement[]
+
+  @@map("creator_profiles")
+}
+
+// ─────────────────────────────────────────────
+// CHARACTERS
+// ─────────────────────────────────────────────
+model Character {
+  id                   String              @id @default(cuid())
+  name                 String
+  description          String              @db.Text
+  systemPromptEncrypted String             @db.Text  // AES-256-GCM encrypted
+  systemPromptIv       String              // IV for decryption
+  greeting             String              @db.Text
+  avatarUrl            String?
+  avatarKey            String?             // S3 key
+  backgroundUrl        String?
+  backgroundKey        String?             // S3 key
+  category             CharacterCategory
+  tags                 String[]
+  visibility           CharacterVisibility @default(PUBLIC)
+  ageRating            AgeRating           @default(ALL)
+  language             String              @default("ko")
+  model                String              @default("claude-haiku-3")
+  temperature          Float               @default(0.8)
+  maxTokens            Int                 @default(1024)
+  contextWindowSize    Int                 @default(20)  // # of messages to keep
+  memoryEnabled        Boolean             @default(true)
+  voiceId              String?
+  chatCount            Int                 @default(0)
+  likeCount            Int                 @default(0)
+  favoriteCount        Int                 @default(0)
+  trendingScore        Float               @default(0)
+  isActive             Boolean             @default(true)
+  isFeatured           Boolean             @default(false)
+  revenuePerChat       Int                 @default(1)   // Creator credits per chat
+  creatorId            String
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  creator              User                @relation(fields: [creatorId], references: [id])
+  conversations        Conversation[]
+  likes                CharacterLike[]
+  favorites            CharacterFavorite[]
+  reports              Report[]
+  memories             CharacterMemory[]
+
+  @@index([creatorId])
+  @@index([category])
+  @@index([visibility])
+  @@index([trendingScore(sort: Desc)])
+  @@index([chatCount(sort: Desc)])
+  @@index([likeCount(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@index([tags])
+  @@map("characters")
+}
+
+model CharacterLike {
+  id          String    @id @default(cuid())
+  userId      String
+  characterId String
+  createdAt   DateTime  @default(now())
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, characterId])
+  @@index([characterId])
+  @@map("character_likes")
+}
+
+model CharacterFavorite {
+  id          String    @id @default(cuid())
+  userId      String
+  characterId String
+  createdAt   DateTime  @default(now())
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, characterId])
+  @@index([userId])
+  @@index([characterId])
+  @@map("character_favorites")
+}
+
+// ─────────────────────────────────────────────
+// CONVERSATIONS & MESSAGES
+// ─────────────────────────────────────────────
+model Conversation {
+  id           String    @id @default(cuid())
+  characterId  String
+  userId       String
+  title        String?
+  isPinned     Boolean   @default(false)
+  messageCount Int       @default(0)
+  tokenCount   Int       @default(0)
+  summary      String?   @db.Text   // Compressed memory summary
+  summaryAt    DateTime?
+  lastMessageAt DateTime?
+  isActive     Boolean   @default(true)
+  metadata     Json?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  character    Character @relation(fields: [characterId], references: [id])
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages     Message[]
+
+  @@index([userId])
+  @@index([characterId])
+  @@index([lastMessageAt(sort: Desc)])
+  @@index([userId, characterId])
+  @@map("conversations")
+}
+
+model Message {
+  id             String        @id @default(cuid())
+  conversationId String
+  role           MessageRole
+  content        String        @db.Text
+  status         MessageStatus @default(SENT)
+  inputTokens    Int           @default(0)
+  outputTokens   Int           @default(0)
+  creditCost     Int           @default(0)
+  isFiltered     Boolean       @default(false)
+  filterReason   String?
+  metadata       Json?
+  createdAt      DateTime      @default(now())
+
+  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([createdAt])
+  @@map("messages")
+}
+
+model CharacterMemory {
+  id          String    @id @default(cuid())
+  characterId String
+  userId      String
+  content     String    @db.Text  // Compressed memory
+  importance  Int       @default(5) // 1-10 importance score
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@index([characterId, userId])
+  @@map("character_memories")
+}
+
+// ─────────────────────────────────────────────
+// PAYMENTS & SUBSCRIPTIONS
+// ─────────────────────────────────────────────
+model Transaction {
+  id               String          @id @default(cuid())
+  userId           String
+  type             TransactionType
+  amount           Int             // In KRW (if purchase) or credits (if usage)
+  credits          Int             @default(0)
+  status           PaymentStatus   @default(PENDING)
+  provider         PaymentProvider?
+  providerOrderId  String?
+  providerPaymentId String?
+  webhookVerified  Boolean         @default(false)
+  description      String
+  metadata         Json?
+  refundedAt       DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  user             User            @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([provider, providerOrderId])
+  @@index([createdAt(sort: Desc)])
+  @@map("transactions")
+}
+
+model Subscription {
+  id               String           @id @default(cuid())
+  userId           String
+  tier             SubscriptionTier
+  provider         PaymentProvider
+  providerSubId    String?
+  status           PaymentStatus    @default(PENDING)
+  currentPeriodStart DateTime
+  currentPeriodEnd DateTime
+  cancelAtPeriodEnd Boolean         @default(false)
+  cancelledAt      DateTime?
+  trialEndsAt      DateTime?
+  metadata         Json?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  user             User             @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([currentPeriodEnd])
+  @@map("subscriptions")
+}
+
+// ─────────────────────────────────────────────
+// CREATOR ECONOMY
+// ─────────────────────────────────────────────
+model Settlement {
+  id              String           @id @default(cuid())
+  creatorId       String
+  creatorProfileId String
+  periodStart     DateTime
+  periodEnd       DateTime
+  totalChats      Int              @default(0)
+  grossAmount     Int              @default(0)  // Before platform fee
+  platformFeeRate Float            @default(0.3) // 30% platform fee
+  platformFee     Int              @default(0)
+  netAmount       Int              @default(0)  // After platform fee
+  status          SettlementStatus @default(PENDING)
+  paidAt          DateTime?
+  notes           String?          @db.Text
+  auditHash       String?          // SHA-256 of settlement data for tamper detection
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  creator         User             @relation(fields: [creatorId], references: [id])
+  creatorProfile  CreatorProfile   @relation(fields: [creatorProfileId], references: [id])
+  items           SettlementItem[]
+
+  @@index([creatorId])
+  @@index([status])
+  @@index([periodStart, periodEnd])
+  @@map("settlements")
+}
+
+model SettlementItem {
+  id            String     @id @default(cuid())
+  settlementId  String
+  characterId   String
+  characterName String
+  chatCount     Int
+  creditsEarned Int
+  amount        Int
+  createdAt     DateTime   @default(now())
+
+  settlement    Settlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+
+  @@index([settlementId])
+  @@map("settlement_items")
+}
+
+// ─────────────────────────────────────────────
+// SOCIAL
+// ─────────────────────────────────────────────
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+
+  follower    User     @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User     @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followingId])
+  @@map("follows")
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  isRead    Boolean          @default(false)
+  data      Json?
+  createdAt DateTime         @default(now())
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+model Report {
+  id           String   @id @default(cuid())
+  reporterId   String
+  reportedId   String
+  characterId  String?
+  reason       String
+  description  String?  @db.Text
+  status       String   @default("PENDING")
+  resolvedAt   DateTime?
+  resolvedBy   String?
+  createdAt    DateTime @default(now())
+
+  reporter     User      @relation("Reporter", fields: [reporterId], references: [id])
+  reported     User      @relation("Reported", fields: [reportedId], references: [id])
+  character    Character? @relation(fields: [characterId], references: [id])
+
+  @@index([reporterId])
+  @@index([status])
+  @@map("reports")
+}
+
+// ─────────────────────────────────────────────
+// AUDIT LOG (Tamper-evident)
+// ─────────────────────────────────────────────
+model AuditLog {
+  id          String      @id @default(cuid())
+  userId      String?
+  action      AuditAction
+  entityType  String
+  entityId    String
+  oldData     Json?
+  newData     Json?
+  ipAddress   String?
+  userAgent   String?
+  requestId   String?
+  createdAt   DateTime    @default(now())
+
+  user        User?       @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([action])
+  @@index([createdAt(sort: Desc)])
+  @@map("audit_logs")
+}

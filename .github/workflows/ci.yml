@@ -1,0 +1,279 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop, 'feature/**', 'claude/**']
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository }}
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Lint & Type Check
+  # ─────────────────────────────────────────────
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run type-check
+
+      - name: Lint
+        run: npm run lint
+
+  # ─────────────────────────────────────────────
+  # Test
+  # ─────────────────────────────────────────────
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    needs: lint
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: characterverse_test
+          POSTGRES_USER: characterverse
+          POSTGRES_PASSWORD: test_password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    env:
+      DATABASE_URL: postgresql://characterverse:test_password@localhost:5432/characterverse_test
+      DATABASE_DIRECT_URL: postgresql://characterverse:test_password@localhost:5432/characterverse_test
+      REDIS_URL: redis://localhost:6379
+      JWT_ACCESS_SECRET: test_jwt_access_secret_that_is_long_enough_for_tests
+      JWT_REFRESH_SECRET: test_jwt_refresh_secret_that_is_long_enough_for_tests
+      ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || 'sk-ant-test' }}
+      NODE_ENV: test
+      API_BASE_URL: http://localhost:4000
+      WEB_BASE_URL: http://localhost:3000
+      ALLOWED_ORIGINS: http://localhost:3000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Prisma migrations
+        run: cd apps/api && npx prisma db push --force-reset
+
+      - name: Run tests
+        run: npm run test
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  # ─────────────────────────────────────────────
+  # Security Scan
+  # ─────────────────────────────────────────────
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: NPM Audit
+        run: npm audit --audit-level=high || true
+
+  # ─────────────────────────────────────────────
+  # Build Docker Images
+  # ─────────────────────────────────────────────
+  build:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      matrix:
+        service: [api, web]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-${{ matrix.service }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: infra/docker/${{ matrix.service }}.Dockerfile
+          target: production
+          push: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+  # ─────────────────────────────────────────────
+  # Deploy to Production (Blue-Green)
+  # ─────────────────────────────────────────────
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy via SSH (Blue-Green)
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/characterverse
+
+            # Pull latest images
+            docker pull ghcr.io/${{ github.repository }}-api:latest
+            docker pull ghcr.io/${{ github.repository }}-web:latest
+
+            # Run DB migrations
+            docker run --rm \
+              --env-file .env.production \
+              ghcr.io/${{ github.repository }}-api:latest \
+              node -e "const { execSync } = require('child_process'); execSync('npx prisma migrate deploy', { stdio: 'inherit' })"
+
+            # Blue-Green: start new containers
+            docker compose -f docker-compose.prod.yml up -d --no-deps --scale api=2 api web
+
+            # Health check
+            sleep 30
+            curl -f http://localhost:4000/health/ready || exit 1
+            curl -f http://localhost:3000/ || exit 1
+
+            # Scale down old containers
+            docker compose -f docker-compose.prod.yml up -d --no-deps --scale api=1 api
+
+            # Cleanup old images
+            docker image prune -f --filter "until=24h"
+
+            echo "✅ Deployment successful!"
+
+      - name: Notify Slack
+        if: always()
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_COLOR: ${{ job.status == 'success' && 'good' || 'danger' }}
+          SLACK_TITLE: "Production Deploy ${{ job.status }}"
+          SLACK_MESSAGE: "Branch: ${{ github.ref }}\nCommit: ${{ github.sha }}"
+
+  # ─────────────────────────────────────────────
+  # Deploy to Staging
+  # ─────────────────────────────────────────────
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Staging
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            cd /opt/characterverse-staging
+            docker pull ghcr.io/${{ github.repository }}-api:develop
+            docker pull ghcr.io/${{ github.repository }}-web:develop
+            docker compose -f docker-compose.staging.yml up -d
+            echo "✅ Staging deployment complete"
