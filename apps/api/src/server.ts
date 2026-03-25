@@ -20,6 +20,8 @@ import { characterRoutes } from './routes/characters.routes';
 import { chatRoutes } from './routes/chat.routes';
 import { paymentRoutes } from './routes/payments.routes';
 import { healthRoutes } from './routes/health.routes';
+import { notificationRoutes } from './routes/notifications.routes';
+import { userRoutes } from './routes/users.routes';
 import { verifyAccessToken } from './services/auth.service';
 
 // ─────────────────────────────────────────────
@@ -98,6 +100,8 @@ async function registerRoutes(): Promise<void> {
   app.register(characterRoutes, { prefix: '/api/characters' });
   app.register(chatRoutes, { prefix: '/api/chat' });
   app.register(paymentRoutes, { prefix: '/api/payments' });
+  app.register(notificationRoutes, { prefix: '/api/notifications' });
+  app.register(userRoutes, { prefix: '/api/users' });
 
   // 404 handler
   app.setNotFoundHandler((request, reply) => {

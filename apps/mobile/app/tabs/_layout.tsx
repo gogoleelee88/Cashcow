@@ -44,7 +44,7 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="chat"
+        name="chats"
         options={{
           title: '대화',
           tabBarIcon: ({ color }) => <MessageCircle size={TAB_ICON_SIZE} color={color} />,

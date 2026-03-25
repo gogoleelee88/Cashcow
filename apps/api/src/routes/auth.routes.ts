@@ -399,6 +399,6 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
 };
 
 function sanitizeUser(user: any) {
-  const { passwordHash, ...safe } = user;
-  return safe;
+  const { passwordHash, creditBalance, ...rest } = user;
+  return { ...rest, credits: creditBalance };
 }
