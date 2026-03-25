@@ -25,13 +25,13 @@ export default function PaymentSuccessPage() {
       return;
     }
 
-    api.post('/payments/toss/confirm', { paymentKey, orderId, amount: Number(amount) })
+    api.payments.confirmToss({ paymentKey, orderId, amount: Number(amount) })
       .then((res: any) => {
-        setCredits(res.data.creditsAdded ?? 0);
+        setCredits(res.creditsAdded ?? 0);
         setStatus('success');
         // Refresh user data to get updated credits
         api.auth.me().then((meRes: any) => {
-          if (meRes.data) setUser(meRes.data);
+          if (meRes) setUser(meRes);
         });
       })
       .catch(() => setStatus('error'));

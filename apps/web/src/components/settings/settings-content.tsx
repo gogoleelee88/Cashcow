@@ -22,7 +22,7 @@ const TABS = [
 ];
 
 export function SettingsContent() {
-  const { user, setUser, setTokens } = useAuthStore();
+  const { user, setUser } = useAuthStore();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<Tab>('profile');
@@ -33,10 +33,10 @@ export function SettingsContent() {
 
   const updateProfileMutation = useMutation({
     mutationFn: async (data: { displayName: string; bio: string; avatarUrl?: string }) => {
-      return api.patch('/users/me', data);
+      return api.users.updateMe(data);
     },
     onSuccess: (res: any) => {
-      setUser(res.data);
+      setUser(res);
       toast.success('저장 완료', '프로필이 업데이트되었습니다.');
     },
     onError: () => toast.error('오류', '프로필 업데이트에 실패했습니다.'),
@@ -54,10 +54,7 @@ export function SettingsContent() {
 
     if (avatarFile) {
       try {
-        const { data: uploadData } = await api.characters.getUploadUrl({
-          contentType: avatarFile.type,
-          fileSize: avatarFile.size,
-        });
+        const uploadData = await api.characters.getUploadUrl(avatarFile.type, 'avatar');
         await fetch(uploadData.uploadUrl, {
           method: 'PUT',
           body: avatarFile,
@@ -74,10 +71,9 @@ export function SettingsContent() {
   };
 
   const logoutMutation = useMutation({
-    mutationFn: () => api.auth.logout(),
+    mutationFn: () => api.auth.logout(useAuthStore.getState().refreshToken ?? ''),
     onSuccess: () => {
-      setTokens(null, null);
-      setUser(null);
+      useAuthStore.getState().logout();
       router.push('/login');
     },
   });

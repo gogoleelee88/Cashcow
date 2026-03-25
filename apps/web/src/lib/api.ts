@@ -190,6 +190,9 @@ export const api = {
 
     markAllNotificationsRead: () =>
       apiClient.post('/api/users/me/notifications/read-all').then((r) => r.data),
+
+    markNotificationRead: (id: string) =>
+      apiClient.patch(`/api/notifications/${id}/read`).then((r) => r.data),
   },
 };
 

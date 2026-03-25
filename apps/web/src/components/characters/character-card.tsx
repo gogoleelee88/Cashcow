@@ -124,7 +124,7 @@ export function CharacterCard({ character, variant = 'default', index = 0 }: Cha
 
           {/* Top badges */}
           <div className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1.5">
-            {character.isFeatured && (
+            {(character as any).isFeatured && (
               <span className="badge-featured">
                 <Crown className="w-3 h-3" />
                 추천

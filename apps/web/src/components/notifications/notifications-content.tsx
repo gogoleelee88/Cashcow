@@ -35,18 +35,18 @@ export function NotificationsContent() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['notifications'],
-    queryFn: () => api.get('/notifications'),
+    queryFn: () => api.users.notifications(),
     enabled: isAuthenticated,
     refetchInterval: 30_000,
   });
 
   const readAllMutation = useMutation({
-    mutationFn: () => api.post('/notifications/read-all'),
+    mutationFn: () => api.users.markAllNotificationsRead(),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
   });
 
   const readMutation = useMutation({
-    mutationFn: (id: string) => api.patch(`/notifications/${id}/read`),
+    mutationFn: (id: string) => api.users.markNotificationRead(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
   });
 

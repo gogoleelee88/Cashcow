@@ -216,14 +216,14 @@ function CharacterRow({ char, index }: { char: any; index: number }) {
       <div className="flex items-center gap-1.5 flex-shrink-0">
         <Link
           href={`/creator/edit/${char.id}`}
-          className="p-2 rounded-xl hover:bg-surface-DEFAULT text-text-muted hover:text-text-primary transition-all"
+          className="p-2 rounded-xl hover:bg-surface text-text-muted hover:text-text-primary transition-all"
           title="수정"
         >
           <Settings className="w-4 h-4" />
         </Link>
         <Link
           href={`/characters/${char.id}`}
-          className="p-2 rounded-xl hover:bg-surface-DEFAULT text-text-muted hover:text-text-primary transition-all"
+          className="p-2 rounded-xl hover:bg-surface text-text-muted hover:text-text-primary transition-all"
           title="캐릭터 페이지"
         >
           <ArrowRight className="w-4 h-4" />
@@ -304,7 +304,7 @@ function EarningsDashboard({ earnings }: { earnings: any }) {
           </h3>
           <div className="space-y-2">
             {topChars.slice(0, 5).map((char: any, i: number) => (
-              <div key={char.id} className="flex items-center gap-3 p-3 rounded-xl bg-surface-DEFAULT">
+              <div key={char.id} className="flex items-center gap-3 p-3 rounded-xl bg-surface">
                 <span className="text-text-muted text-sm font-bold w-5 text-center">{i + 1}</span>
                 <div className="w-9 h-9 rounded-xl overflow-hidden flex-shrink-0">
                   <Image
@@ -423,7 +423,7 @@ function AnalyticsDashboard({ characters }: { characters: any[] }) {
                 </thead>
                 <tbody>
                   {characters.slice(0, 10).map((char: any, i: number) => (
-                    <tr key={char.id} className="border-b border-border/50 hover:bg-surface-DEFAULT/50 transition-colors">
+                    <tr key={char.id} className="border-b border-border/50 hover:bg-surface/50 transition-colors">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <span className="text-text-muted text-xs w-4">{i + 1}</span>
