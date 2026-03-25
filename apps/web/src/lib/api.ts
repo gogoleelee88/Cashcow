@@ -162,11 +162,39 @@ export const api = {
       apiClient.post('/api/payments/toss/confirm', data).then((r) => r.data),
     transactions: (params?: Record<string, unknown>) =>
       apiClient.get('/api/payments/transactions', { params }).then((r) => r.data),
+    initiateStripe: (packageId: string) =>
+      apiClient.post('/api/payments/stripe/create-intent', { packageId }).then((r) => r.data),
+  },
+
+  users: {
+    profile: (username: string) =>
+      apiClient.get(`/api/users/${username}/profile`).then((r) => r.data),
+
+    follow: (username: string) =>
+      apiClient.post(`/api/users/${username}/follow`).then((r) => r.data),
+
+    updateMe: (data: { displayName?: string; bio?: string; avatarUrl?: string }) =>
+      apiClient.patch('/api/users/me', data).then((r) => r.data),
+
+    earnings: () =>
+      apiClient.get('/api/users/me/earnings').then((r) => r.data),
+
+    settlements: (params?: Record<string, unknown>) =>
+      apiClient.get('/api/users/me/settlements', { params }).then((r) => r.data),
+
+    ensureCreatorProfile: (data: { displayName: string; bio?: string }) =>
+      apiClient.post('/api/users/me/creator-profile', data).then((r) => r.data),
+
+    notifications: (params?: Record<string, unknown>) =>
+      apiClient.get('/api/users/me/notifications', { params }).then((r) => r.data),
+
+    markAllNotificationsRead: () =>
+      apiClient.post('/api/users/me/notifications/read-all').then((r) => r.data),
   },
 };
 
 // ─────────────────────────────────────────────
-// STREAMING CHAT (SSE)
+// STREAMING CHAT (SSE) — with reconnection recovery
 // ─────────────────────────────────────────────
 export function streamChatMessage(
   conversationId: string,
@@ -179,20 +207,48 @@ export function streamChatMessage(
     signal?: AbortSignal;
   }
 ): void {
-  // Use fetch for SSE with POST body
-  fetch(`${BASE_URL}/api/chat/conversations/${conversationId}/messages`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-      Accept: 'text/event-stream',
-    },
-    body: JSON.stringify({ content }),
-    signal: callbacks.signal,
-  }).then(async (response) => {
+  let attempt = 0;
+  const MAX_RETRIES = 2;
+  const RETRY_DELAYS = [1000, 2000]; // ms
+
+  async function doStream(): Promise<void> {
+    if (callbacks.signal?.aborted) return;
+
+    let response: Response;
+    try {
+      response = await fetch(`${BASE_URL}/api/chat/conversations/${conversationId}/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+          Accept: 'text/event-stream',
+        },
+        body: JSON.stringify({ content }),
+        signal: callbacks.signal,
+      });
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
+      // Network error — retry if attempts left
+      if (attempt < MAX_RETRIES) {
+        attempt++;
+        await new Promise((r) => setTimeout(r, RETRY_DELAYS[attempt - 1]));
+        return doStream();
+      }
+      callbacks.onError('네트워크 연결이 끊어졌습니다. 다시 시도해주세요.');
+      return;
+    }
+
     if (!response.ok) {
       const err = await response.json().catch(() => ({ error: { message: '오류가 발생했습니다.' } }));
-      callbacks.onError(err.error?.message || '오류가 발생했습니다.');
+      const code = err.error?.code;
+      // Don't retry on client errors (4xx)
+      if (response.status === 402) {
+        callbacks.onError('크레딧이 부족합니다. 충전 후 다시 시도해주세요.');
+      } else if (response.status === 429) {
+        callbacks.onError('요청이 너무 많습니다. 잠시 후 다시 시도해주세요.');
+      } else {
+        callbacks.onError(err.error?.message || '오류가 발생했습니다.');
+      }
       return;
     }
 
@@ -205,43 +261,52 @@ export function streamChatMessage(
     }
 
     let buffer = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    let lastEvent = '';
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      for (const line of lines) {
-        if (line.startsWith('event: ')) {
-          // Next line will be data
-          continue;
-        }
-        if (line.startsWith('data: ')) {
-          try {
-            const data = JSON.parse(line.slice(6));
-            const eventLine = lines[lines.indexOf(line) - 1];
-            const eventType = eventLine?.startsWith('event: ')
-              ? eventLine.slice(7).trim()
-              : 'delta';
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
 
-            if (eventType === 'delta' && data.text) {
-              callbacks.onDelta(data.text);
-            } else if (eventType === 'done') {
-              callbacks.onDone(data);
-            } else if (eventType === 'error') {
-              callbacks.onError(data.message || '오류가 발생했습니다.');
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            lastEvent = line.slice(7).trim();
+            continue;
+          }
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              const eventType = lastEvent || 'delta';
+              lastEvent = '';
+
+              if (eventType === 'delta' && data.text) {
+                callbacks.onDelta(data.text);
+              } else if (eventType === 'done') {
+                callbacks.onDone(data);
+              } else if (eventType === 'error') {
+                callbacks.onError(data.message || '오류가 발생했습니다.');
+              }
+            } catch {
+              // Ignore malformed SSE line
             }
-          } catch {
-            // Ignore malformed SSE
           }
         }
       }
+    } catch (readErr: any) {
+      if (readErr.name === 'AbortError') return;
+      // Stream interrupted — retry if possible (no content yet)
+      if (attempt < MAX_RETRIES) {
+        attempt++;
+        await new Promise((r) => setTimeout(r, RETRY_DELAYS[attempt - 1]));
+        return doStream();
+      }
+      callbacks.onError('스트리밍 연결이 끊어졌습니다.');
     }
-  }).catch((err) => {
-    if (err.name !== 'AbortError') {
-      callbacks.onError('연결이 끊어졌습니다.');
-    }
-  });
+  }
+
+  doStream();
 }

@@ -291,6 +291,9 @@ export function startWorkers(): void {
     });
   });
 
+  // ─── CRON: Monthly settlement (1st of each month at 02:00 KST = 17:00 UTC prev day)
+  scheduleMonthlyCron();
+
   logger.info('BullMQ workers started');
 }
 
@@ -300,4 +303,104 @@ export async function stopWorkers(): Promise<void> {
     notificationWorker?.close(),
     memoryWorker?.close(),
   ]);
+}
+
+// ─────────────────────────────────────────────
+// MONTHLY SETTLEMENT CRON
+// Runs on the 1st of every month at 02:00 KST (17:00 UTC previous day)
+// Uses BullMQ Scheduler to avoid double-runs on multi-instance deployments
+// ─────────────────────────────────────────────
+async function scheduleMonthlyCron(): Promise<void> {
+  try {
+    // Remove existing repeatable job and re-add (idempotent)
+    const repeatableJobs = await settlementQueue.getRepeatableJobs();
+    for (const job of repeatableJobs) {
+      if (job.name === 'monthly-settlement') {
+        await settlementQueue.removeRepeatableByKey(job.key);
+      }
+    }
+
+    const now = new Date();
+    // Calculate previous month period
+    const periodEnd = new Date(now.getFullYear(), now.getMonth(), 1); // First day of current month
+    const periodStart = new Date(now.getFullYear(), now.getMonth() - 1, 1); // First day of previous month
+
+    await settlementQueue.add(
+      'monthly-settlement',
+      {
+        periodStart: periodStart.toISOString(),
+        periodEnd: periodEnd.toISOString(),
+      } as SettlementJobData,
+      {
+        repeat: {
+          pattern: '0 17 28-31 * *', // 17:00 UTC on last days of month (02:00 KST next day)
+          utc: true,
+        },
+        jobId: 'monthly-settlement-cron',
+      }
+    );
+
+    logger.info({ pattern: '0 17 28-31 * *' }, 'Monthly settlement cron scheduled');
+  } catch (err) {
+    logger.error({ err }, 'Failed to schedule monthly settlement cron');
+  }
+}
+
+// ─────────────────────────────────────────────
+// TRENDING SCORE UPDATE (every hour)
+// ─────────────────────────────────────────────
+export const trendingQueue = new Queue('trending', {
+  connection: getBullRedis(),
+  defaultJobOptions: {
+    removeOnComplete: { count: 10 },
+    removeOnFail: { count: 20 },
+  },
+});
+
+export function startTrendingWorker(): void {
+  const worker = new Worker(
+    'trending',
+    async () => {
+      await updateTrendingScores();
+    },
+    { connection: getBullRedis(), concurrency: 1 }
+  );
+
+  worker.on('failed', (job, err) => {
+    logger.error({ jobId: job?.id, err }, 'Trending update job failed');
+  });
+
+  // Schedule every hour
+  trendingQueue.add(
+    'update-trending',
+    {},
+    {
+      repeat: { every: 60 * 60 * 1000 }, // every 1 hour
+      jobId: 'trending-hourly',
+    }
+  );
+
+  logger.info('Trending update worker started');
+}
+
+async function updateTrendingScores(): Promise<void> {
+  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  // Update trending score: weighted combination of recent chats + likes
+  await prisma.$executeRaw`
+    UPDATE characters
+    SET "trendingScore" = (
+      (SELECT COUNT(*) FROM messages m
+       JOIN conversations cv ON cv.id = m."conversationId"
+       WHERE cv."characterId" = characters.id
+       AND m."createdAt" > ${since24h}
+       AND m.role = 'ASSISTANT'
+      ) * 0.6
+      + characters."likeCount" * 0.4
+    )
+    WHERE characters."isActive" = true
+    AND characters.visibility = 'PUBLIC'
+  `;
+
+  logger.info('Trending scores updated');
 }

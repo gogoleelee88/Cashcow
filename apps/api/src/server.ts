@@ -10,7 +10,7 @@ import { config } from './config';
 import { logger } from './lib/logger';
 import { disconnectPrisma } from './lib/prisma';
 import { disconnectRedis, getRedis } from './lib/redis';
-import { startWorkers, stopWorkers } from './services/queue.service';
+import { startWorkers, stopWorkers, startTrendingWorker } from './services/queue.service';
 import { activeUsers } from './lib/metrics';
 import { alertCritical } from './lib/slack';
 import authPlugin from './plugins/auth.plugin';
@@ -207,9 +207,10 @@ async function start(): Promise<void> {
     await getRedis().ping();
     logger.info('Redis connected');
 
-    // Start BullMQ workers
+    // Start BullMQ workers + cron schedulers
     startWorkers();
-    logger.info('BullMQ workers started');
+    startTrendingWorker();
+    logger.info('BullMQ workers and cron schedulers started');
 
     await app.listen({ port: config.PORT, host: config.HOST });
     logger.info(`🚀 CharacterVerse API running at http://${config.HOST}:${config.PORT}`);

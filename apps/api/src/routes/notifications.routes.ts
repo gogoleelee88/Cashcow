@@ -5,7 +5,7 @@ import { prismaRead, prisma } from '../lib/prisma';
 export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /notifications
   fastify.get('/', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth],
     handler: async (request, reply) => {
       const userId = request.userId!;
 
@@ -24,7 +24,7 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
 
   // PATCH /notifications/:id/read
   fastify.patch('/:id/read', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth],
     handler: async (request, reply) => {
       const { id } = request.params as { id: string };
       const userId = request.userId!;
@@ -40,7 +40,7 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
 
   // POST /notifications/read-all
   fastify.post('/read-all', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth],
     handler: async (request, reply) => {
       const userId = request.userId!;
 
