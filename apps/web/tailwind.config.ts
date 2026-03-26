@@ -10,43 +10,44 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // crack.wrtn.ai exact color palette
+        // crack.wrtn.ai exact color palette — WHITE theme, RED accent
         background: {
-          DEFAULT: '#0d0b18',   // Main background
-          secondary: '#12101f', // Cards, sidebars
-          tertiary: '#1a1729',  // Hover states
-          elevated: '#201d33',  // Modals, dropdowns
+          DEFAULT: '#FFFFFF',
+          secondary: '#F7F7F9',
+          tertiary: '#F0F0F3',
+          elevated: '#FFFFFF',
         },
         surface: {
-          DEFAULT: '#1a1729',
-          hover: '#221f38',
-          active: '#2a2745',
-          border: '#2d2a4a',
+          DEFAULT: '#F5F5F7',
+          hover: '#EBEBEE',
+          active: '#E3E3E8',
+          border: '#E0E0E5',
         },
         brand: {
-          DEFAULT: '#7c5cfc',  // Primary purple
-          hover: '#8f72fd',
-          light: '#a590fd',
-          dark: '#6240fb',
-          glow: 'rgba(124, 92, 252, 0.4)',
+          DEFAULT: '#E63325',  // crack.wrtn.ai red
+          hover: '#D12E21',
+          light: '#FF5547',
+          dark: '#C72A1E',
+          glow: 'rgba(230, 51, 37, 0.3)',
         },
         accent: {
-          pink: '#e879f9',
-          cyan: '#22d3ee',
+          pink: '#FF6B9D',
+          cyan: '#00B4D8',
           emerald: '#10b981',
-          amber: '#f59e0b',
-          rose: '#fb7185',
+          amber: '#F59E0B',
+          rose: '#FF6B6B',
+          purple: '#7C5CFC',
         },
         text: {
-          primary: '#f0ecff',
-          secondary: '#b8b0d8',
-          muted: '#7b7299',
-          disabled: '#3d3a5c',
+          primary: '#111111',
+          secondary: '#555555',
+          muted: '#888888',
+          disabled: '#BBBBBB',
         },
         border: {
-          DEFAULT: '#2d2a4a',
-          subtle: '#1e1c30',
-          strong: '#3d3a5c',
+          DEFAULT: '#E0E0E5',
+          subtle: '#EBEBEE',
+          strong: '#CCCCCC',
         },
       },
       fontFamily: {
@@ -63,10 +64,10 @@ const config: Config = {
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
         'gradient-conic': 'conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))',
-        'brand-gradient': 'linear-gradient(135deg, #7c5cfc 0%, #e879f9 100%)',
-        'card-gradient': 'linear-gradient(180deg, transparent 40%, rgba(13,11,24,0.95) 100%)',
-        'hero-gradient': 'radial-gradient(ellipse 80% 50% at 50% -20%, rgba(124,92,252,0.3), transparent)',
-        'sidebar-gradient': 'linear-gradient(180deg, #12101f 0%, #0d0b18 100%)',
+        'brand-gradient': 'linear-gradient(135deg, #E63325 0%, #FF6B9D 100%)',
+        'card-gradient': 'linear-gradient(180deg, transparent 40%, rgba(0,0,0,0.7) 100%)',
+        'hero-gradient': 'radial-gradient(ellipse 80% 50% at 50% -20%, rgba(230,51,37,0.1), transparent)',
+        'sidebar-gradient': 'linear-gradient(180deg, #F7F7F9 0%, #FFFFFF 100%)',
       },
       animation: {
         'fade-in': 'fadeIn 0.2s ease-in-out',
@@ -100,8 +101,8 @@ const config: Config = {
           '100%': { transform: 'scale(1)', opacity: '1' },
         },
         pulseGlow: {
-          '0%, 100%': { boxShadow: '0 0 20px rgba(124,92,252,0.4)' },
-          '50%': { boxShadow: '0 0 40px rgba(124,92,252,0.7)' },
+          '0%, 100%': { boxShadow: '0 0 15px rgba(230,51,37,0.3)' },
+          '50%': { boxShadow: '0 0 30px rgba(230,51,37,0.5)' },
         },
         shimmer: {
           '0%': { backgroundPosition: '-200% 0' },
@@ -114,12 +115,12 @@ const config: Config = {
         },
       },
       boxShadow: {
-        'brand': '0 0 20px rgba(124,92,252,0.4)',
-        'card': '0 4px 24px rgba(0,0,0,0.5)',
-        'card-hover': '0 8px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(124,92,252,0.3)',
-        'inner-border': 'inset 0 0 0 1px rgba(255,255,255,0.08)',
-        'glow-pink': '0 0 20px rgba(232,121,249,0.4)',
-        'glow-cyan': '0 0 20px rgba(34,211,238,0.4)',
+        'brand': '0 0 15px rgba(230,51,37,0.3)',
+        'card': '0 2px 12px rgba(0,0,0,0.08)',
+        'card-hover': '0 8px 32px rgba(0,0,0,0.15), 0 0 0 1px rgba(230,51,37,0.2)',
+        'inner-border': 'inset 0 0 0 1px rgba(0,0,0,0.06)',
+        'glow-red': '0 0 20px rgba(230,51,37,0.4)',
+        'nav': '0 2px 8px rgba(0,0,0,0.06)',
       },
       borderRadius: {
         'xl': '0.75rem',

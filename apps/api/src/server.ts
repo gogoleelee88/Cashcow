@@ -22,6 +22,7 @@ import { paymentRoutes } from './routes/payments.routes';
 import { healthRoutes } from './routes/health.routes';
 import { notificationRoutes } from './routes/notifications.routes';
 import { userRoutes } from './routes/users.routes';
+import { storyRoutes } from './routes/stories.routes';
 import { verifyAccessToken } from './services/auth.service';
 
 // ─────────────────────────────────────────────
@@ -102,6 +103,7 @@ async function registerRoutes(): Promise<void> {
   app.register(paymentRoutes, { prefix: '/api/payments' });
   app.register(notificationRoutes, { prefix: '/api/notifications' });
   app.register(userRoutes, { prefix: '/api/users' });
+  app.register(storyRoutes, { prefix: '/api/stories' });
 
   // 404 handler
   app.setNotFoundHandler((request, reply) => {

@@ -110,7 +110,7 @@ export function CharacterCard({ character, variant = 'default', index = 0 }: Cha
         {/* Image area */}
         <div className="relative aspect-[3/4] overflow-hidden">
           {/* Background gradient overlay */}
-          <div className="absolute inset-0 bg-gradient-to-t from-background-secondary via-transparent to-transparent z-10" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent z-10" />
 
           {/* Character image */}
           <Image
@@ -131,7 +131,7 @@ export function CharacterCard({ character, variant = 'default', index = 0 }: Cha
               </span>
             )}
             {character.model === 'claude-sonnet-4' && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-accent-purple/20 text-white border border-white/30">
                 <Zap className="w-3 h-3" />
                 PRO
               </span>

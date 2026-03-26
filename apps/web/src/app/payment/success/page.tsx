@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { CheckCircle, Coins, ArrowRight } from 'lucide-react';
@@ -8,17 +8,16 @@ import Link from 'next/link';
 import { api } from '../../../lib/api';
 import { useAuthStore } from '../../../stores/auth.store';
 
-export default function PaymentSuccessPage() {
+function PaymentSuccessContent() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const { user, setUser } = useAuthStore();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [credits, setCredits] = useState(0);
 
   useEffect(() => {
-    const paymentKey = searchParams.get('paymentKey');
-    const orderId = searchParams.get('orderId');
-    const amount = searchParams.get('amount');
+    const paymentKey = searchParams?.get('paymentKey');
+    const orderId = searchParams?.get('orderId');
+    const amount = searchParams?.get('amount');
 
     if (!paymentKey || !orderId || !amount) {
       setStatus('error');
@@ -29,7 +28,6 @@ export default function PaymentSuccessPage() {
       .then((res: any) => {
         setCredits(res.creditsAdded ?? 0);
         setStatus('success');
-        // Refresh user data to get updated credits
         api.auth.me().then((meRes: any) => {
           if (meRes) setUser(meRes);
         });
@@ -39,7 +37,7 @@ export default function PaymentSuccessPage() {
 
   if (status === 'loading') {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
           <div className="w-16 h-16 rounded-full border-4 border-brand border-t-transparent animate-spin mx-auto mb-4" />
           <p className="text-text-muted">결제 확인 중...</p>
@@ -50,10 +48,10 @@ export default function PaymentSuccessPage() {
 
   if (status === 'error') {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center px-4">
+      <div className="min-h-screen bg-white flex items-center justify-center px-4">
         <div className="text-center">
-          <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
-            <span className="text-red-400 text-2xl">✕</span>
+          <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
+            <span className="text-red-500 text-2xl">✕</span>
           </div>
           <h1 className="text-text-primary font-bold text-xl mb-2">결제 확인 실패</h1>
           <p className="text-text-muted mb-5">결제 확인에 실패했습니다. 고객센터에 문의해주세요.</p>
@@ -64,7 +62,7 @@ export default function PaymentSuccessPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4">
+    <div className="min-h-screen bg-white flex items-center justify-center px-4">
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -74,9 +72,9 @@ export default function PaymentSuccessPage() {
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
-          className="w-20 h-20 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto mb-6"
+          className="w-20 h-20 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-6"
         >
-          <CheckCircle className="w-10 h-10 text-emerald-400" />
+          <CheckCircle className="w-10 h-10 text-emerald-500" />
         </motion.div>
 
         <h1 className="text-text-primary font-bold text-2xl mb-2">결제 완료!</h1>
@@ -84,7 +82,7 @@ export default function PaymentSuccessPage() {
 
         <div className="card p-5 mb-6">
           <div className="flex items-center justify-center gap-3">
-            <Coins className="w-8 h-8 text-amber-400" />
+            <Coins className="w-8 h-8 text-amber-500" />
             <div>
               <p className="text-text-muted text-sm">충전된 크레딧</p>
               <p className="text-text-primary font-bold text-3xl">+{credits.toLocaleString()}</p>
@@ -94,7 +92,7 @@ export default function PaymentSuccessPage() {
             <div className="border-t border-border mt-4 pt-4">
               <p className="text-text-muted text-sm">현재 잔액</p>
               <p className="text-text-primary font-semibold text-xl">
-                {((user as any)?.credits ?? 0).toLocaleString()} 크레딧
+                {((user as any)?.creditBalance ?? (user as any)?.credits ?? 0).toLocaleString()} 크레딧
               </p>
             </div>
           )}
@@ -106,5 +104,13 @@ export default function PaymentSuccessPage() {
         </Link>
       </motion.div>
     </div>
+  );
+}
+
+export default function PaymentSuccessPage() {
+  return (
+    <Suspense>
+      <PaymentSuccessContent />
+    </Suspense>
   );
 }

@@ -6,7 +6,7 @@ export const metadata: Metadata = { title: '캐릭터 만들기' };
 
 export default function NewCharacterPage() {
   return (
-    <MainLayout title="캐릭터 만들기" showSearch={false}>
+    <MainLayout showSearch={false}>
       <CharacterCreateForm />
     </MainLayout>
   );

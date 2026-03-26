@@ -1,5 +1,6 @@
 'use client';
 
+import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { XCircle, ArrowLeft, RefreshCw } from 'lucide-react';
@@ -12,15 +13,14 @@ const ERROR_MESSAGES: Record<string, string> = {
   INVALID_PAYMENT_AMOUNT: '결제 금액이 올바르지 않습니다.',
 };
 
-export default function PaymentFailPage() {
-  const searchParams = useSearchParams();
-  const errorCode = searchParams.get('code') ?? '';
-  const errorMessage = searchParams.get('message') ?? '';
-
+function PaymentFailContent() {
+  const searchParams = useSearchParams()!;
+  const errorCode = searchParams?.get('code') ?? '';
+  const errorMessage = searchParams?.get('message') ?? '';
   const displayMessage = ERROR_MESSAGES[errorCode] ?? errorMessage ?? '결제에 실패했습니다.';
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4">
+    <div className="min-h-screen bg-white flex items-center justify-center px-4">
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -30,9 +30,9 @@ export default function PaymentFailPage() {
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
-          className="w-20 h-20 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-6"
+          className="w-20 h-20 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-6"
         >
-          <XCircle className="w-10 h-10 text-red-400" />
+          <XCircle className="w-10 h-10 text-red-500" />
         </motion.div>
 
         <h1 className="text-text-primary font-bold text-2xl mb-2">결제 실패</h1>
@@ -53,5 +53,13 @@ export default function PaymentFailPage() {
         </div>
       </motion.div>
     </div>
+  );
+}
+
+export default function PaymentFailPage() {
+  return (
+    <Suspense>
+      <PaymentFailContent />
+    </Suspense>
   );
 }

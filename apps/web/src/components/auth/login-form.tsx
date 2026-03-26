@@ -3,12 +3,10 @@
 import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image';
 import { motion } from 'framer-motion';
-import { Eye, EyeOff, Zap, AlertCircle, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/auth.store';
-import { cn } from '../../lib/utils';
 
 export function LoginForm() {
   const [email, setEmail] = useState('');
@@ -18,7 +16,7 @@ export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = searchParams.get('redirect') || '/';
+  const redirect = searchParams?.get('redirect') || '/';
   const { login } = useAuthStore();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -46,125 +44,144 @@ export function LoginForm() {
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="w-full max-w-md"
-    >
-      {/* Logo */}
-      <div className="text-center mb-8">
-        <Link href="/" className="inline-flex items-center gap-2.5 mb-6">
-          <div className="w-10 h-10 rounded-xl bg-brand-gradient flex items-center justify-center shadow-brand">
-            <Zap className="w-5 h-5 text-white" />
-          </div>
-          <span className="font-bold text-xl gradient-text">CharacterVerse</span>
-        </Link>
-        <h1 className="text-2xl font-bold text-text-primary mb-1">다시 만나요! 👋</h1>
-        <p className="text-text-muted text-sm">계정에 로그인하세요</p>
+    <div className="min-h-screen bg-white flex">
+      {/* Left panel — brand */}
+      <div className="hidden lg:flex flex-col justify-center items-center flex-1 bg-gradient-to-br from-brand/5 to-brand/10 px-12">
+        <div className="max-w-sm text-center">
+          <Link href="/" className="inline-flex items-center gap-2 mb-8">
+            <div className="w-12 h-12 rounded-xl bg-brand flex items-center justify-center">
+              <span className="text-white font-black text-xl">C</span>
+            </div>
+            <span className="font-black text-2xl text-text-primary">crack<span className="text-brand">.</span></span>
+          </Link>
+          <h2 className="text-2xl font-bold text-text-primary mb-3">AI 스토리 플랫폼</h2>
+          <p className="text-text-secondary text-base leading-relaxed">
+            수천 개의 캐릭터와 스토리가 기다리고 있어요. 나만의 이야기를 만들어보세요.
+          </p>
+        </div>
       </div>
 
-      {/* Card */}
-      <div className="card p-6">
-        {/* OAuth buttons */}
-        <div className="space-y-2.5 mb-6">
-          <button
-            onClick={() => handleOAuth('kakao')}
-            className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl
-                       bg-[#FEE500] hover:bg-[#F5D800] text-[#3B1E1E] font-semibold text-sm
-                       transition-all duration-200 hover:shadow-lg"
-          >
-            <KakaoIcon />
-            카카오로 계속하기
-          </button>
-          <button
-            onClick={() => handleOAuth('google')}
-            className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl
-                       bg-white hover:bg-gray-50 text-gray-800 font-semibold text-sm
-                       border border-gray-200 transition-all duration-200 hover:shadow-lg"
-          >
-            <GoogleIcon />
-            Google로 계속하기
-          </button>
-        </div>
-
-        <div className="flex items-center gap-3 mb-6">
-          <div className="flex-1 h-px bg-border" />
-          <span className="text-text-muted text-xs">또는 이메일로</span>
-          <div className="flex-1 h-px bg-border" />
-        </div>
-
-        {/* Error */}
-        {error && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex items-center gap-2.5 p-3.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm mb-5"
-          >
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
-            {error}
-          </motion.div>
-        )}
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-text-secondary text-sm font-medium mb-1.5">이메일</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="name@example.com"
-              required
-              autoComplete="email"
-              className="input-base"
-            />
+      {/* Right panel — form */}
+      <div className="flex-1 flex items-center justify-center px-6 py-12">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-sm"
+        >
+          {/* Mobile logo */}
+          <div className="lg:hidden text-center mb-8">
+            <Link href="/" className="inline-flex items-center gap-2">
+              <div className="w-10 h-10 rounded-xl bg-brand flex items-center justify-center">
+                <span className="text-white font-black text-base">C</span>
+              </div>
+              <span className="font-black text-xl text-text-primary">crack<span className="text-brand">.</span></span>
+            </Link>
           </div>
 
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-text-secondary text-sm font-medium">비밀번호</label>
-              <Link href="/forgot-password" className="text-brand-light text-xs hover:underline">
-                비밀번호 찾기
-              </Link>
-            </div>
-            <div className="relative">
+          <h1 className="text-2xl font-bold text-text-primary mb-2">로그인</h1>
+          <p className="text-text-muted text-sm mb-8">계정에 로그인하세요</p>
+
+          {/* OAuth buttons */}
+          <div className="space-y-3 mb-6">
+            <button
+              onClick={() => handleOAuth('kakao')}
+              className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl
+                         bg-[#FEE500] hover:bg-[#F5D800] text-[#3B1E1E] font-semibold text-sm
+                         transition-all duration-200"
+            >
+              <KakaoIcon />
+              카카오로 계속하기
+            </button>
+            <button
+              onClick={() => handleOAuth('google')}
+              className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl
+                         bg-white hover:bg-gray-50 text-gray-700 font-semibold text-sm
+                         border border-gray-200 transition-all duration-200"
+            >
+              <GoogleIcon />
+              Google로 계속하기
+            </button>
+          </div>
+
+          <div className="flex items-center gap-3 mb-6">
+            <div className="flex-1 h-px bg-border" />
+            <span className="text-text-muted text-xs">또는 이메일로</span>
+            <div className="flex-1 h-px bg-border" />
+          </div>
+
+          {/* Error */}
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-center gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm mb-5"
+            >
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              {error}
+            </motion.div>
+          )}
+
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-text-secondary text-sm font-medium mb-1.5">이메일</label>
               <input
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="name@example.com"
                 required
-                autoComplete="current-password"
-                className="input-base pr-10"
+                autoComplete="email"
+                className="input-base"
               />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors"
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
             </div>
-          </div>
 
-          <button
-            type="submit"
-            disabled={isLoading || !email || !password}
-            className="btn-primary w-full flex items-center justify-center gap-2"
-          >
-            {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-            {isLoading ? '로그인 중...' : '로그인'}
-          </button>
-        </form>
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-text-secondary text-sm font-medium">비밀번호</label>
+                <Link href="/forgot-password" className="text-brand text-xs hover:underline">
+                  비밀번호 찾기
+                </Link>
+              </div>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  autoComplete="current-password"
+                  className="input-base pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading || !email || !password}
+              className="btn-primary w-full flex items-center justify-center gap-2 py-3"
+            >
+              {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+              {isLoading ? '로그인 중...' : '로그인'}
+            </button>
+          </form>
+
+          <p className="text-center text-text-muted text-sm mt-6">
+            계정이 없으신가요?{' '}
+            <Link href="/register" className="text-brand hover:underline font-semibold">
+              회원가입
+            </Link>
+          </p>
+        </motion.div>
       </div>
-
-      <p className="text-center text-text-muted text-sm mt-5">
-        계정이 없으신가요?{' '}
-        <Link href="/register" className="text-brand-light hover:underline font-medium">
-          회원가입
-        </Link>
-      </p>
-    </motion.div>
+    </div>
   );
 }
 

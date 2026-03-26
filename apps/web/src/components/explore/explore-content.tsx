@@ -27,13 +27,13 @@ const LANGUAGE_OPTIONS = [
 export function ExploreContent() {
   const searchParams = useSearchParams();
   const [category, setCategory] = useState<CharacterCategory | undefined>(
-    (searchParams.get('category') as CharacterCategory) || undefined
+    (searchParams?.get('category') as CharacterCategory) || undefined
   );
-  const [sort, setSort] = useState(searchParams.get('sort') || 'trending');
+  const [sort, setSort] = useState(searchParams?.get('sort') || 'trending');
   const [language, setLanguage] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
-  const q = searchParams.get('q') || undefined;
+  const q = searchParams?.get('q') || undefined;
 
   const {
     data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage
