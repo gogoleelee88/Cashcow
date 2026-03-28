@@ -1,10 +1,10 @@
 import { MainLayout } from '../components/layout/main-layout';
-import { HomeContent } from '../components/home/home-content';
+import { CharacterPageContent } from '../components/characters/character-page-content';
 
 export default function HomePage() {
   return (
     <MainLayout>
-      <HomeContent />
+      <CharacterPageContent />
     </MainLayout>
   );
 }

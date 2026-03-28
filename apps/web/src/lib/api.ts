@@ -161,6 +161,15 @@ export const api = {
     getUploadUrl: (contentType: string, type: 'avatar' | 'background') =>
       apiClient.post('/api/characters/upload-url', { contentType, type }).then((r) => r.data),
 
+    rankings: (params?: {
+      period?: 'daily' | 'weekly' | 'monthly';
+      audienceTarget?: string;
+      isFanCreation?: boolean;
+      sort?: 'chats' | 'likes' | 'newest';
+      limit?: number;
+    }) =>
+      apiClient.get('/api/characters/rankings', { params }).then((r) => r.data),
+
     my: (params?: Record<string, unknown>) =>
       apiClient.get('/api/characters/my', { params }).then((r) => r.data),
   },

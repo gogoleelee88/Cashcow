@@ -109,6 +109,19 @@ enum SettlementStatus {
   FAILED
 }
 
+enum CharacterGender {
+  MALE
+  FEMALE
+  MIXED
+  NEUTRAL
+}
+
+enum AudienceTarget {
+  ALL
+  MALE_ORIENTED   // Characters popular with male users (typically female characters)
+  FEMALE_ORIENTED // Characters popular with female users (typically male characters)
+}
+
 enum AuditAction {
   CREATE
   UPDATE
@@ -282,10 +295,15 @@ model Character {
   contextWindowSize    Int                 @default(20)  // # of messages to keep
   memoryEnabled        Boolean             @default(true)
   voiceId              String?
+  gender               CharacterGender     @default(NEUTRAL)
+  audienceTarget       AudienceTarget      @default(ALL)
+  isFanCreation        Boolean             @default(false)
   chatCount            Int                 @default(0)
   likeCount            Int                 @default(0)
   favoriteCount        Int                 @default(0)
   trendingScore        Float               @default(0)
+  weeklyChats          Int                 @default(0)
+  monthlyChats         Int                 @default(0)
   isActive             Boolean             @default(true)
   isFeatured           Boolean             @default(false)
   revenuePerChat       Int                 @default(1)   // Creator credits per chat
@@ -307,8 +325,12 @@ model Character {
   @@index([trendingScore(sort: Desc)])
   @@index([chatCount(sort: Desc)])
   @@index([likeCount(sort: Desc)])
+  @@index([weeklyChats(sort: Desc)])
   @@index([createdAt(sort: Desc)])
   @@index([tags])
+  @@index([audienceTarget])
+  @@index([isFanCreation])
+  @@index([gender])
   @@map("characters")
 }
 

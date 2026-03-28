@@ -41,6 +41,8 @@ export type CharacterCategory =
   | 'VTUBER'
   | 'OTHER';
 export type AgeRating = 'ALL' | 'TEEN' | 'MATURE';
+export type CharacterGender = 'MALE' | 'FEMALE' | 'MIXED' | 'NEUTRAL';
+export type AudienceTarget = 'ALL' | 'MALE_ORIENTED' | 'FEMALE_ORIENTED';
 
 export interface Character {
   id: string;
@@ -59,8 +61,14 @@ export interface Character {
   creator?: Pick<User, 'id' | 'username' | 'displayName' | 'avatarUrl'>;
   chatCount: number;
   likeCount: number;
+  weeklyChats?: number;
+  monthlyChats?: number;
   isLiked?: boolean;
   isFavorited?: boolean;
+  isFeatured?: boolean;
+  isFanCreation?: boolean;
+  gender?: CharacterGender;
+  audienceTarget?: AudienceTarget;
   model: 'claude-haiku-3' | 'claude-sonnet-4';
   createdAt: string;
   updatedAt: string;
