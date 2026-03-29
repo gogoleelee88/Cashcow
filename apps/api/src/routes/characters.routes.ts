@@ -7,11 +7,12 @@ import { generatePresignedUploadUrl, deleteS3Object } from '../services/s3.servi
 import { requireAuth, requireAgeVerification } from '../plugins/auth.plugin';
 import { searchRateLimit, uploadRateLimit } from '../plugins/rate-limit.plugin';
 import { logger } from '../lib/logger';
-import type { CharacterCategory, CharacterVisibility, AgeRating } from '@prisma/client';
+import type { CharacterCategory, CharacterVisibility, AgeRating, AudienceTarget } from '@prisma/client';
 
 const CACHE_TTL_CHARACTER_LIST = 120;  // 2 min
 const CACHE_TTL_CHARACTER_DETAIL = 300; // 5 min
 const CACHE_TTL_TRENDING = 600;         // 10 min
+const CACHE_TTL_RANKINGS = 300;         // 5 min
 
 const createCharacterSchema = z.object({
   name: z.string().min(1).max(50),
@@ -44,6 +45,8 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
         ageRating,
         language,
         tags,
+        audienceTarget,
+        isFanCreation,
       } = request.query as {
         page?: number;
         limit?: number;
@@ -53,6 +56,8 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
         ageRating?: AgeRating;
         language?: string;
         tags?: string;
+        audienceTarget?: AudienceTarget;
+        isFanCreation?: string;
       };
 
       const pageNum = Math.min(Math.max(Number(page), 1), 100);
@@ -78,6 +83,8 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
       if (category) where.category = category;
       if (ageRating) where.ageRating = ageRating;
       if (language) where.language = language;
+      if (audienceTarget) where.audienceTarget = audienceTarget;
+      if (isFanCreation === 'true') where.isFanCreation = true;
       if (q) {
         where.OR = [
           { name: { contains: q, mode: 'insensitive' } },
@@ -95,6 +102,8 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
         newest: { createdAt: 'desc' as const },
         popular: { chatCount: 'desc' as const },
         liked: { likeCount: 'desc' as const },
+        weekly: { weeklyChats: 'desc' as const },
+        monthly: { monthlyChats: 'desc' as const },
       }[sort] || { trendingScore: 'desc' as const };
 
       const [characters, total] = await Promise.all([
@@ -114,8 +123,13 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
             language: true,
             chatCount: true,
             likeCount: true,
+            weeklyChats: true,
+            monthlyChats: true,
             trendingScore: true,
             isFeatured: true,
+            isFanCreation: true,
+            gender: true,
+            audienceTarget: true,
             greeting: true,
             model: true,
             createdAt: true,
@@ -187,6 +201,79 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
       const response = { success: true, data: ordered };
 
       await cache.set(cacheKey, response, CACHE_TTL_TRENDING);
+      return reply.send(response);
+    },
+  });
+
+  // ─────────────────────────────────────────────
+  // RANKINGS (일간/주간/월간 + 타겟별)
+  // ─────────────────────────────────────────────
+  fastify.get('/rankings', {
+    handler: async (request, reply) => {
+      const {
+        period = 'weekly',
+        audienceTarget,
+        isFanCreation,
+        sort = 'chats',
+        limit = 50,
+      } = request.query as {
+        period?: 'daily' | 'weekly' | 'monthly';
+        audienceTarget?: AudienceTarget;
+        isFanCreation?: string;
+        sort?: 'chats' | 'likes' | 'newest';
+        limit?: number;
+      };
+
+      const cacheKey = `rankings:${period}:${audienceTarget || 'all'}:${isFanCreation || 'false'}:${sort}`;
+      const cached = await cache.get(cacheKey);
+      if (cached) return reply.send(cached);
+
+      const where: any = { visibility: 'PUBLIC', isActive: true };
+      if (audienceTarget) where.audienceTarget = audienceTarget;
+      if (isFanCreation === 'true') where.isFanCreation = true;
+
+      const orderBy =
+        sort === 'likes'
+          ? { likeCount: 'desc' as const }
+          : sort === 'newest'
+          ? { createdAt: 'desc' as const }
+          : period === 'daily'
+          ? { trendingScore: 'desc' as const }
+          : period === 'monthly'
+          ? { monthlyChats: 'desc' as const }
+          : { weeklyChats: 'desc' as const };
+
+      const characters = await prismaRead.character.findMany({
+        where,
+        orderBy,
+        take: Math.min(Number(limit), 100),
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          avatarUrl: true,
+          category: true,
+          tags: true,
+          chatCount: true,
+          likeCount: true,
+          weeklyChats: true,
+          monthlyChats: true,
+          trendingScore: true,
+          isFeatured: true,
+          isFanCreation: true,
+          gender: true,
+          audienceTarget: true,
+          greeting: true,
+          model: true,
+          createdAt: true,
+          creator: {
+            select: { id: true, username: true, displayName: true, avatarUrl: true },
+          },
+        },
+      });
+
+      const response = { success: true, data: characters, meta: { period, sort, total: characters.length } };
+      await cache.set(cacheKey, response, CACHE_TTL_RANKINGS);
       return reply.send(response);
     },
   });

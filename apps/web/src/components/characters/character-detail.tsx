@@ -209,7 +209,7 @@ export function CharacterDetailContent({ characterId }: { characterId: string })
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>
                 <span className="text-text-muted block mb-0.5 text-xs">카테고리</span>
-                <span className="text-text-primary font-medium">{CATEGORY_LABELS[character.category]}</span>
+                <span className="text-text-primary font-medium">{CATEGORY_LABELS[character.category as import('@characterverse/types').CharacterCategory]}</span>
               </div>
               <div>
                 <span className="text-text-muted block mb-0.5 text-xs">연령 등급</span>

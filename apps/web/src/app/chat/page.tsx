@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import { ChatPageContent } from '../../components/chat/chat-page-content';
 
 export const metadata: Metadata = {
@@ -7,5 +8,9 @@ export const metadata: Metadata = {
 };
 
 export default function ChatPage() {
-  return <ChatPageContent />;
+  return (
+    <Suspense>
+      <ChatPageContent />
+    </Suspense>
+  );
 }

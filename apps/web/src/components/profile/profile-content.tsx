@@ -19,18 +19,16 @@ export function ProfileContent({ username }: { username: string }) {
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['profile', username],
-    queryFn: () => api.get(`/users/${username}/profile`),
+    queryFn: () => api.users.profile(username),
   });
 
   const followMutation = useMutation({
-    mutationFn: () => api.post(`/users/${username}/follow`),
+    mutationFn: () => api.users.follow(username),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['profile', username] }),
   });
 
-  const unfollowMutation = useMutation({
-    mutationFn: () => api.delete(`/users/${username}/follow`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['profile', username] }),
-  });
+  // follow is a toggle — same endpoint for both follow/unfollow
+  const unfollowMutation = followMutation;
 
   if (isLoading) {
     return (

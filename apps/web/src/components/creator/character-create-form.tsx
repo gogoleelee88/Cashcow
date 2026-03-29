@@ -178,7 +178,7 @@ export function CharacterCreateForm() {
                 'w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 transition-all',
                 i < step ? 'bg-brand text-white' :
                   i === step ? 'bg-brand/25 text-brand-light ring-2 ring-brand/40' :
-                    'bg-surface-DEFAULT text-text-muted border border-border'
+                    'bg-surface text-text-muted border border-border'
               )}>
                 {i < step ? <CheckCircle2 className="w-3.5 h-3.5" /> : i + 1}
               </div>
@@ -215,7 +215,7 @@ export function CharacterCreateForm() {
                 className={cn(
                   'relative w-24 h-24 rounded-2xl overflow-hidden cursor-pointer flex-shrink-0',
                   'border-2 border-dashed border-border hover:border-brand/50',
-                  'bg-surface-DEFAULT flex items-center justify-center transition-all group'
+                  'bg-surface flex items-center justify-center transition-all group'
                 )}
                 onClick={() => fileInputRef.current?.click()}
               >
@@ -265,7 +265,7 @@ export function CharacterCreateForm() {
                           'flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all border',
                           formData.category === cat
                             ? 'bg-brand/20 text-brand-light border-brand/40'
-                            : 'bg-surface-DEFAULT text-text-muted border-border hover:border-brand/30'
+                            : 'bg-surface text-text-muted border-border hover:border-brand/30'
                         )}
                       >
                         <span>{CATEGORY_ICONS[cat]}</span>
@@ -304,7 +304,7 @@ export function CharacterCreateForm() {
                 {GENRE_TEMPLATES.map((t) => (
                   <button key={t.label} type="button"
                     onClick={() => update({ concept: t.concept })}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-DEFAULT border border-border text-xs text-text-secondary hover:border-brand/40 hover:text-brand-light transition-all"
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface border border-border text-xs text-text-secondary hover:border-brand/40 hover:text-brand-light transition-all"
                   >
                     {t.icon} {t.label}
                   </button>
@@ -469,7 +469,7 @@ export function CharacterCreateForm() {
                       'px-4 py-2 rounded-xl text-sm font-medium border transition-all',
                       formData.language === value
                         ? 'bg-brand/20 text-brand-light border-brand/40'
-                        : 'bg-surface-DEFAULT text-text-muted border-border hover:border-brand/30'
+                        : 'bg-surface text-text-muted border-border hover:border-brand/30'
                     )}
                   >
                     {label}
@@ -509,7 +509,7 @@ export function CharacterCreateForm() {
                       'w-full flex items-center gap-3 p-4 rounded-xl text-left border transition-all',
                       formData.visibility === value
                         ? 'bg-brand/10 border-brand/40'
-                        : 'bg-surface-DEFAULT border-border hover:border-brand/30'
+                        : 'bg-surface border-border hover:border-brand/30'
                     )}
                   >
                     <div className={cn(
@@ -561,7 +561,7 @@ export function CharacterCreateForm() {
                       'p-4 rounded-xl text-left border transition-all',
                       formData.model === value
                         ? 'bg-brand/10 border-brand/40'
-                        : 'bg-surface-DEFAULT border-border hover:border-brand/30'
+                        : 'bg-surface border-border hover:border-brand/30'
                     )}
                   >
                     <div className="flex items-center justify-between mb-3">
@@ -606,7 +606,7 @@ export function CharacterCreateForm() {
                     onClick={() => update({ ageRating: value as any })}
                     className={cn(
                       'flex-1 py-2 rounded-xl text-xs font-medium border transition-all',
-                      formData.ageRating === value ? color : 'bg-surface-DEFAULT text-text-muted border-border hover:border-brand/30'
+                      formData.ageRating === value ? color : 'bg-surface text-text-muted border-border hover:border-brand/30'
                     )}
                   >
                     {label}
@@ -621,7 +621,7 @@ export function CharacterCreateForm() {
                 <Star className="w-3.5 h-3.5" /> 미리보기
               </p>
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-surface-DEFAULT">
+                <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-surface">
                   {previewImage ? (
                     <Image src={previewImage} alt="preview" width={48} height={48} className="object-cover w-full h-full" />
                   ) : (
@@ -634,7 +634,7 @@ export function CharacterCreateForm() {
                   <p className="text-text-primary font-semibold text-sm">{formData.name || '캐릭터 이름'}</p>
                   <p className="text-text-muted text-xs truncate">{formData.description || '한 줄 소개'}</p>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-surface-DEFAULT text-text-muted border border-border">
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-surface text-text-muted border border-border">
                       {CATEGORY_ICONS[formData.category]} {CATEGORY_LABELS[formData.category]}
                     </span>
                     <span className="flex items-center gap-0.5 text-text-muted text-xs">

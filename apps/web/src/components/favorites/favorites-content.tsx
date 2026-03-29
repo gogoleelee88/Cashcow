@@ -18,13 +18,13 @@ export function FavoritesContent() {
 
   const { data: favoritesData, isLoading: favLoading } = useQuery({
     queryKey: ['my-favorites'],
-    queryFn: () => api.characters.getList({ sort: 'popular', limit: 50, favorited: true }),
+    queryFn: () => api.characters.list({ sort: 'popular', limit: 50, favorited: true }),
     enabled: isAuthenticated,
   });
 
   const { data: likedData, isLoading: likedLoading } = useQuery({
     queryKey: ['my-liked'],
-    queryFn: () => api.characters.getList({ sort: 'popular', limit: 50, liked: true }),
+    queryFn: () => api.characters.list({ sort: 'popular', limit: 50, liked: true }),
     enabled: isAuthenticated,
   });
 
@@ -40,8 +40,8 @@ export function FavoritesContent() {
   }
 
   const characters = activeTab === 'favorites'
-    ? favoritesData?.data?.items ?? []
-    : likedData?.data?.items ?? [];
+    ? favoritesData?.items ?? []
+    : likedData?.items ?? [];
   const isLoading = activeTab === 'favorites' ? favLoading : likedLoading;
 
   return (

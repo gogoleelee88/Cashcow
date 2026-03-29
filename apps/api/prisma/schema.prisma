@@ -109,6 +109,19 @@ enum SettlementStatus {
   FAILED
 }
 
+enum CharacterGender {
+  MALE
+  FEMALE
+  MIXED
+  NEUTRAL
+}
+
+enum AudienceTarget {
+  ALL
+  MALE_ORIENTED   // Characters popular with male users (typically female characters)
+  FEMALE_ORIENTED // Characters popular with female users (typically male characters)
+}
+
 enum AuditAction {
   CREATE
   UPDATE
@@ -119,6 +132,26 @@ enum AuditAction {
   SETTLEMENT
   SUSPENSION
   RESTORE
+}
+
+enum StoryCategory {
+  ROMANCE
+  FANTASY
+  MYSTERY
+  THRILLER
+  SF
+  HISTORICAL
+  HORROR
+  COMEDY
+  ADVENTURE
+  SLICE_OF_LIFE
+  OTHER
+}
+
+enum StoryStatus {
+  ONGOING
+  COMPLETED
+  HIATUS
 }
 
 // ─────────────────────────────────────────────
@@ -162,6 +195,10 @@ model User {
   reports          Report[]         @relation("Reporter")
   reportedContent  Report[]         @relation("Reported")
   auditLogs        AuditLog[]
+  stories          Story[]
+  storyConversations StoryConversation[]
+  storyLikes       StoryLike[]
+  storyFavorites   StoryFavorite[]
 
   @@index([email])
   @@index([username])
@@ -258,10 +295,15 @@ model Character {
   contextWindowSize    Int                 @default(20)  // # of messages to keep
   memoryEnabled        Boolean             @default(true)
   voiceId              String?
+  gender               CharacterGender     @default(NEUTRAL)
+  audienceTarget       AudienceTarget      @default(ALL)
+  isFanCreation        Boolean             @default(false)
   chatCount            Int                 @default(0)
   likeCount            Int                 @default(0)
   favoriteCount        Int                 @default(0)
   trendingScore        Float               @default(0)
+  weeklyChats          Int                 @default(0)
+  monthlyChats         Int                 @default(0)
   isActive             Boolean             @default(true)
   isFeatured           Boolean             @default(false)
   revenuePerChat       Int                 @default(1)   // Creator credits per chat
@@ -275,6 +317,7 @@ model Character {
   favorites            CharacterFavorite[]
   reports              Report[]
   memories             CharacterMemory[]
+  storyCharacters      StoryCharacter[]
 
   @@index([creatorId])
   @@index([category])
@@ -282,8 +325,12 @@ model Character {
   @@index([trendingScore(sort: Desc)])
   @@index([chatCount(sort: Desc)])
   @@index([likeCount(sort: Desc)])
+  @@index([weeklyChats(sort: Desc)])
   @@index([createdAt(sort: Desc)])
   @@index([tags])
+  @@index([audienceTarget])
+  @@index([isFanCreation])
+  @@index([gender])
   @@map("characters")
 }
 
@@ -560,4 +607,141 @@ model AuditLog {
   @@index([action])
   @@index([createdAt(sort: Desc)])
   @@map("audit_logs")
+}
+
+// ─────────────────────────────────────────────
+// STORIES (crack.wrtn.ai style interactive stories)
+// ─────────────────────────────────────────────
+model Story {
+  id               String        @id @default(cuid())
+  title            String
+  description      String        @db.Text
+  coverUrl         String?
+  coverKey         String?
+  category         StoryCategory @default(OTHER)
+  tags             String[]
+  ageRating        AgeRating     @default(ALL)
+  visibility       CharacterVisibility @default(PUBLIC)
+  status           StoryStatus   @default(ONGOING)
+  language         String        @default("ko")
+  chatCount        Int           @default(0)
+  likeCount        Int           @default(0)
+  favoriteCount    Int           @default(0)
+  trendingScore    Float         @default(0)
+  isActive         Boolean       @default(true)
+  isFeatured       Boolean       @default(false)
+  authorId         String
+  systemPromptEncrypted String   @db.Text
+  systemPromptIv   String
+  greeting         String        @db.Text
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  author           User          @relation(fields: [authorId], references: [id])
+  chapters         StoryChapter[]
+  conversations    StoryConversation[]
+  likes            StoryLike[]
+  favorites        StoryFavorite[]
+  characters       StoryCharacter[]
+
+  @@index([authorId])
+  @@index([category])
+  @@index([visibility])
+  @@index([trendingScore(sort: Desc)])
+  @@index([chatCount(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@map("stories")
+}
+
+model StoryChapter {
+  id          String   @id @default(cuid())
+  storyId     String
+  title       String
+  content     String   @db.Text
+  order       Int
+  isPublished Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  story       Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@index([storyId])
+  @@map("story_chapters")
+}
+
+model StoryCharacter {
+  id          String    @id @default(cuid())
+  storyId     String
+  characterId String
+  role        String?
+  createdAt   DateTime  @default(now())
+
+  story       Story     @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@unique([storyId, characterId])
+  @@map("story_characters")
+}
+
+model StoryConversation {
+  id            String    @id @default(cuid())
+  storyId       String
+  userId        String
+  title         String?
+  messageCount  Int       @default(0)
+  lastMessageAt DateTime?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  story         Story     @relation(fields: [storyId], references: [id])
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages      StoryMessage[]
+
+  @@index([userId])
+  @@index([storyId])
+  @@map("story_conversations")
+}
+
+model StoryMessage {
+  id             String              @id @default(cuid())
+  conversationId String
+  role           MessageRole
+  content        String              @db.Text
+  status         MessageStatus       @default(SENT)
+  creditCost     Int                 @default(0)
+  createdAt      DateTime            @default(now())
+
+  conversation   StoryConversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@map("story_messages")
+}
+
+model StoryLike {
+  id        String   @id @default(cuid())
+  userId    String
+  storyId   String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, storyId])
+  @@index([storyId])
+  @@map("story_likes")
+}
+
+model StoryFavorite {
+  id        String   @id @default(cuid())
+  userId    String
+  storyId   String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, storyId])
+  @@index([userId])
+  @@map("story_favorites")
 }

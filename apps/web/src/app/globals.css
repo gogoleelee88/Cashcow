@@ -6,29 +6,29 @@
 
 @layer base {
   :root {
-    --background: 248 11% 8%;
-    --foreground: 263 46% 95%;
-    --card: 250 16% 9%;
-    --card-foreground: 263 46% 95%;
-    --popover: 250 16% 12%;
-    --popover-foreground: 263 46% 95%;
-    --primary: 261 94% 67%;
+    --background: 0 0% 100%;
+    --foreground: 0 0% 7%;
+    --card: 0 0% 97%;
+    --card-foreground: 0 0% 7%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 7%;
+    --primary: 4 76% 52%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 250 20% 15%;
-    --secondary-foreground: 263 30% 80%;
-    --muted: 250 20% 13%;
-    --muted-foreground: 263 20% 60%;
-    --accent: 261 94% 67%;
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 0 0% 33%;
+    --muted: 240 5% 94%;
+    --muted-foreground: 0 0% 53%;
+    --accent: 4 76% 52%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 252 28% 22%;
-    --input: 250 20% 15%;
-    --ring: 261 94% 67%;
+    --border: 240 6% 88%;
+    --input: 240 5% 96%;
+    --ring: 4 76% 52%;
     --radius: 0.75rem;
 
     --scrollbar-width: 6px;
-    --scrollbar-thumb: rgba(124, 92, 252, 0.4);
+    --scrollbar-thumb: rgba(0, 0, 0, 0.15);
     --scrollbar-track: transparent;
   }
 
@@ -50,7 +50,6 @@
     overflow-x: hidden;
   }
 
-  /* Custom scrollbar — crack.wrtn.ai style */
   ::-webkit-scrollbar {
     width: var(--scrollbar-width);
     height: var(--scrollbar-width);
@@ -63,36 +62,32 @@
     border-radius: 999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(124, 92, 252, 0.6);
+    background: rgba(0, 0, 0, 0.25);
   }
 
-  /* Selection */
   ::selection {
-    background: rgba(124, 92, 252, 0.3);
-    color: #f0ecff;
+    background: rgba(230, 51, 37, 0.15);
+    color: #111111;
   }
 
-  /* Input autofill fix */
   input:-webkit-autofill,
   input:-webkit-autofill:hover,
   input:-webkit-autofill:focus {
-    -webkit-text-fill-color: #f0ecff;
-    -webkit-box-shadow: 0 0 0px 1000px #1a1729 inset;
+    -webkit-text-fill-color: #111111;
+    -webkit-box-shadow: 0 0 0px 1000px #FFFFFF inset;
     transition: background-color 5000s ease-in-out 0s;
   }
 }
 
 @layer components {
-  /* Card base */
   .card {
-    @apply bg-background-secondary rounded-2xl border border-border shadow-card;
+    @apply bg-white rounded-2xl border border-border shadow-card;
   }
 
   .card-hover {
-    @apply card transition-all duration-200 hover:border-brand/40 hover:shadow-card-hover hover:-translate-y-0.5;
+    @apply card transition-all duration-200 hover:border-brand/30 hover:shadow-card-hover hover:-translate-y-0.5;
   }
 
-  /* Button variants */
   .btn-primary {
     @apply bg-brand hover:bg-brand-hover text-white font-semibold px-5 py-2.5 rounded-xl
            transition-all duration-200 hover:shadow-brand active:scale-95
@@ -101,7 +96,7 @@
 
   .btn-secondary {
     @apply bg-surface hover:bg-surface-hover text-text-primary font-medium px-5 py-2.5 rounded-xl
-           border border-border hover:border-brand/40 transition-all duration-200 active:scale-95
+           border border-border hover:border-brand/30 transition-all duration-200 active:scale-95
            disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
@@ -111,32 +106,28 @@
   }
 
   .btn-danger {
-    @apply bg-red-600/20 hover:bg-red-600/30 text-red-400 hover:text-red-300 font-medium px-5 py-2.5 rounded-xl
-           border border-red-600/30 hover:border-red-500/50 transition-all duration-200;
+    @apply bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 font-medium px-5 py-2.5 rounded-xl
+           border border-red-200 hover:border-red-300 transition-all duration-200;
   }
 
-  /* Input base */
   .input-base {
     @apply w-full bg-surface border border-border rounded-xl px-4 py-3
            text-text-primary placeholder-text-muted text-sm
-           focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand/60
+           focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand/40
            transition-all duration-200;
   }
 
-  /* Character card */
   .character-card {
     @apply relative overflow-hidden rounded-2xl cursor-pointer
-           bg-background-secondary border border-border
+           bg-white border border-border
            transition-all duration-300 ease-out
-           hover:border-brand/40 hover:shadow-card-hover hover:-translate-y-1;
+           hover:border-brand/30 hover:shadow-card-hover hover:-translate-y-1;
   }
 
-  /* Gradient text */
   .gradient-text {
     @apply bg-brand-gradient bg-clip-text text-transparent;
   }
 
-  /* Sidebar item */
   .sidebar-item {
     @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-text-secondary
            hover:bg-surface hover:text-text-primary
@@ -144,34 +135,40 @@
   }
 
   .sidebar-item-active {
-    @apply sidebar-item bg-surface text-text-primary;
+    @apply sidebar-item bg-brand/10 text-brand font-semibold;
   }
 
-  /* Chat message */
   .message-user {
-    @apply bg-brand/20 border border-brand/20 text-text-primary;
+    @apply bg-brand/10 border border-brand/20 text-text-primary;
   }
 
   .message-assistant {
     @apply bg-surface border border-border text-text-primary;
   }
 
-  /* Skeleton */
   .skeleton {
     @apply bg-gradient-to-r from-surface via-surface-hover to-surface
            bg-[length:200%_100%] animate-shimmer rounded-xl;
   }
 
-  /* Tag */
   .tag {
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-           bg-brand/15 text-brand-light border border-brand/20;
+           bg-brand/10 text-brand border border-brand/20;
   }
 
-  /* Badge */
   .badge-featured {
     @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold
-           bg-amber-500/20 text-amber-400 border border-amber-500/30;
+           bg-amber-50 text-amber-600 border border-amber-200;
+  }
+
+  .category-pill {
+    @apply flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200
+           border border-border text-text-secondary hover:border-brand/40 hover:text-brand hover:bg-brand/5;
+  }
+
+  .category-pill-active {
+    @apply flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200
+           bg-brand text-white border border-brand;
   }
 }
 

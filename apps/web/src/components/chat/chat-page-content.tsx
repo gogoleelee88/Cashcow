@@ -25,12 +25,12 @@ import Link from 'next/link';
 export function ChatPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const characterId = searchParams.get('characterId');
-  const conversationId = searchParams.get('conversationId');
+  const characterId = searchParams?.get('characterId');
+  const conversationId = searchParams?.get('conversationId');
   const { user, isAuthenticated, accessToken } = useAuthStore();
   const queryClient = useQueryClient();
 
-  const [activeConvId, setActiveConvId] = useState<string | null>(conversationId);
+  const [activeConvId, setActiveConvId] = useState<string | null>(conversationId ?? null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Redirect to login if not authenticated

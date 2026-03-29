@@ -104,6 +104,35 @@ export const api = {
       apiClient.post(`/api/auth/oauth/mobile/${provider}`, data).then((r) => r.data),
   },
 
+  stories: {
+    list: (params?: Record<string, unknown>) =>
+      apiClient.get('/api/stories', { params }).then((r) => r.data),
+
+    trending: (period?: string) =>
+      apiClient.get('/api/stories/trending', { params: { period } }).then((r) => r.data),
+
+    get: (id: string) =>
+      apiClient.get(`/api/stories/${id}`).then((r) => r.data),
+
+    create: (data: unknown) =>
+      apiClient.post('/api/stories', data).then((r) => r.data),
+
+    like: (id: string) =>
+      apiClient.post(`/api/stories/${id}/like`).then((r) => r.data),
+
+    favorite: (id: string) =>
+      apiClient.post(`/api/stories/${id}/favorite`).then((r) => r.data),
+
+    startConversation: (storyId: string) =>
+      apiClient.post(`/api/stories/${storyId}/conversations`).then((r) => r.data),
+
+    messages: (conversationId: string, params?: Record<string, unknown>) =>
+      apiClient.get(`/api/stories/conversations/${conversationId}/messages`, { params }).then((r) => r.data),
+
+    my: (params?: Record<string, unknown>) =>
+      apiClient.get('/api/stories/my', { params }).then((r) => r.data),
+  },
+
   characters: {
     list: (params?: Record<string, unknown>) =>
       apiClient.get('/api/characters', { params }).then((r) => r.data),
@@ -131,6 +160,15 @@ export const api = {
 
     getUploadUrl: (contentType: string, type: 'avatar' | 'background') =>
       apiClient.post('/api/characters/upload-url', { contentType, type }).then((r) => r.data),
+
+    rankings: (params?: {
+      period?: 'daily' | 'weekly' | 'monthly';
+      audienceTarget?: string;
+      isFanCreation?: boolean;
+      sort?: 'chats' | 'likes' | 'newest';
+      limit?: number;
+    }) =>
+      apiClient.get('/api/characters/rankings', { params }).then((r) => r.data),
 
     my: (params?: Record<string, unknown>) =>
       apiClient.get('/api/characters/my', { params }).then((r) => r.data),
@@ -190,6 +228,9 @@ export const api = {
 
     markAllNotificationsRead: () =>
       apiClient.post('/api/users/me/notifications/read-all').then((r) => r.data),
+
+    markNotificationRead: (id: string) =>
+      apiClient.patch(`/api/notifications/${id}/read`).then((r) => r.data),
   },
 };
 
@@ -304,6 +345,90 @@ export function streamChatMessage(
         await new Promise((r) => setTimeout(r, RETRY_DELAYS[attempt - 1]));
         return doStream();
       }
+      callbacks.onError('스트리밍 연결이 끊어졌습니다.');
+    }
+  }
+
+  doStream();
+}
+
+// ─────────────────────────────────────────────
+// STREAMING STORY MESSAGE (SSE)
+// ─────────────────────────────────────────────
+export function streamStoryMessage(
+  conversationId: string,
+  content: string,
+  accessToken: string,
+  callbacks: {
+    onDelta: (text: string) => void;
+    onDone: (data: { creditCost: number; remainingCredits: number }) => void;
+    onError: (message: string) => void;
+    signal?: AbortSignal;
+  }
+): void {
+  async function doStream(): Promise<void> {
+    if (callbacks.signal?.aborted) return;
+
+    let response: Response;
+    try {
+      response = await fetch(`${BASE_URL}/api/stories/conversations/${conversationId}/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+          Accept: 'text/event-stream',
+        },
+        body: JSON.stringify({ content }),
+        signal: callbacks.signal,
+      });
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
+      callbacks.onError('네트워크 연결이 끊어졌습니다.');
+      return;
+    }
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: { message: '오류가 발생했습니다.' } }));
+      if (response.status === 402) {
+        callbacks.onError('크레딧이 부족합니다. 충전 후 다시 시도해주세요.');
+      } else {
+        callbacks.onError(err.error?.message || '오류가 발생했습니다.');
+      }
+      return;
+    }
+
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    if (!reader) { callbacks.onError('스트리밍을 지원하지 않는 환경입니다.'); return; }
+
+    let buffer = '';
+    let lastEvent = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('event: ')) { lastEvent = line.slice(7).trim(); continue; }
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              const eventType = lastEvent || 'delta';
+              lastEvent = '';
+              if (eventType === 'delta' && data.text) { callbacks.onDelta(data.text); }
+              else if (eventType === 'done') { callbacks.onDone(data); }
+              else if (eventType === 'error') { callbacks.onError(data.message || '오류가 발생했습니다.'); }
+            } catch {}
+          }
+        }
+      }
+    } catch (readErr: any) {
+      if (readErr.name === 'AbortError') return;
       callbacks.onError('스트리밍 연결이 끊어졌습니다.');
     }
   }

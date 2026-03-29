@@ -103,7 +103,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
                 onClick={onClose}
                 className={cn(
                   'sidebar-item',
-                  (href === '/' ? pathname === '/' : pathname.startsWith(href)) && 'sidebar-item-active'
+                  (href === '/' ? pathname === '/' : pathname?.startsWith(href)) && 'sidebar-item-active'
                 )}
               >
                 <Icon className="w-4.5 h-4.5 flex-shrink-0" />
@@ -160,7 +160,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
               <Link
                 href="/creator"
                 onClick={onClose}
-                className={cn('sidebar-item', pathname.startsWith('/creator') && 'sidebar-item-active')}
+                className={cn('sidebar-item', pathname?.startsWith('/creator') && 'sidebar-item-active')}
               >
                 <Crown className="w-4.5 h-4.5 text-amber-400 flex-shrink-0" />
                 <span>크리에이터 스튜디오</span>
