@@ -25,6 +25,94 @@ const TABS: { key: StoryTab; label: string; required?: boolean }[] = [
 ];
 
 // ─────────────────────────────────────────────
+// AI CHAT MODELS
+// ─────────────────────────────────────────────
+interface ChatModel {
+  value: string;
+  label: string;
+  icon: string;
+  iconColor: string;
+  description: string;
+  coins: number | null;
+  coinColor: string;
+}
+
+const CHAT_MODELS: ChatModel[] = [
+  {
+    value: 'hyper_chat',
+    label: '하이퍼챗',
+    icon: '⚡',
+    iconColor: '#F59E0B',
+    description: 'Opus-4.6을 활용한 최고 품질의 스토리',
+    coins: 75,
+    coinColor: '#F59E0B',
+  },
+  {
+    value: 'super_chat_25',
+    label: '슈퍼챗 2.5',
+    icon: '🔥',
+    iconColor: '#F97316',
+    description: 'Sonnet-4.6을 활용한 다채로운 인물 묘사로 풍부하게 즐기는 스토리',
+    coins: 50,
+    coinColor: '#F97316',
+  },
+  {
+    value: 'super_chat_20',
+    label: '슈퍼챗 2.0',
+    icon: '💧',
+    iconColor: '#3B82F6',
+    description: 'Sonnet-4.5를 활용한 생동감 넘치고 재미있는 스토리',
+    coins: 50,
+    coinColor: '#3B82F6',
+  },
+  {
+    value: 'super_chat_15',
+    label: '슈퍼챗 1.5',
+    icon: '💧',
+    iconColor: '#60A5FA',
+    description: 'Sonnet-4.0을 활용한 실감나는 스토리',
+    coins: 50,
+    coinColor: '#60A5FA',
+  },
+  {
+    value: 'pro_chat_25',
+    label: '프로챗 2.5',
+    icon: '✦',
+    iconColor: '#8B5CF6',
+    description: 'Gemini 3.1 Pro를 활용한 한층 깊어진 몰입감의 스토리',
+    coins: 58,
+    coinColor: '#8B5CF6',
+  },
+  {
+    value: 'pro_chat_10',
+    label: '프로챗 1.0',
+    icon: '✦',
+    iconColor: '#A78BFA',
+    description: 'Gemini 2.5 Pro를 활용한 상황 묘사로 몰입도 있는 스토리',
+    coins: 50,
+    coinColor: '#A78BFA',
+  },
+  {
+    value: 'power_chat',
+    label: '파워챗',
+    icon: '✦',
+    iconColor: '#10B981',
+    description: '가볍게 즐길 수 있는 스토리',
+    coins: 20,
+    coinColor: '#10B981',
+  },
+  {
+    value: 'normal_chat',
+    label: '일반챗',
+    icon: '●',
+    iconColor: '#9CA3AF',
+    description: '무료로 이용할 수 있는 스토리',
+    coins: null,
+    coinColor: '#9CA3AF',
+  },
+];
+
+// ─────────────────────────────────────────────
 // IMAGE UPLOAD AREA
 // ─────────────────────────────────────────────
 function ImageUploadArea({
@@ -2116,6 +2204,9 @@ export function StoryCreateForm() {
   const [stats, setStats] = useState<StatItem[]>([]);
   // Shared start-settings list for media/keywords/ending tabs
   const [startSettingsList] = useState([{ id: '1', name: '기본 설정' }]);
+  // AI model selector
+  const [selectedModel, setSelectedModel] = useState<ChatModel>(CHAT_MODELS[2]); // default: 슈퍼챗 2.0
+  const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) router.push('/login?redirect=/creator/story/new');
@@ -2296,11 +2387,81 @@ export function StoryCreateForm() {
                   채팅 미리보기
                 </button>
                 <div className="flex items-center gap-2">
-                  <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
-                    <span>🍇</span>
-                    슈퍼챗 2.0
-                    <ChevronDown className="w-3 h-3 text-gray-400" />
-                  </button>
+                  {/* Model selector */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setModelDropdownOpen(p => !p)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                      <span style={{ color: selectedModel.iconColor }} className="text-sm leading-none">
+                        {selectedModel.icon}
+                      </span>
+                      <span>{selectedModel.label}</span>
+                      <ChevronDown className={cn('w-3 h-3 text-gray-400 transition-transform', modelDropdownOpen && 'rotate-180')} />
+                    </button>
+
+                    <AnimatePresence>
+                      {modelDropdownOpen && (
+                        <>
+                          {/* Backdrop */}
+                          <div
+                            className="fixed inset-0 z-40"
+                            onClick={() => setModelDropdownOpen(false)}
+                          />
+                          <motion.div
+                            initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                            transition={{ duration: 0.12 }}
+                            className="absolute right-0 top-full mt-1.5 w-72 bg-white rounded-2xl border border-gray-200 shadow-xl z-50 overflow-hidden py-1"
+                          >
+                            {CHAT_MODELS.map(model => (
+                              <button
+                                key={model.value}
+                                onClick={() => { setSelectedModel(model); setModelDropdownOpen(false); }}
+                                className={cn(
+                                  'w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors',
+                                  selectedModel.value === model.value && 'bg-gray-50'
+                                )}
+                              >
+                                {/* Icon */}
+                                <span
+                                  className="text-base leading-none mt-0.5 flex-shrink-0 w-5 text-center"
+                                  style={{ color: model.iconColor }}
+                                >
+                                  {model.icon}
+                                </span>
+
+                                {/* Label + desc */}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-0.5">
+                                    <span className="text-gray-900 font-semibold text-sm">{model.label}</span>
+                                    {model.coins !== null && (
+                                      <span
+                                        className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-bold"
+                                        style={{ backgroundColor: `${model.coinColor}15`, color: model.coinColor }}
+                                      >
+                                        ◆ {model.coins}개
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-gray-400 text-xs leading-relaxed">{model.description}</p>
+                                </div>
+
+                                {/* Checkmark */}
+                                {selectedModel.value === model.value && (
+                                  <svg className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: '#E63325' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                  </svg>
+                                )}
+                              </button>
+                            ))}
+                          </motion.div>
+                        </>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
                   <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
                     <MessageSquare className="w-3.5 h-3.5" />
                     채팅 내역
