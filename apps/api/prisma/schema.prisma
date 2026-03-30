@@ -634,6 +634,9 @@ model Story {
   systemPromptEncrypted String   @db.Text
   systemPromptIv   String
   greeting         String        @db.Text
+  chatModel        StoryChatModel @default(SUPER_CHAT_20)
+  coverVerticalUrl String?
+  coverVerticalKey String?
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
@@ -643,6 +646,7 @@ model Story {
   likes            StoryLike[]
   favorites        StoryFavorite[]
   characters       StoryCharacter[]
+  startSettings    StoryStartSetting[]
 
   @@index([authorId])
   @@index([category])
@@ -744,4 +748,119 @@ model StoryFavorite {
   @@unique([userId, storyId])
   @@index([userId])
   @@map("story_favorites")
+}
+
+// ─────────────────────────────────────────────
+// STORY CHAT MODEL ENUM
+// ─────────────────────────────────────────────
+enum StoryChatModel {
+  HYPER_CHAT      // 하이피챗 - Opus-4.6 - 75 credits
+  SUPER_CHAT_25   // 슈퍼챗 2.5 - Sonnet-4.6 - 50 credits
+  SUPER_CHAT_20   // 슈퍼챗 2.0 - Sonnet-4.5 - 50 credits (default)
+  SUPER_CHAT_15   // 슈퍼챗 1.5 - Sonnet-4.0 - 50 credits
+  PRO_CHAT_25     // 프로챗 2.5 - Gemini - 58 credits
+  PRO_CHAT_10     // 프로챗 1.0 - Gemini - 50 credits
+  POWER_CHAT      // 파워챗 - 20 credits
+  NORMAL_CHAT     // 일반챗 - free
+}
+
+// ─────────────────────────────────────────────
+// STORY START SETTINGS
+// ─────────────────────────────────────────────
+model StoryStartSetting {
+  id               String    @id @default(cuid())
+  storyId          String
+  name             String    @default("기본 설정")
+  prologue         String    @db.Text @default("")
+  situation        String    @db.Text @default("")
+  playGuide        String?   @db.Text
+  order            Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  story            Story     @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  stats            StoryStat[]
+  mediaImages      StoryMediaImage[]
+  keywordNotes     StoryKeywordNote[]
+  suggestedReplies StorySuggestedReply[]
+
+  @@index([storyId])
+  @@map("story_start_settings")
+}
+
+model StorySuggestedReply {
+  id             String            @id @default(cuid())
+  startSettingId String
+  text           String
+  order          Int               @default(0)
+  createdAt      DateTime          @default(now())
+
+  startSetting   StoryStartSetting @relation(fields: [startSettingId], references: [id], onDelete: Cascade)
+
+  @@index([startSettingId])
+  @@map("story_suggested_replies")
+}
+
+model StoryStat {
+  id             String            @id @default(cuid())
+  startSettingId String
+  name           String
+  icon           String            @default("heart")
+  color          String            @default("#E63325")
+  minValue       Int               @default(0)
+  maxValue       Int               @default(100)
+  defaultValue   Int               @default(50)
+  unit           String?
+  description    String            @db.Text @default("")
+  order          Int               @default(0)
+  createdAt      DateTime          @default(now())
+
+  startSetting   StoryStartSetting @relation(fields: [startSettingId], references: [id], onDelete: Cascade)
+  levels         StoryStatLevel[]
+
+  @@index([startSettingId])
+  @@map("story_stats")
+}
+
+model StoryStatLevel {
+  id        String     @id @default(cuid())
+  statId    String
+  label     String
+  minValue  Int
+  maxValue  Int
+  order     Int        @default(0)
+
+  stat      StoryStat  @relation(fields: [statId], references: [id], onDelete: Cascade)
+
+  @@index([statId])
+  @@map("story_stat_levels")
+}
+
+model StoryMediaImage {
+  id             String            @id @default(cuid())
+  startSettingId String
+  url            String
+  key            String?
+  order          Int               @default(0)
+  createdAt      DateTime          @default(now())
+
+  startSetting   StoryStartSetting @relation(fields: [startSettingId], references: [id], onDelete: Cascade)
+
+  @@index([startSettingId])
+  @@map("story_media_images")
+}
+
+model StoryKeywordNote {
+  id             String            @id @default(cuid())
+  startSettingId String
+  keywords       String[]
+  content        String            @db.Text
+  order          Int               @default(0)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  startSetting   StoryStartSetting @relation(fields: [startSettingId], references: [id], onDelete: Cascade)
+
+  @@index([startSettingId])
+  @@map("story_keyword_notes")
 }
