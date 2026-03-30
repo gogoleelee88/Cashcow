@@ -948,7 +948,542 @@ function StatSettingsTab({ stats, setStats }: {
 }
 
 // ─────────────────────────────────────────────
-// PLACEHOLDER TABS
+// MEDIA TAB  (미디어)
+// ─────────────────────────────────────────────
+interface MediaImage {
+  id: string;
+  settingId: string;
+  url: string;
+  name: string;
+}
+
+function MediaTab({ startSettings }: { startSettings: { id: string; name: string }[] }) {
+  const [images, setImages] = useState<MediaImage[]>([]);
+  const [activeFilter, setActiveFilter] = useState<string>('all');
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setImages(prev => [...prev, {
+      id: String(Date.now()),
+      settingId: activeFilter === 'all' ? (startSettings[0]?.id ?? '1') : activeFilter,
+      url,
+      name: file.name,
+    }]);
+    setUploadModalOpen(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const filteredImages = activeFilter === 'all'
+    ? images
+    : images.filter(img => img.settingId === activeFilter);
+
+  const countFor = (id: string) => images.filter(img => img.settingId === id).length;
+
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-2">
+        <div>
+          <div className="flex items-center gap-1.5 mb-1">
+            <h2 className="text-gray-900 font-bold text-base">상황 이미지</h2>
+            <button className="text-gray-300 hover:text-gray-500 transition-colors">
+              <HelpCircle className="w-4 h-4" />
+            </button>
+          </div>
+          <p className="text-gray-400 text-xs">
+            상황에 어울리는 인물, 배경 등의 이미지를 등록해 보세요 (시작 설정별로 최대 50개)
+          </p>
+        </div>
+        <button className="flex-shrink-0 px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors">
+          이미지 생성
+        </button>
+      </div>
+
+      {/* Filter pills */}
+      <div className="flex items-center gap-2 mt-4 mb-5 flex-wrap">
+        <button
+          onClick={() => setActiveFilter('all')}
+          className={cn(
+            'px-3 py-1.5 rounded-full text-sm font-semibold transition-all',
+            activeFilter === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+          )}
+        >
+          전체 {images.length}
+        </button>
+        {startSettings.map(s => (
+          <button
+            key={s.id}
+            onClick={() => setActiveFilter(s.id)}
+            className={cn(
+              'px-3 py-1.5 rounded-full text-sm font-semibold transition-all',
+              activeFilter === s.id ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            )}
+          >
+            기본 {s.name} {countFor(s.id)}
+          </button>
+        ))}
+      </div>
+
+      {/* Image grid */}
+      {filteredImages.length > 0 && (
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          {filteredImages.map(img => (
+            <div key={img.id} className="relative group rounded-xl overflow-hidden aspect-video bg-gray-100">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
+              <button
+                onClick={() => setImages(prev => prev.filter(i => i.id !== img.id))}
+                className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/50 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add button */}
+      <button
+        onClick={() => setUploadModalOpen(true)}
+        className="w-full flex items-center justify-center gap-1.5 py-3 rounded-xl border border-dashed border-gray-300 text-gray-400 text-sm hover:bg-gray-50 hover:text-gray-600 transition-colors"
+      >
+        <Plus className="w-4 h-4" />
+        상황 이미지 추가
+      </button>
+
+      {/* Upload modal */}
+      <AnimatePresence>
+        {uploadModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
+            onClick={(e) => { if (e.target === e.currentTarget) setUploadModalOpen(false); }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              transition={{ duration: 0.15 }}
+              className="bg-white rounded-2xl shadow-xl w-[480px] p-6"
+            >
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="text-gray-900 font-bold text-base">이미지 업로드</h3>
+                <button
+                  onClick={() => setUploadModalOpen(false)}
+                  className="w-7 h-7 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-400 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                {/* 기기에서 가져오기 */}
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex flex-col items-start gap-2 p-4 rounded-xl border border-gray-200 hover:border-blue-300 hover:bg-blue-50/50 transition-all text-left"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                    <Upload className="w-4 h-4 text-blue-500" />
+                  </div>
+                  <div>
+                    <p className="text-gray-900 font-semibold text-sm mb-1">기기에서 가져오기</p>
+                    <p className="text-gray-400 text-xs leading-relaxed">
+                      내 기기에 있는 이미지를 선택해요,<br />최대 5MB까지 업로드할 수 있어요.
+                    </p>
+                  </div>
+                </button>
+
+                {/* 라이브러리에서 가져오기 */}
+                <button
+                  className="flex flex-col items-start gap-2 p-4 rounded-xl border border-gray-200 hover:border-amber-300 hover:bg-amber-50/50 transition-all text-left"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
+                    <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-gray-900 font-semibold text-sm mb-1">라이브러리에서 가져오기</p>
+                    <p className="text-gray-400 text-xs leading-relaxed">
+                      내 라이브러리에 저장된<br />생성 이미지를 업로드할 수 있어요.
+                    </p>
+                  </div>
+                </button>
+              </div>
+
+              <button
+                onClick={() => setUploadModalOpen(false)}
+                className="w-full py-3 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors"
+              >
+                취소
+              </button>
+              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// KEYWORD BOOK TAB  (키워드북)
+// ─────────────────────────────────────────────
+interface KeywordNote {
+  id: string;
+  settingId: string;
+  title: string;
+  keywords: string;
+  content: string;
+  expanded: boolean;
+  editing: boolean;
+}
+
+function KeywordsTab({ startSettings }: { startSettings: { id: string; name: string }[] }) {
+  const [notes, setNotes] = useState<KeywordNote[]>([]);
+  const [activeFilter, setActiveFilter] = useState<string>('all');
+
+  const addNote = () => {
+    const settingId = activeFilter === 'all' ? (startSettings[0]?.id ?? '1') : activeFilter;
+    setNotes(prev => [...prev, {
+      id: String(Date.now()),
+      settingId,
+      title: `키워드 노트 ${prev.length + 1}`,
+      keywords: '',
+      content: '',
+      expanded: false,
+      editing: false,
+    }]);
+  };
+
+  const updateNote = (id: string, field: keyof KeywordNote, value: unknown) => {
+    setNotes(prev => prev.map(n => n.id === id ? { ...n, [field]: value } : n));
+  };
+
+  const removeNote = (id: string) => {
+    setNotes(prev => prev.filter(n => n.id !== id));
+  };
+
+  const filteredNotes = activeFilter === 'all'
+    ? notes
+    : notes.filter(n => n.settingId === activeFilter);
+
+  const countFor = (id: string) => notes.filter(n => n.settingId === id).length;
+
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
+      {/* Header */}
+      <div className="flex items-center gap-1.5 mb-1">
+        <h2 className="text-gray-900 font-bold text-base">키워드북</h2>
+        <button className="text-gray-300 hover:text-gray-500 transition-colors">
+          <HelpCircle className="w-4 h-4" />
+        </button>
+      </div>
+      <p className="text-gray-400 text-xs leading-relaxed mb-4">
+        스토리의 세계관이나 추가 정보를 저장해두는 기능이에요.<br />
+        스토리나 사용자 메시지가 특정 키워드를 포함하면, 키워드북에 저장된 정보를 자동으로 불러와요.
+      </p>
+
+      {/* Filter pills */}
+      <div className="flex items-center gap-2 mb-5 flex-wrap">
+        <button
+          onClick={() => setActiveFilter('all')}
+          className={cn(
+            'px-3 py-1.5 rounded-full text-sm font-semibold transition-all',
+            activeFilter === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+          )}
+        >
+          전체 {notes.length}
+        </button>
+        {startSettings.map(s => (
+          <button
+            key={s.id}
+            onClick={() => setActiveFilter(s.id)}
+            className={cn(
+              'px-3 py-1.5 rounded-full text-sm font-semibold transition-all',
+              activeFilter === s.id ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            )}
+          >
+            기본 {s.name} {countFor(s.id)}
+          </button>
+        ))}
+      </div>
+
+      {/* Note list */}
+      {filteredNotes.map((note, i) => (
+        <div key={note.id} className="mb-2 rounded-xl border border-gray-200 overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 bg-white">
+            <GripVertical className="w-4 h-4 text-gray-300 cursor-grab flex-shrink-0" />
+            {note.editing ? (
+              <input
+                autoFocus
+                value={note.title}
+                onChange={e => updateNote(note.id, 'title', e.target.value)}
+                onBlur={() => updateNote(note.id, 'editing', false)}
+                onKeyDown={e => e.key === 'Enter' && updateNote(note.id, 'editing', false)}
+                className="flex-1 text-gray-900 font-semibold text-sm bg-transparent outline-none border-b border-gray-300 pb-0.5"
+              />
+            ) : (
+              <span className="flex-1 text-gray-900 font-semibold text-sm">{note.title}</span>
+            )}
+            <div className="flex items-center gap-0.5">
+              <button
+                onClick={() => updateNote(note.id, 'editing', true)}
+                className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
+              <button
+                onClick={() => removeNote(note.id)}
+                className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => updateNote(note.id, 'expanded', !note.expanded)}
+                className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                <ChevronDown className={cn('w-3.5 h-3.5 transition-transform', note.expanded && 'rotate-180')} />
+              </button>
+            </div>
+          </div>
+
+          <AnimatePresence>
+            {note.expanded && (
+              <motion.div
+                initial={{ height: 0 }}
+                animate={{ height: 'auto' }}
+                exit={{ height: 0 }}
+                className="overflow-hidden border-t border-gray-100"
+              >
+                <div className="p-4 space-y-3">
+                  <div>
+                    <label className="text-gray-700 font-semibold text-xs mb-1.5 block">
+                      트리거 키워드 <span className="text-brand">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={note.keywords}
+                      onChange={e => updateNote(note.id, 'keywords', e.target.value)}
+                      placeholder="쉼표로 구분하여 입력하세요 (예: 마법, 검술, 용)"
+                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-gray-700 font-semibold text-xs mb-1.5 block">
+                      내용 <span className="text-brand">*</span>
+                    </label>
+                    <div className="relative">
+                      <textarea
+                        value={note.content}
+                        onChange={e => updateNote(note.id, 'content', e.target.value.slice(0, 1000))}
+                        placeholder="키워드가 감지되면 AI에게 전달할 추가 정보를 입력하세요"
+                        rows={4}
+                        className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
+                      />
+                      <span className="absolute right-3 bottom-3 text-gray-300 text-xs">{note.content.length} / 1000</span>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      ))}
+
+      {/* Add note button */}
+      <button
+        onClick={addNote}
+        className="w-full flex items-center justify-center gap-1.5 py-3 rounded-xl border border-dashed border-gray-300 text-gray-400 text-sm hover:bg-gray-50 hover:text-gray-600 transition-colors"
+      >
+        <Plus className="w-4 h-4" />
+        키워드 노트 추가
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// ENDING SETTINGS TAB  (엔딩 설정)
+// ─────────────────────────────────────────────
+interface EndingItem {
+  id: string;
+  title: string;
+  condition: string;
+  content: string;
+  collapsed: boolean;
+}
+
+function EndingSettingsTab({ startSettingName }: { startSettingName: string }) {
+  const [endings, setEndings] = useState<EndingItem[]>([]);
+
+  const addEnding = () => {
+    if (endings.length >= 10) return;
+    setEndings(prev => [...prev, {
+      id: String(Date.now()),
+      title: `엔딩 ${prev.length + 1}`,
+      condition: '',
+      content: '',
+      collapsed: false,
+    }]);
+  };
+
+  const updateEnding = (id: string, field: keyof EndingItem, value: unknown) => {
+    setEndings(prev => prev.map(e => e.id === id ? { ...e, [field]: value } : e));
+  };
+
+  const removeEnding = (id: string) => {
+    setEndings(prev => prev.filter(e => e.id !== id));
+  };
+
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
+      {/* Header */}
+      <div className="mb-1">
+        <h2 className="text-gray-900 font-bold text-base">엔딩 설정</h2>
+      </div>
+      <p className="text-gray-400 text-xs leading-relaxed mb-4">
+        각 시작 설정에 따른 엔딩을 설정해보세요. 가장 먼저 조건에 도달한 엔딩 하나만 제공됩니다{' '}
+        <span className="text-brand">(시작설정 별 최대 10개)</span>
+      </p>
+
+      {/* Setting pill */}
+      <div className="flex items-center gap-2 mb-5">
+        <button className="px-3 py-1.5 rounded-full text-sm font-semibold bg-gray-900 text-white">
+          기본 설정 {endings.length}
+        </button>
+      </div>
+
+      {/* Ending cards */}
+      {endings.map((ending, i) => (
+        <div key={ending.id} className="mb-3 rounded-xl border border-gray-200 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-100">
+            <div className="flex items-center gap-2">
+              <GripVertical className="w-4 h-4 text-gray-300 cursor-grab" />
+              <span className="text-gray-700 font-semibold text-sm">{ending.title}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => removeEnding(ending.id)}
+                className="p-1.5 rounded-lg hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => updateEnding(ending.id, 'collapsed', !ending.collapsed)}
+                className="p-1.5 rounded-lg hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <ChevronUp className={cn('w-3.5 h-3.5 transition-transform', ending.collapsed && 'rotate-180')} />
+              </button>
+            </div>
+          </div>
+
+          <AnimatePresence>
+            {!ending.collapsed && (
+              <motion.div
+                initial={{ height: 0 }}
+                animate={{ height: 'auto' }}
+                exit={{ height: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="p-4 space-y-4">
+                  {/* 엔딩 이름 */}
+                  <div>
+                    <label className="text-gray-700 font-semibold text-sm mb-1.5 block">
+                      엔딩 이름 <span className="text-brand">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={ending.title}
+                        onChange={e => updateEnding(ending.id, 'title', e.target.value.slice(0, 30))}
+                        placeholder="엔딩의 이름을 입력하세요"
+                        className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 pr-14"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 text-xs">
+                        {ending.title.length} / 30
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 엔딩 조건 */}
+                  <div>
+                    <label className="text-gray-700 font-semibold text-sm mb-1.5 block">
+                      엔딩 조건 <span className="text-brand">*</span>
+                    </label>
+                    <p className="text-gray-400 text-xs mb-2">
+                      어떤 상황이 되면 이 엔딩이 발동되는지 AI가 판단할 수 있도록 조건을 입력해 주세요
+                    </p>
+                    <div className="relative">
+                      <textarea
+                        value={ending.condition}
+                        onChange={e => updateEnding(ending.id, 'condition', e.target.value.slice(0, 500))}
+                        placeholder="예) 주인공이 마왕을 물리쳤을 때, 호감도가 100이 되었을 때"
+                        rows={3}
+                        className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
+                      />
+                      <span className="absolute right-3 bottom-3 text-gray-300 text-xs">
+                        {ending.condition.length} / 500
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 엔딩 내용 */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-gray-700 font-semibold text-sm">
+                        엔딩 내용 <span className="text-brand">*</span>
+                      </label>
+                      <button className="px-2.5 py-1 rounded-lg border border-brand/40 text-brand text-xs font-semibold hover:bg-brand/5 transition-colors">
+                        자동 생성
+                      </button>
+                    </div>
+                    <p className="text-gray-400 text-xs mb-2">
+                      엔딩 조건 달성 시 보여줄 내용을 작성해 주세요
+                    </p>
+                    <div className="relative">
+                      <textarea
+                        value={ending.content}
+                        onChange={e => updateEnding(ending.id, 'content', e.target.value.slice(0, 1000))}
+                        placeholder="엔딩 내용을 입력하세요"
+                        rows={5}
+                        className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
+                      />
+                      <span className="absolute right-3 bottom-3 text-gray-300 text-xs">
+                        {ending.content.length} / 1000
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      ))}
+
+      {/* Add ending button */}
+      <button
+        onClick={addEnding}
+        disabled={endings.length >= 10}
+        className="w-full flex items-center justify-center gap-1.5 py-3 rounded-xl border border-dashed border-gray-300 text-gray-400 text-sm hover:bg-gray-50 hover:text-gray-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed mb-8"
+      >
+        <Plus className="w-4 h-4" />
+        엔딩 추가
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// PLACEHOLDER TAB (register only)
 // ─────────────────────────────────────────────
 function PlaceholderTab({ label }: { label: string }) {
   return (
@@ -1084,6 +1619,8 @@ export function StoryCreateForm() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [stats, setStats] = useState<StatItem[]>([]);
+  // Shared start-settings list for media/keywords/ending tabs
+  const [startSettingsList] = useState([{ id: '1', name: '기본 설정' }]);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) router.push('/login?redirect=/creator/story/new');
@@ -1187,8 +1724,11 @@ export function StoryCreateForm() {
               {activeTab === 'story-settings' && <StorySettingsTab />}
               {activeTab === 'start-settings' && <StartSettingsTab />}
               {activeTab === 'stat-settings' && <StatSettingsTab stats={stats} setStats={setStats} />}
-              {activeTab !== 'profile' && activeTab !== 'story-settings' && activeTab !== 'start-settings' && activeTab !== 'stat-settings' && (
-                <PlaceholderTab label={TABS.find(t => t.key === activeTab)?.label ?? ''} />
+              {activeTab === 'media' && <MediaTab startSettings={startSettingsList} />}
+              {activeTab === 'keywords' && <KeywordsTab startSettings={startSettingsList} />}
+              {activeTab === 'ending' && <EndingSettingsTab startSettingName="기본 설정" />}
+              {activeTab === 'register' && (
+                <PlaceholderTab label="등록" />
               )}
             </motion.div>
           </AnimatePresence>
@@ -1225,6 +1765,16 @@ export function StoryCreateForm() {
               </div>
               <RightPreviewPanel name={name} description={description} />
             </>
+          ) : activeTab === 'ending' ? (
+            /* Ending tab: simple preview */
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="flex-shrink-0 px-4 py-3 border-b border-gray-100">
+                <span className="text-gray-500 text-sm font-medium">미리보기</span>
+              </div>
+              <div className="flex-1 flex items-center justify-center">
+                <p className="text-gray-300 text-sm">엔딩을 추가하면 미리볼 수 있어요</p>
+              </div>
+            </div>
           ) : (
             /* Chat preview for start/stat/other tabs */
             <div className="flex-1 flex flex-col overflow-hidden">
