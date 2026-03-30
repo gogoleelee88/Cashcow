@@ -1,0 +1,490 @@
+'use client';
+
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { motion, AnimatePresence } from 'framer-motion';
+import Link from 'next/link';
+import Image from 'next/image';
+import { useRouter } from 'next/navigation';
+import { ChevronDown, X, Settings, ArrowRight, MessageCircle, Heart, Eye, EyeOff, Lock } from 'lucide-react';
+import { api } from '../../lib/api';
+import { useAuthStore } from '../../stores/auth.store';
+import { useEffect } from 'react';
+import { cn } from '../../lib/utils';
+import { formatCount, formatRelativeTime } from '@characterverse/utils';
+
+// ─────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────
+type ContentFilter = 'all' | 'story' | 'character';
+type VisibilityFilter = 'all' | 'PUBLIC' | 'PRIVATE' | 'UNLISTED';
+
+// ─────────────────────────────────────────────
+// 작품 만들기 MODAL
+// ─────────────────────────────────────────────
+function CreateWorkModal({ onClose }: { onClose: () => void }) {
+  const router = useRouter();
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 flex items-center justify-center"
+        onClick={onClose}
+      >
+        {/* Blurred backdrop with decorative icons */}
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+
+        {/* Decorative background items */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-8 left-16 w-28 h-36 bg-gray-200/60 rounded-2xl flex items-end p-2 opacity-70">
+            <div className="w-full h-3/4 bg-gray-300/80 rounded-xl" />
+          </div>
+          <div className="absolute top-6 right-16 w-28 h-36 bg-gray-200/60 rounded-2xl opacity-70" />
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 text-6xl opacity-40">🩷</div>
+          <div className="absolute bottom-12 left-8 text-5xl opacity-30">😊</div>
+          <div className="absolute bottom-8 right-12 text-4xl opacity-30">⭐</div>
+        </div>
+
+        {/* Modal */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95, y: 20 }}
+          transition={{ duration: 0.2 }}
+          className="relative z-10 bg-white rounded-2xl shadow-2xl w-[700px] max-w-[calc(100vw-2rem)] mx-4 overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+            <h2 className="text-gray-900 font-bold text-lg">작품 만들기</h2>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Cards */}
+          <div className="p-5 grid grid-cols-2 gap-4">
+            {/* 스토리 카드 */}
+            <button
+              onClick={() => { onClose(); router.push('/creator/story/new'); }}
+              className="group rounded-xl overflow-hidden border border-gray-200 hover:border-gray-400 hover:shadow-md transition-all text-left"
+            >
+              {/* Image */}
+              <div className="relative h-44 bg-gradient-to-br from-slate-800 via-purple-900 to-indigo-900 overflow-hidden">
+                {/* Cyberpunk overlay art */}
+                <div className="absolute inset-0 flex items-end p-3">
+                  <div className="space-y-1">
+                    <div className="bg-black/60 rounded-lg px-2.5 py-1.5 inline-block">
+                      <p className="text-white/90 text-[11px] font-medium leading-relaxed">
+                        화려한 직막만이 감도는 이 곳에서<br />
+                        <span className="text-white/70">단지 분명한 사실은, 이 세계가 이미 인간의</span><br />
+                        <span className="text-white/70">손을 떠나 있다는 것뿐이었다.</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                {/* Neon city silhouette */}
+                <div className="absolute top-0 left-0 w-full h-full opacity-30">
+                  <div className="w-full h-full bg-gradient-to-b from-purple-600/30 via-transparent to-transparent" />
+                </div>
+                {/* Animated neon bars */}
+                {[...Array(5)].map((_, i) => (
+                  <div
+                    key={i}
+                    className="absolute bottom-0 bg-gradient-to-t from-pink-500/40 to-transparent"
+                    style={{
+                      left: `${10 + i * 18}%`,
+                      width: '8%',
+                      height: `${40 + i * 10}%`,
+                    }}
+                  />
+                ))}
+              </div>
+
+              {/* Text */}
+              <div className="p-4">
+                <h3 className="text-gray-900 font-bold text-base mb-1.5">스토리</h3>
+                <p className="text-gray-500 text-sm leading-relaxed">
+                  한 편의 이야기를 설계해 보세요.<br />
+                  완성된 작품은 스토리 홈에 공유돼요.
+                </p>
+              </div>
+            </button>
+
+            {/* 캐릭터 카드 */}
+            <button
+              onClick={() => { onClose(); router.push('/creator/new'); }}
+              className="group rounded-xl overflow-hidden border border-gray-200 hover:border-gray-400 hover:shadow-md transition-all text-left"
+            >
+              {/* Image */}
+              <div className="relative h-44 bg-gradient-to-br from-green-100 via-emerald-50 to-teal-100 overflow-hidden">
+                <div className="absolute inset-0 flex items-center justify-center">
+                  {/* Anime girl illustration placeholder */}
+                  <div className="w-32 h-40 bg-gradient-to-b from-amber-100 to-amber-200 rounded-t-full flex items-end justify-center overflow-hidden">
+                    <div className="w-24 h-32 bg-gradient-to-b from-amber-200 to-amber-300 rounded-t-3xl" />
+                  </div>
+                </div>
+                {/* Chat bubbles */}
+                <div className="absolute bottom-12 right-3">
+                  <div className="bg-white/90 shadow-sm rounded-xl rounded-br-sm px-2.5 py-1.5 text-[11px] text-gray-700 font-medium">
+                    지금 뭐해? 같이 걷고 싶어.
+                  </div>
+                </div>
+                <div className="absolute bottom-3 right-6">
+                  <div className="bg-white/90 shadow-sm rounded-xl rounded-br-sm px-2.5 py-1.5 text-[11px] text-gray-700 font-medium">
+                    조금만 기다려. 금방 걸게.
+                  </div>
+                </div>
+              </div>
+
+              {/* Text */}
+              <div className="p-4">
+                <h3 className="text-gray-900 font-bold text-base mb-1.5">캐릭터</h3>
+                <p className="text-gray-500 text-sm leading-relaxed">
+                  빠르게 나만의 캐릭터를 만들어요.<br />
+                  완성된 캐릭터는 캐릭터 홈에 공유돼요.
+                </p>
+              </div>
+            </button>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+// ─────────────────────────────────────────────
+// VISIBILITY DROPDOWN
+// ─────────────────────────────────────────────
+function VisibilityDropdown({
+  value,
+  onChange,
+}: {
+  value: VisibilityFilter;
+  onChange: (v: VisibilityFilter) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const labels: Record<VisibilityFilter, string> = {
+    all: '공개 여부',
+    PUBLIC: '공개',
+    PRIVATE: '비공개',
+    UNLISTED: '링크 공유',
+  };
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(p => !p)}
+        className={cn(
+          'flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium border transition-all',
+          value !== 'all'
+            ? 'bg-gray-900 text-white border-gray-900'
+            : 'bg-white text-gray-700 border-gray-300 hover:border-gray-400'
+        )}
+      >
+        {labels[value]}
+        <ChevronDown className={cn('w-3.5 h-3.5 transition-transform', open && 'rotate-180')} />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            className="absolute top-full mt-1 left-0 z-50 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden min-w-[120px]"
+          >
+            {(['all', 'PUBLIC', 'PRIVATE', 'UNLISTED'] as VisibilityFilter[]).map((opt) => (
+              <button
+                key={opt}
+                onClick={() => { onChange(opt); setOpen(false); }}
+                className={cn(
+                  'w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition-colors',
+                  opt === value ? 'text-gray-900 font-semibold' : 'text-gray-600'
+                )}
+              >
+                {labels[opt]}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// CHARACTER ITEM ROW
+// ─────────────────────────────────────────────
+function CharacterItem({ char, index }: { char: any; index: number }) {
+  const visIcon = char.visibility === 'PUBLIC'
+    ? <Eye className="w-3 h-3 text-emerald-500" />
+    : char.visibility === 'UNLISTED'
+    ? <EyeOff className="w-3 h-3 text-amber-500" />
+    : <Lock className="w-3 h-3 text-gray-400" />;
+
+  const visLabel = char.visibility === 'PUBLIC' ? '공개'
+    : char.visibility === 'UNLISTED' ? '링크 공유'
+    : '비공개';
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.04 }}
+      className="flex items-center gap-4 p-4 rounded-2xl border border-gray-100 hover:border-gray-200 hover:bg-gray-50/50 transition-all group"
+    >
+      {/* Avatar */}
+      <div className="w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100 ring-1 ring-gray-200">
+        <Image
+          src={char.avatarUrl || `https://api.dicebear.com/8.x/personas/svg?seed=${char.name}&backgroundColor=f0f0f3`}
+          alt={char.name}
+          width={56}
+          height={56}
+          className="object-cover w-full h-full"
+        />
+      </div>
+
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <h3 className="text-gray-900 font-semibold text-sm truncate">{char.name}</h3>
+          <div className="flex items-center gap-1 text-xs text-gray-500">
+            {visIcon}
+            <span>{visLabel}</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 text-gray-400 text-xs">
+          <span className="flex items-center gap-1">
+            <MessageCircle className="w-3 h-3" />
+            {formatCount(char.chatCount)}
+          </span>
+          <span className="flex items-center gap-1">
+            <Heart className="w-3 h-3" />
+            {formatCount(char.likeCount)}
+          </span>
+          <span className="text-gray-300">·</span>
+          <span>{formatRelativeTime(char.createdAt)}</span>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+        <Link
+          href={`/creator/edit/${char.id}`}
+          className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-all"
+          title="수정"
+        >
+          <Settings className="w-4 h-4" />
+        </Link>
+        <Link
+          href={`/characters/${char.id}`}
+          className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-all"
+          title="보기"
+        >
+          <ArrowRight className="w-4 h-4" />
+        </Link>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// EMPTY STATE
+// ─────────────────────────────────────────────
+function EmptyState({ onCreateClick }: { onCreateClick: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-24 text-center">
+      {/* Emoji wizard */}
+      <div className="text-6xl mb-6 select-none">🧙</div>
+      <h3 className="text-gray-900 font-bold text-xl mb-2">나만의 작품을 만들어 보세요</h3>
+      <p className="text-gray-400 text-sm mb-8 leading-relaxed">
+        내가 만든 작품을<br />
+        자유롭게 플레이 할 수 있어요
+      </p>
+      <button
+        onClick={onCreateClick}
+        className="flex items-center gap-2 px-6 py-3 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors shadow-sm"
+      >
+        + 작품 만들기
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// MAIN COMPONENT
+// ─────────────────────────────────────────────
+export function MyWorksPage() {
+  const { isAuthenticated, isLoading: authLoading } = useAuthStore();
+  const router = useRouter();
+  const [contentFilter, setContentFilter] = useState<ContentFilter>('all');
+  const [visibilityFilter, setVisibilityFilter] = useState<VisibilityFilter>('all');
+  const [showModal, setShowModal] = useState(false);
+
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) router.push('/login?redirect=/creator');
+  }, [isAuthenticated, authLoading, router]);
+
+  const { data: charsData, isLoading: charsLoading } = useQuery({
+    queryKey: ['characters', 'my'],
+    queryFn: () => api.characters.my({ limit: 100 }),
+    enabled: isAuthenticated,
+  });
+
+  const { data: storiesData, isLoading: storiesLoading } = useQuery({
+    queryKey: ['stories', 'my'],
+    queryFn: () => api.stories.my({ limit: 100 }),
+    enabled: isAuthenticated,
+  });
+
+  const characters: any[] = charsData?.data ?? [];
+  const stories: any[] = storiesData?.data ?? [];
+
+  // Merge all works
+  const allWorks = [
+    ...characters.map((c: any) => ({ ...c, _type: 'character' })),
+    ...stories.map((s: any) => ({ ...s, _type: 'story' })),
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  // Filter
+  const filtered = allWorks.filter((item) => {
+    if (contentFilter === 'character' && item._type !== 'character') return false;
+    if (contentFilter === 'story' && item._type !== 'story') return false;
+    if (visibilityFilter !== 'all' && item.visibility !== visibilityFilter) return false;
+    return true;
+  });
+
+  // Unregistered / draft items
+  const unregistered = allWorks.filter((item) => item.visibility === 'PRIVATE' || item.isDraft);
+
+  const isLoading = charsLoading || storiesLoading;
+
+  if (authLoading) return null;
+  if (!isAuthenticated) return null;
+
+  return (
+    <div className="max-w-3xl mx-auto px-4 py-8">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-8">
+        <h1 className="text-gray-900 font-bold text-2xl">내 작품</h1>
+        <button
+          onClick={() => setShowModal(true)}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors"
+        >
+          + 만들기
+        </button>
+      </div>
+
+      {/* Filter tabs */}
+      <div className="flex items-center gap-2 mb-6 flex-wrap">
+        {[
+          { key: 'all', label: '전체' },
+          { key: 'story', label: '스토리' },
+          { key: 'character', label: '캐릭터' },
+        ].map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setContentFilter(key as ContentFilter)}
+            className={cn(
+              'px-4 py-2 rounded-full text-sm font-medium border transition-all',
+              contentFilter === key
+                ? 'bg-gray-900 text-white border-gray-900'
+                : 'bg-white text-gray-700 border-gray-300 hover:border-gray-400'
+            )}
+          >
+            {label}
+          </button>
+        ))}
+
+        <VisibilityDropdown value={visibilityFilter} onChange={setVisibilityFilter} />
+
+        {unregistered.length > 0 && (
+          <button
+            onClick={() => setVisibilityFilter('PRIVATE')}
+            className={cn(
+              'px-4 py-2 rounded-full text-sm font-medium border transition-all',
+              visibilityFilter === 'PRIVATE'
+                ? 'bg-gray-900 text-white border-gray-900'
+                : 'bg-white text-gray-700 border-gray-300 hover:border-gray-400'
+            )}
+          >
+            미등록
+          </button>
+        )}
+      </div>
+
+      {/* Content */}
+      {isLoading ? (
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-4 p-4 rounded-2xl border border-gray-100">
+              <div className="w-14 h-14 rounded-xl bg-gray-100 animate-pulse flex-shrink-0" />
+              <div className="flex-1 space-y-2">
+                <div className="h-4 bg-gray-100 rounded animate-pulse w-1/3" />
+                <div className="h-3 bg-gray-100 rounded animate-pulse w-1/2" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
+        <EmptyState onCreateClick={() => setShowModal(true)} />
+      ) : (
+        <div className="space-y-2">
+          {filtered.map((item, i) => (
+            item._type === 'character'
+              ? <CharacterItem key={item.id} char={item} index={i} />
+              : (
+                <motion.div
+                  key={item.id}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.04 }}
+                  className="flex items-center gap-4 p-4 rounded-2xl border border-gray-100 hover:border-gray-200 hover:bg-gray-50/50 transition-all group"
+                >
+                  <div className="w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100">
+                    <Image
+                      src={item.coverImageUrl || `https://api.dicebear.com/8.x/shapes/svg?seed=${item.id}`}
+                      alt={item.title}
+                      width={56}
+                      height={56}
+                      className="object-cover w-full h-full"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="text-gray-900 font-semibold text-sm truncate">{item.title}</h3>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 font-medium">스토리</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-gray-400 text-xs">
+                      <span className="flex items-center gap-1">
+                        <MessageCircle className="w-3 h-3" />
+                        {formatCount(item.viewCount ?? 0)}
+                      </span>
+                      <span>{formatRelativeTime(item.createdAt)}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                    <Link
+                      href={`/story/${item.id}`}
+                      className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-all"
+                    >
+                      <ArrowRight className="w-4 h-4" />
+                    </Link>
+                  </div>
+                </motion.div>
+              )
+          ))}
+        </div>
+      )}
+
+      {/* Modal */}
+      {showModal && <CreateWorkModal onClose={() => setShowModal(false)} />}
+    </div>
+  );
+}
