@@ -1316,22 +1316,30 @@ function KeywordsTab({ startSettings }: { startSettings: { id: string; name: str
 // ─────────────────────────────────────────────
 interface EndingItem {
   id: string;
-  title: string;
+  name: string;
   condition: string;
-  content: string;
+  epilogue: string;
+  hint: string;
   collapsed: boolean;
 }
 
-function EndingSettingsTab({ startSettingName }: { startSettingName: string }) {
+function EndingSettingsTab({
+  onNavigateToStats,
+}: {
+  onNavigateToStats: () => void;
+}) {
   const [endings, setEndings] = useState<EndingItem[]>([]);
+  const [minTurns, setMinTurns] = useState('30');
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const addEnding = () => {
     if (endings.length >= 10) return;
     setEndings(prev => [...prev, {
       id: String(Date.now()),
-      title: `엔딩 ${prev.length + 1}`,
+      name: '',
       condition: '',
-      content: '',
+      epilogue: '',
+      hint: '',
       collapsed: false,
     }]);
   };
@@ -1345,14 +1353,12 @@ function EndingSettingsTab({ startSettingName }: { startSettingName: string }) {
   };
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
+    <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
       {/* Header */}
-      <div className="mb-1">
-        <h2 className="text-gray-900 font-bold text-base">엔딩 설정</h2>
-      </div>
+      <h2 className="text-gray-900 font-bold text-base mb-1">엔딩 설정</h2>
       <p className="text-gray-400 text-xs leading-relaxed mb-4">
-        각 시작 설정에 따른 엔딩을 설정해보세요. 가장 먼저 조건에 도달한 엔딩 하나만 제공됩니다{' '}
-        <span className="text-brand">(시작설정 별 최대 10개)</span>
+        각 시작 설정에 따른 엔딩을 설정해보세요. 가장 먼저 조건에 도달한 엔딩 하나만 제공됩니다
+        <br />(시작설정 별 최대 10개)
       </p>
 
       {/* Setting pill */}
@@ -1362,28 +1368,44 @@ function EndingSettingsTab({ startSettingName }: { startSettingName: string }) {
         </button>
       </div>
 
+      {/* 엔딩 제공 시점 */}
+      <div className="mb-5">
+        <div className="flex items-center gap-1 mb-1">
+          <span className="text-gray-900 font-semibold text-sm">엔딩 제공 시점</span>
+          <span className="text-brand font-bold text-sm">*</span>
+        </div>
+        <p className="text-gray-400 text-xs mb-2">해당 시점 이후 AI가 상황을 판단해 엔딩을 보여드려요(최소 10턴 이상)</p>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            value={minTurns}
+            min={10}
+            onChange={e => setMinTurns(e.target.value)}
+            className="w-32 px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm focus:outline-none focus:border-gray-400 text-center"
+          />
+          <span className="text-gray-500 text-sm">턴 이상</span>
+        </div>
+      </div>
+
       {/* Ending cards */}
       {endings.map((ending, i) => (
-        <div key={ending.id} className="mb-3 rounded-xl border border-gray-200 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-100">
-            <div className="flex items-center gap-2">
-              <GripVertical className="w-4 h-4 text-gray-300 cursor-grab" />
-              <span className="text-gray-700 font-semibold text-sm">{ending.title}</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => removeEnding(ending.id)}
-                className="p-1.5 rounded-lg hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => updateEnding(ending.id, 'collapsed', !ending.collapsed)}
-                className="p-1.5 rounded-lg hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <ChevronUp className={cn('w-3.5 h-3.5 transition-transform', ending.collapsed && 'rotate-180')} />
-              </button>
-            </div>
+        <div key={ending.id} className="mb-3 rounded-xl border border-gray-200 overflow-hidden bg-white">
+          {/* Card header */}
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
+            <GripVertical className="w-4 h-4 text-gray-300 cursor-grab flex-shrink-0" />
+            <span className="flex-1 text-gray-900 font-semibold text-sm">엔딩 {i + 1}</span>
+            <button
+              onClick={() => removeEnding(ending.id)}
+              className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => updateEnding(ending.id, 'collapsed', !ending.collapsed)}
+              className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            >
+              <ChevronUp className={cn('w-3.5 h-3.5 transition-transform', ending.collapsed && 'rotate-180')} />
+            </button>
           </div>
 
           <AnimatePresence>
@@ -1394,40 +1416,40 @@ function EndingSettingsTab({ startSettingName }: { startSettingName: string }) {
                 exit={{ height: 0 }}
                 className="overflow-hidden"
               >
-                <div className="p-4 space-y-4">
+                <div className="p-4 space-y-5">
                   {/* 엔딩 이름 */}
                   <div>
-                    <label className="text-gray-700 font-semibold text-sm mb-1.5 block">
-                      엔딩 이름 <span className="text-brand">*</span>
-                    </label>
+                    <div className="flex items-center gap-1 mb-1.5">
+                      <span className="text-gray-900 font-semibold text-sm">엔딩 이름</span>
+                      <span className="text-brand font-bold text-sm">*</span>
+                    </div>
                     <div className="relative">
                       <input
                         type="text"
-                        value={ending.title}
-                        onChange={e => updateEnding(ending.id, 'title', e.target.value.slice(0, 30))}
-                        placeholder="엔딩의 이름을 입력하세요"
+                        value={ending.name}
+                        onChange={e => updateEnding(ending.id, 'name', e.target.value.slice(0, 20))}
+                        placeholder="예) 미뉴의 해피엔딩"
                         className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 pr-14"
                       />
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 text-xs">
-                        {ending.title.length} / 30
+                        {ending.name.length} / 20
                       </span>
                     </div>
                   </div>
 
-                  {/* 엔딩 조건 */}
+                  {/* 엔딩 기본 조건 */}
                   <div>
-                    <label className="text-gray-700 font-semibold text-sm mb-1.5 block">
-                      엔딩 조건 <span className="text-brand">*</span>
-                    </label>
-                    <p className="text-gray-400 text-xs mb-2">
-                      어떤 상황이 되면 이 엔딩이 발동되는지 AI가 판단할 수 있도록 조건을 입력해 주세요
-                    </p>
+                    <div className="flex items-center gap-1 mb-1">
+                      <span className="text-gray-900 font-semibold text-sm">엔딩 기본 조건</span>
+                      <span className="text-brand font-bold text-sm">*</span>
+                    </div>
+                    <p className="text-gray-400 text-xs mb-2">엔딩을 판단하기 위한 상세한 조건을 묘사해 주세요</p>
                     <div className="relative">
                       <textarea
                         value={ending.condition}
                         onChange={e => updateEnding(ending.id, 'condition', e.target.value.slice(0, 500))}
-                        placeholder="예) 주인공이 마왕을 물리쳤을 때, 호감도가 100이 되었을 때"
-                        rows={3}
+                        placeholder={`예) 미뉴가 가족을 찾는 과정에서 구체적인 단서(냄새, 장소, 목소리 등)를 발견했고 미뉴와 가족이 서로를 확실히 인지하여 미뉴가 안전함·안도감을 느끼고 있음 또는 가족과 이미 재회하여 좋은 시간을 보내고 있음`}
+                        rows={5}
                         className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
                       />
                       <span className="absolute right-3 bottom-3 text-gray-300 text-xs">
@@ -1436,29 +1458,66 @@ function EndingSettingsTab({ startSettingName }: { startSettingName: string }) {
                     </div>
                   </div>
 
-                  {/* 엔딩 내용 */}
+                  {/* 에필로그 */}
                   <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-gray-700 font-semibold text-sm">
-                        엔딩 내용 <span className="text-brand">*</span>
-                      </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1">
+                        <span className="text-gray-900 font-semibold text-sm">에필로그</span>
+                        <span className="text-brand font-bold text-sm">*</span>
+                      </div>
                       <button className="px-2.5 py-1 rounded-lg border border-brand/40 text-brand text-xs font-semibold hover:bg-brand/5 transition-colors">
-                        자동 생성
+                        자동생성
                       </button>
                     </div>
-                    <p className="text-gray-400 text-xs mb-2">
-                      엔딩 조건 달성 시 보여줄 내용을 작성해 주세요
-                    </p>
+                    <p className="text-gray-400 text-xs mb-2">입력한 내용을 예시로 AI가 에필로그를 상황에 더 맞게 작성해요</p>
                     <div className="relative">
                       <textarea
-                        value={ending.content}
-                        onChange={e => updateEnding(ending.id, 'content', e.target.value.slice(0, 1000))}
-                        placeholder="엔딩 내용을 입력하세요"
+                        value={ending.epilogue}
+                        onChange={e => updateEnding(ending.id, 'epilogue', e.target.value.slice(0, 1000))}
+                        placeholder="자동 생성 기능을 활용하면 AI가 프롬프트를 참고하여 초안을 작성해 드려요"
                         rows={5}
                         className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
                       />
                       <span className="absolute right-3 bottom-3 text-gray-300 text-xs">
-                        {ending.content.length} / 1000
+                        {ending.epilogue.length} / 1000
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 엔딩 세부 조건 */}
+                  <div>
+                    <div className="flex items-center gap-1 mb-1">
+                      <span className="text-gray-900 font-semibold text-sm">엔딩 세부 조건</span>
+                    </div>
+                    <p className="text-gray-400 text-xs leading-relaxed mb-3">
+                      ※ 1개의 조건만 충족돼도 엔딩이 제공됩니다 (최대 7개)<br />
+                      ※ 턴 수 조건과 관련 없이 해당 조건이 충족되면 엔딩이 노출됩니다
+                    </p>
+                    <button
+                      onClick={onNavigateToStats}
+                      className="flex items-center gap-1 text-gray-700 text-sm font-semibold hover:text-gray-900 transition-colors"
+                    >
+                      스탯 추가하기
+                      <ChevronDown className="w-3.5 h-3.5 -rotate-90" />
+                    </button>
+                  </div>
+
+                  {/* 엔딩 힌트 */}
+                  <div>
+                    <div className="flex items-center gap-1 mb-1">
+                      <span className="text-gray-900 font-semibold text-sm">엔딩 힌트</span>
+                    </div>
+                    <p className="text-gray-400 text-xs mb-2">유저에게 보여질 엔딩 힌트를 작성해 주세요</p>
+                    <div className="relative">
+                      <textarea
+                        value={ending.hint}
+                        onChange={e => updateEnding(ending.id, 'hint', e.target.value.slice(0, 20))}
+                        placeholder="예) 어디서 익숙한 소리가 들린다냥..!"
+                        rows={2}
+                        className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
+                      />
+                      <span className="absolute right-3 bottom-3 text-gray-300 text-xs">
+                        {ending.hint.length} / 20
                       </span>
                     </div>
                   </div>
@@ -1468,6 +1527,18 @@ function EndingSettingsTab({ startSettingName }: { startSettingName: string }) {
           </AnimatePresence>
         </div>
       ))}
+
+      {/* Scroll to top */}
+      {endings.length > 0 && (
+        <div className="flex justify-end mb-2">
+          <button
+            onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+            className="w-9 h-9 rounded-full border border-gray-200 bg-white shadow-sm flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <ChevronUp className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Add ending button */}
       <button
@@ -1483,7 +1554,431 @@ function EndingSettingsTab({ startSettingName }: { startSettingName: string }) {
 }
 
 // ─────────────────────────────────────────────
-// PLACEHOLDER TAB (register only)
+// REGISTER TAB  (등록)
+// ─────────────────────────────────────────────
+const GENRE_OPTIONS = ['판타지', '로맨스', '액션', '미스터리', '공포', 'SF', '일상', '역사', '무협', '스포츠'];
+const TARGET_OPTIONS = ['전체', '남성향', '여성향'];
+const CHAT_STYLE_OPTIONS = ['1인칭', '3인칭', '혼합'];
+const MODEL_OPTIONS = [
+  { label: '🍇 슈퍼챗 2.0 (기본)', value: 'super_chat_20' },
+  { label: '🍇 슈퍼챗 2.5', value: 'super_chat_25' },
+  { label: '🍇 슈퍼챗 1.5', value: 'super_chat_15' },
+  { label: '⚡ 하이퍼챗', value: 'hyper_chat' },
+  { label: '💬 프로챗 2.5', value: 'pro_chat_25' },
+  { label: '💬 프로챗 1.0', value: 'pro_chat_10' },
+  { label: '📨 파워챗', value: 'power_chat' },
+  { label: '💭 일반챗', value: 'normal_chat' },
+];
+
+function RegisterTab({ name, coverUrl }: { name: string; coverUrl?: string }) {
+  const [showAgeNotice, setShowAgeNotice] = useState(true);
+  const [detailDesc, setDetailDesc] = useState('');
+  const [genre, setGenre] = useState('');
+  const [target, setTarget] = useState('');
+  const [chatStyle, setChatStyle] = useState('');
+  const [model, setModel] = useState('super_chat_20');
+  const [hashtags, setHashtags] = useState<string[]>([]);
+  const [hashtagInput, setHashtagInput] = useState('');
+  const [ageRating, setAgeRating] = useState<'all' | 'adult'>('all');
+  const [visibility, setVisibility] = useState<'public' | 'private' | 'link'>('private');
+  const [commentsOff, setCommentsOff] = useState(false);
+  const [genreOpen, setGenreOpen] = useState(false);
+  const [targetOpen, setTargetOpen] = useState(false);
+  const [chatStyleOpen, setChatStyleOpen] = useState(false);
+  const [modelOpen, setModelOpen] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const addHashtag = () => {
+    const tag = hashtagInput.trim().replace(/^#/, '');
+    if (!tag || hashtags.length >= 10 || hashtags.includes(tag)) return;
+    setHashtags(prev => [...prev, tag]);
+    setHashtagInput('');
+  };
+
+  const selectedModel = MODEL_OPTIONS.find(m => m.value === model);
+
+  return (
+    <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
+      {/* Age notice */}
+      {showAgeNotice && (
+        <div className="flex items-center justify-between gap-3 px-4 py-3 mb-6 bg-gray-900 text-white rounded-xl">
+          <p className="text-sm">민감한 스토리의 경우 제작 시 성인 인증이 필요해요.</p>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button className="px-3 py-1 rounded-lg bg-white text-gray-900 text-xs font-semibold hover:bg-gray-100 transition-colors">
+              성인 인증
+            </button>
+            <button onClick={() => setShowAgeNotice(false)} className="text-white/60 hover:text-white">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 상세 설명 */}
+      <div className="mb-6">
+        <div className="flex items-center gap-1 mb-1">
+          <span className="text-gray-900 font-semibold text-sm">상세 설명</span>
+          <span className="text-brand font-bold text-sm">*</span>
+        </div>
+        <p className="text-gray-400 text-xs mb-2">스토리에 대한 구체적인 설명을 입력해 주세요</p>
+        <div className="relative">
+          <textarea
+            value={detailDesc}
+            onChange={e => setDetailDesc(e.target.value.slice(0, 1000))}
+            placeholder="스토리의 성격이나 서사, 과거 사건 등 상세한 내용을 작성해주세요"
+            rows={5}
+            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
+          />
+          <span className="absolute right-3 bottom-3 text-gray-300 text-xs">{detailDesc.length} / 1000</span>
+        </div>
+      </div>
+
+      {/* 장르 설정 */}
+      <div className="mb-6 relative">
+        <div className="flex items-center gap-1 mb-1">
+          <span className="text-gray-900 font-semibold text-sm">장르 설정</span>
+          <span className="text-brand font-bold text-sm">*</span>
+        </div>
+        <p className="text-gray-400 text-xs mb-2">스토리에 맞는 장르를 선택해 주세요</p>
+        <button
+          onClick={() => { setGenreOpen(p => !p); setTargetOpen(false); setChatStyleOpen(false); setModelOpen(false); }}
+          className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-gray-200 text-sm hover:border-gray-300 transition-colors"
+        >
+          <span className={genre ? 'text-gray-800' : 'text-gray-300'}>{genre || '장르를 선택해주세요'}</span>
+          <ChevronDown className="w-4 h-4 text-gray-400" />
+        </button>
+        {genreOpen && (
+          <div className="absolute top-full mt-1 left-0 z-50 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+            {GENRE_OPTIONS.map(g => (
+              <button key={g} onClick={() => { setGenre(g); setGenreOpen(false); }}
+                className={cn('w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors', genre === g && 'bg-brand/5 text-brand font-semibold')}>
+                {g}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 타겟 설정 */}
+      <div className="mb-6 relative">
+        <div className="flex items-center gap-1 mb-1">
+          <span className="text-gray-900 font-semibold text-sm">타겟 설정</span>
+          <span className="text-brand font-bold text-sm">*</span>
+        </div>
+        <p className="text-gray-400 text-xs mb-2">스토리의 주 소비층을 선택해 주세요.<br />선택된 타겟에 따라 다른 사용자에게 추천돼요.</p>
+        <button
+          onClick={() => { setTargetOpen(p => !p); setGenreOpen(false); setChatStyleOpen(false); setModelOpen(false); }}
+          className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-gray-200 text-sm hover:border-gray-300 transition-colors"
+        >
+          <span className={target ? 'text-gray-800' : 'text-gray-300'}>{target || '타겟을 선택해주세요'}</span>
+          <ChevronDown className="w-4 h-4 text-gray-400" />
+        </button>
+        {targetOpen && (
+          <div className="absolute top-full mt-1 left-0 z-50 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+            {TARGET_OPTIONS.map(t => (
+              <button key={t} onClick={() => { setTarget(t); setTargetOpen(false); }}
+                className={cn('w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors', target === t && 'bg-brand/5 text-brand font-semibold')}>
+                {t}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 대화 형태 설정 */}
+      <div className="mb-6 relative">
+        <div className="flex items-center gap-1 mb-1">
+          <span className="text-gray-900 font-semibold text-sm">대화 형태 설정</span>
+          <span className="text-brand font-bold text-sm">*</span>
+        </div>
+        <p className="text-gray-400 text-xs mb-2">스토리의 대화 형태를 선택해 주세요</p>
+        <button
+          onClick={() => { setChatStyleOpen(p => !p); setGenreOpen(false); setTargetOpen(false); setModelOpen(false); }}
+          className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-gray-200 text-sm hover:border-gray-300 transition-colors"
+        >
+          <span className={chatStyle ? 'text-gray-800' : 'text-gray-300'}>{chatStyle || '대화 형태를 선택해주세요'}</span>
+          <ChevronDown className="w-4 h-4 text-gray-400" />
+        </button>
+        {chatStyleOpen && (
+          <div className="absolute top-full mt-1 left-0 z-50 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+            {CHAT_STYLE_OPTIONS.map(s => (
+              <button key={s} onClick={() => { setChatStyle(s); setChatStyleOpen(false); }}
+                className={cn('w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors', chatStyle === s && 'bg-brand/5 text-brand font-semibold')}>
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 권장 모드 */}
+      <div className="mb-6 relative">
+        <div className="flex items-center gap-1 mb-1">
+          <span className="text-gray-900 font-semibold text-sm">권장 모드</span>
+          <span className="text-brand font-bold text-sm">*</span>
+        </div>
+        <button
+          onClick={() => { setModelOpen(p => !p); setGenreOpen(false); setTargetOpen(false); setChatStyleOpen(false); }}
+          className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-gray-200 text-sm hover:border-gray-300 transition-colors"
+        >
+          <span className="text-gray-800">{selectedModel?.label}</span>
+          <ChevronDown className="w-4 h-4 text-gray-400" />
+        </button>
+        {modelOpen && (
+          <div className="absolute top-full mt-1 left-0 z-50 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+            {MODEL_OPTIONS.map(m => (
+              <button key={m.value} onClick={() => { setModel(m.value); setModelOpen(false); }}
+                className={cn('w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors', model === m.value && 'bg-brand/5 text-brand font-semibold')}>
+                {m.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 해시태그 */}
+      <div className="mb-6">
+        <div className="flex items-center gap-1 mb-1">
+          <span className="text-gray-900 font-semibold text-sm">해시태그</span>
+        </div>
+        <p className="text-gray-400 text-xs mb-2">해시태그를 입력해 주세요. 단어 입력 후 엔터를 눌러주세요. (최대 10개)</p>
+        <div className="relative">
+          <input
+            type="text"
+            value={hashtagInput}
+            onChange={e => setHashtagInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addHashtag(); } }}
+            placeholder="단어 입력 후 엔터"
+            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 pr-14"
+          />
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 text-xs">{hashtags.length} / 10</span>
+        </div>
+        {hashtags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {hashtags.map(tag => (
+              <span key={tag} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 text-xs font-medium">
+                #{tag}
+                <button onClick={() => setHashtags(prev => prev.filter(t => t !== tag))} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 이용자 층 설정 */}
+      <div className="mb-6">
+        <div className="flex items-center gap-1.5 mb-1">
+          <span className="text-gray-900 font-semibold text-sm">이용자 층 설정</span>
+          <span className="text-brand font-bold text-sm">*</span>
+          <button className="text-gray-300 hover:text-gray-500 transition-colors">
+            <HelpCircle className="w-4 h-4" />
+          </button>
+        </div>
+        <p className="text-gray-400 text-xs mb-3">
+          이용자 층은 한번 설정하면 변경할 수 없어요.<br />
+          민감한 스토리는 운영자에 의해 상태가 변경될 수 있어요.
+        </p>
+        <div className="rounded-xl border border-gray-200 overflow-hidden">
+          {[
+            { value: 'all', icon: '✅', label: '미성년자가 대화하기에 적절해요' },
+            { value: 'adult', icon: '🛡️', label: '미성년자가 대화하기에 적절하지 않아요' },
+          ].map(opt => (
+            <label
+              key={opt.value}
+              className={cn(
+                'flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-colors border-b border-gray-100 last:border-0',
+                ageRating === opt.value ? 'bg-gray-50' : 'hover:bg-gray-50'
+              )}
+            >
+              <input
+                type="radio"
+                name="ageRating"
+                value={opt.value}
+                checked={ageRating === opt.value}
+                onChange={() => setAgeRating(opt.value as 'all' | 'adult')}
+                className="accent-brand"
+              />
+              <span className="text-sm">{opt.icon}</span>
+              <span className={cn('text-sm', ageRating === opt.value ? 'text-gray-900 font-medium' : 'text-gray-600')}>
+                {opt.label}
+              </span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* 공개 여부 */}
+      <div className="mb-6">
+        <div className="flex items-center gap-1 mb-3">
+          <span className="text-gray-900 font-semibold text-sm">공개 여부</span>
+          <span className="text-brand font-bold text-sm">*</span>
+        </div>
+        <div className="space-y-2">
+          {[
+            { value: 'public', label: '공개', desc: '누구나 이 스토리를 플레이할 수 있어요' },
+            { value: 'private', label: '비공개', desc: '스토리 제작자만 이 스토리를 플레이할 수 있어요' },
+            { value: 'link', label: '링크 공개', desc: '링크를 가진 사용자만 이 스토리를 플레이할 수 있어요' },
+          ].map(opt => (
+            <label
+              key={opt.value}
+              className={cn(
+                'flex items-start gap-3 px-4 py-3.5 rounded-xl border cursor-pointer transition-all',
+                visibility === opt.value
+                  ? 'border-brand bg-brand/5'
+                  : 'border-gray-200 hover:border-gray-300'
+              )}
+            >
+              <input
+                type="radio"
+                name="visibility"
+                value={opt.value}
+                checked={visibility === opt.value}
+                onChange={() => setVisibility(opt.value as 'public' | 'private' | 'link')}
+                className="accent-brand mt-0.5"
+              />
+              <div>
+                <p className={cn('text-sm font-medium', visibility === opt.value ? 'text-gray-900' : 'text-gray-700')}>
+                  {opt.label}
+                </p>
+                <p className="text-gray-400 text-xs mt-0.5">{opt.desc}</p>
+              </div>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* 댓글 기능 닫기 */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-gray-900 font-semibold text-sm">댓글 기능 닫기</p>
+            <p className="text-gray-400 text-xs mt-0.5">스토리 정보 상단 메뉴(...)에서도 설정을 변경할 수 있어요</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCommentsOff(p => !p)}
+              className={cn(
+                'w-11 h-6 rounded-full relative transition-colors',
+                commentsOff ? 'bg-brand' : 'bg-gray-200'
+              )}
+            >
+              <span className={cn(
+                'absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
+                commentsOff ? 'translate-x-5' : 'translate-x-0.5'
+              )} />
+            </button>
+            <button
+              onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+              className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <ChevronUp className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// REGISTER RIGHT PANEL  (등록 탭 미리보기)
+// ─────────────────────────────────────────────
+function RegisterPreviewPanel({ name }: { name: string }) {
+  const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\. /g, '.').replace('.', '');
+
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto">
+      {/* Story card */}
+      <div className="mx-4 mt-4 rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+        {/* Cover image area */}
+        <div className="relative bg-gradient-to-br from-brand/80 to-brand aspect-[4/3] flex items-center justify-center">
+          <div className="text-5xl select-none">😊</div>
+          <div className="absolute bottom-3 right-3 flex items-center gap-1 bg-black/40 text-white text-xs font-semibold px-2 py-1 rounded-full">
+            <span>👍</span> 1.6K
+          </div>
+        </div>
+
+        {/* Info */}
+        <div className="p-3">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-gray-900 font-bold text-sm">{name || '스토리 이름'}</p>
+            <button className="text-gray-300 hover:text-gray-500">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h.01M12 12h.01M19 12h.01" />
+              </svg>
+            </button>
+          </div>
+          <p className="text-gray-400 text-xs mb-2">@나도이런거만들거야</p>
+          <div className="mb-3">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 text-xs font-medium">
+              <Plus className="w-3 h-3" /> 기본 프롬프트
+            </span>
+          </div>
+          <div className="flex items-center gap-3 text-gray-400 text-xs">
+            <span className="flex items-center gap-1">
+              <MessageSquare className="w-3 h-3" /> 20.2K
+            </span>
+            <span className="flex items-center gap-1">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
+              </svg>
+              10.2K
+            </span>
+            <span className="flex items-center gap-1">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+              </svg>
+              100
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Details */}
+      <div className="px-4 py-3 space-y-4">
+        <div>
+          <p className="text-gray-400 text-xs font-semibold mb-1">상세 설명</p>
+        </div>
+
+        <div>
+          <p className="text-gray-400 text-xs font-semibold mb-2">프롤로그 미리보기</p>
+          <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 text-xs font-medium">
+            기본 설정
+          </div>
+        </div>
+
+        <div>
+          <p className="text-gray-400 text-xs font-semibold mb-1">업데이트 날짜</p>
+          <div className="px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 text-gray-700 text-sm">
+            {today}
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-gray-400 text-xs font-semibold">댓글 1,000건</p>
+            <button className="text-brand text-xs font-semibold">전체보기</button>
+          </div>
+          <div className="flex items-start gap-2">
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-orange-400 to-pink-500 flex-shrink-0 flex items-center justify-center text-white text-xs font-bold">나</div>
+            <div className="flex-1 px-3 py-2 rounded-xl bg-gray-50 border border-gray-100">
+              <p className="text-gray-700 text-xs">나도이런거만들거야님 너무 재밌어요~~!!</p>
+            </div>
+          </div>
+        </div>
+
+        <button className="w-full py-3 rounded-xl bg-gray-200 text-gray-400 text-sm font-semibold">
+          플레이
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// PLACEHOLDER TAB (fallback only)
 // ─────────────────────────────────────────────
 function PlaceholderTab({ label }: { label: string }) {
   return (
@@ -1726,10 +2221,10 @@ export function StoryCreateForm() {
               {activeTab === 'stat-settings' && <StatSettingsTab stats={stats} setStats={setStats} />}
               {activeTab === 'media' && <MediaTab startSettings={startSettingsList} />}
               {activeTab === 'keywords' && <KeywordsTab startSettings={startSettingsList} />}
-              {activeTab === 'ending' && <EndingSettingsTab startSettingName="기본 설정" />}
-              {activeTab === 'register' && (
-                <PlaceholderTab label="등록" />
+              {activeTab === 'ending' && (
+                <EndingSettingsTab onNavigateToStats={() => setActiveTab('stat-settings')} />
               )}
+              {activeTab === 'register' && <RegisterTab name={name} />}
             </motion.div>
           </AnimatePresence>
 
@@ -1766,14 +2261,30 @@ export function StoryCreateForm() {
               <RightPreviewPanel name={name} description={description} />
             </>
           ) : activeTab === 'ending' ? (
-            /* Ending tab: simple preview */
+            /* Ending tab: EPILOGUE preview */
             <div className="flex-1 flex flex-col overflow-hidden">
               <div className="flex-shrink-0 px-4 py-3 border-b border-gray-100">
-                <span className="text-gray-500 text-sm font-medium">미리보기</span>
+                <span className="text-gray-700 font-semibold text-sm">미리보기</span>
               </div>
-              <div className="flex-1 flex items-center justify-center">
-                <p className="text-gray-300 text-sm">엔딩을 추가하면 미리볼 수 있어요</p>
+              <div className="flex-1 min-h-0 overflow-y-auto p-4">
+                <div className="rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+                    <span className="text-gray-400 text-xs font-bold tracking-widest">EPILOGUE</span>
+                  </div>
+                  <div className="px-4 py-4">
+                    <p className="text-gray-900 font-bold text-sm mb-1">EPILOGUE 1</p>
+                    <p className="text-gray-400 text-xs">스토리의 에필로그를 작성해주세요</p>
+                  </div>
+                </div>
               </div>
+            </div>
+          ) : activeTab === 'register' ? (
+            /* Register tab: story card preview */
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="flex-shrink-0 px-4 py-3 border-b border-gray-100">
+                <span className="text-gray-700 font-semibold text-sm">미리보기</span>
+              </div>
+              <RegisterPreviewPanel name={name} />
             </div>
           ) : (
             /* Chat preview for start/stat/other tabs */
