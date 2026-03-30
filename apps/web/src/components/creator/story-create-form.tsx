@@ -130,7 +130,7 @@ function RightPreviewPanel({ name, description }: { name: string; description: s
   ];
 
   return (
-    <div className="h-full overflow-y-auto px-6 py-6">
+    <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6">
       {/* 기존 프로필 */}
       <section className="mb-8">
         <h3 className="text-gray-700 font-semibold text-sm mb-4">기존 프로필</h3>
@@ -210,7 +210,7 @@ function ProfileForm({
   const [showAgeNotice, setShowAgeNotice] = useState(true);
 
   return (
-    <div className="flex-1 overflow-y-auto px-8 py-6">
+    <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
       {/* Random generate */}
       <div className="flex items-center justify-between mb-6 py-3 border-b border-gray-100">
         <span className="text-gray-700 text-sm">프로필을 랜덤으로 생성해 보세요</span>
@@ -392,7 +392,7 @@ function StartSettingsTab() {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto px-8 py-6">
+    <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
       {/* Setting pills */}
       <div className="flex items-center gap-2 mb-6 flex-wrap">
         {settings.map((s) => (
@@ -908,7 +908,7 @@ function StatSettingsTab({ stats, setStats }: {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto px-8 py-6">
+    <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
       <div className="mb-2">
         <h2 className="text-gray-900 font-bold text-base mb-1">스탯 설정</h2>
         <p className="text-gray-400 text-xs">
@@ -952,7 +952,7 @@ function StatSettingsTab({ stats, setStats }: {
 // ─────────────────────────────────────────────
 function PlaceholderTab({ label }: { label: string }) {
   return (
-    <div className="flex-1 overflow-y-auto px-8 py-12 flex items-center justify-center">
+    <div className="flex-1 min-h-0 overflow-y-auto px-8 py-12 flex items-center justify-center">
       <div className="text-center">
         <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-4">
           <span className="text-2xl">⚙️</span>
@@ -971,7 +971,7 @@ function StorySettingsTab() {
   const [examples, setExamples] = useState([{ user: '', assistant: '' }]);
 
   return (
-    <div className="flex-1 overflow-y-auto px-8 py-6">
+    <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
       {/* System prompt */}
       <div className="mb-8">
         <div className="flex items-center gap-1 mb-2">
@@ -1163,17 +1163,17 @@ export function StoryCreateForm() {
       </div>
 
       {/* ── MAIN SPLIT ── */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden min-h-0">
         {/* Left form */}
-        <div className="flex flex-col" style={{ width: '58%', borderRight: '1px solid #f3f4f6' }}>
-          <AnimatePresence mode="wait">
+        <div className="flex flex-col h-full" style={{ width: '58%', borderRight: '1px solid #f3f4f6' }}>
+          <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={activeTab}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className="flex flex-col flex-1 overflow-hidden"
+              initial={{ opacity: 0, x: 8 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -8 }}
+              transition={{ duration: 0.12 }}
+              className="flex flex-col flex-1 min-h-0 overflow-hidden"
             >
               {activeTab === 'profile' && (
                 <ProfileForm
@@ -1217,7 +1217,7 @@ export function StoryCreateForm() {
         </div>
 
         {/* Right preview panel */}
-        <div className="flex flex-col overflow-hidden" style={{ width: '42%' }}>
+        <div className="flex flex-col h-full overflow-hidden" style={{ width: '42%' }}>
           {activeTab === 'profile' || activeTab === 'story-settings' ? (
             <>
               <div className="flex-shrink-0 text-center py-3 border-b border-gray-100">
