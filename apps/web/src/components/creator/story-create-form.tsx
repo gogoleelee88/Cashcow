@@ -1,0 +1,2379 @@
+'use client';
+
+import { useState, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowLeft, HelpCircle, Clock, History, X, Upload, Trash2, Wand2, ChevronUp, ChevronDown, AlertCircle, Megaphone, Plus, GripVertical, MessageSquare } from 'lucide-react';
+import { cn } from '../../lib/utils';
+import { useAuthStore } from '../../stores/auth.store';
+import { useEffect } from 'react';
+
+// ─────────────────────────────────────────────
+// TABS
+// ─────────────────────────────────────────────
+type StoryTab = 'profile' | 'story-settings' | 'start-settings' | 'stat-settings' | 'media' | 'keywords' | 'ending' | 'register';
+
+const TABS: { key: StoryTab; label: string; required?: boolean }[] = [
+  { key: 'profile',        label: '프로필',   required: true },
+  { key: 'story-settings', label: '스토리 설정', required: true },
+  { key: 'start-settings', label: '시작 설정',  required: true },
+  { key: 'stat-settings',  label: '스탯 설정' },
+  { key: 'media',          label: '미디어' },
+  { key: 'keywords',       label: '키워드북' },
+  { key: 'ending',         label: '엔딩 설정' },
+  { key: 'register',       label: '등록',     required: true },
+];
+
+// ─────────────────────────────────────────────
+// IMAGE UPLOAD AREA
+// ─────────────────────────────────────────────
+function ImageUploadArea({
+  label,
+  required,
+  ratio,
+  hint,
+  size,
+}: {
+  label: string;
+  required?: boolean;
+  ratio: string;
+  hint: string;
+  size: string;
+}) {
+  const [preview, setPreview] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setPreview(url);
+  };
+
+  return (
+    <div className="mb-8">
+      <div className="flex items-center gap-1 mb-2">
+        <span className="text-gray-900 font-semibold text-sm">{label}</span>
+        {required && <span className="text-brand text-sm font-bold">*</span>}
+      </div>
+
+      <div className="flex items-start gap-4">
+        {/* Preview box */}
+        <div
+          className={cn(
+            'flex-shrink-0 rounded-xl overflow-hidden border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center cursor-pointer hover:border-gray-300 transition-colors',
+            ratio === '1:1' ? 'w-20 h-20' : 'w-20 h-[calc(20px*4/3)] min-h-[107px]'
+          )}
+          onClick={() => inputRef.current?.click()}
+        >
+          {preview ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={preview} alt="preview" className="w-full h-full object-cover" />
+          ) : (
+            <div className="flex flex-col items-center gap-1 text-gray-300">
+              {/* Mountain/image placeholder icon */}
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+          )}
+          <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+        </div>
+
+        {/* Info + buttons */}
+        <div className="flex-1">
+          <p className="text-gray-500 text-xs leading-relaxed mb-3">{hint}<br />부적절한 이미지는 업로드가 제한됩니다.<br />{size}</p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              업로드
+            </button>
+            {preview && (
+              <button
+                type="button"
+                onClick={() => { setPreview(null); if (inputRef.current) inputRef.current.value = ''; }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                삭제
+              </button>
+            )}
+            <button
+              type="button"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
+            >
+              <Wand2 className="w-3.5 h-3.5" />
+              생성
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// RIGHT PANEL — 기존/업데이트 프로필 미리보기
+// ─────────────────────────────────────────────
+function RightPreviewPanel({ name, description }: { name: string; description: string }) {
+  const MOCK_EXISTING = [
+    { title: '작품 이름', desc: '어떤 스토리인지 설명할 수 있는 간단한 소개를 입력해 주세요', author: '나도이런거만들거야', cover: null },
+    { title: '로판 악녀가 되다', desc: '깨어나보니 최악의 악녀에게 빙의되었다', author: '강형', cover: null, hasImage: true },
+  ];
+  const MOCK_UPDATED = [
+    { title: '', cover: null },
+    { title: '명부를 쥔 SSS급 헌터', cover: null, hasImage: true },
+  ];
+
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6">
+      {/* 기존 프로필 */}
+      <section className="mb-8">
+        <h3 className="text-gray-700 font-semibold text-sm mb-4">기존 프로필</h3>
+        <div className="grid grid-cols-2 gap-3">
+          {MOCK_EXISTING.map((item, i) => (
+            <div key={i} className="rounded-xl overflow-hidden border border-gray-100">
+              <div className={cn(
+                'aspect-square bg-gray-100 flex items-center justify-center',
+                item.hasImage && 'bg-gradient-to-br from-gray-700 via-purple-900 to-pink-800'
+              )}>
+                {item.hasImage ? (
+                  <div className="w-full h-full flex items-end p-3">
+                    <span className="text-white text-xs font-bold leading-tight">{item.title}</span>
+                  </div>
+                ) : (
+                  <div className="text-gray-300">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                )}
+              </div>
+              <div className="p-2.5">
+                <p className="text-gray-700 font-medium text-xs truncate mb-0.5">{item.title || '작품 이름'}</p>
+                {item.desc && <p className="text-gray-400 text-[10px] line-clamp-2 leading-relaxed">{item.desc}</p>}
+                {item.author && <p className="text-gray-400 text-[10px] mt-1">@ {item.author}</p>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* 업데이트 이후 변경 프로필 */}
+      <section>
+        <h3 className="text-gray-700 font-semibold text-sm mb-4">업데이트 이후 변경 프로필</h3>
+        <div className="grid grid-cols-2 gap-3">
+          {MOCK_UPDATED.map((item, i) => (
+            <div key={i} className="rounded-xl overflow-hidden border border-gray-100">
+              <div className={cn(
+                'aspect-[2/3] bg-gray-100 flex items-center justify-center',
+                item.hasImage && 'bg-gradient-to-b from-gray-900 via-gray-800 to-black'
+              )}>
+                {item.hasImage ? (
+                  <div className="w-full h-full flex items-center justify-center p-3">
+                    <span className="text-white text-xs font-bold text-center leading-tight">{item.title}</span>
+                  </div>
+                ) : (
+                  <div className="text-gray-300">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// PROFILE FORM (첫 번째 탭)
+// ─────────────────────────────────────────────
+function ProfileForm({
+  name, setName,
+  description, setDescription,
+  onNext,
+}: {
+  name: string;
+  setName: (v: string) => void;
+  description: string;
+  setDescription: (v: string) => void;
+  onNext: () => void;
+}) {
+  const [showAgeNotice, setShowAgeNotice] = useState(true);
+
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
+      {/* Random generate */}
+      <div className="flex items-center justify-between mb-6 py-3 border-b border-gray-100">
+        <span className="text-gray-700 text-sm">프로필을 랜덤으로 생성해 보세요</span>
+        <button
+          type="button"
+          className="px-3 py-1.5 rounded-lg border border-brand text-brand text-xs font-semibold hover:bg-brand/5 transition-colors"
+        >
+          랜덤 생성
+        </button>
+      </div>
+
+      {/* Age notice */}
+      <AnimatePresence>
+        {showAgeNotice && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="flex items-center justify-between gap-3 px-4 py-3 mb-6 bg-gray-900 text-white rounded-xl overflow-hidden"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <Megaphone className="w-4 h-4 flex-shrink-0" />
+              <p className="text-sm truncate">민감한 스토리의 경우 제작 시 성인 인증이 필요해요.</p>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                type="button"
+                className="px-3 py-1 rounded-lg bg-white text-gray-900 text-xs font-semibold hover:bg-gray-100 transition-colors"
+              >
+                성인 인증
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAgeNotice(false)}
+                className="text-white/60 hover:text-white transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Square image */}
+      <ImageUploadArea
+        label="정방형 이미지(1:1)"
+        required
+        ratio="1:1"
+        hint="이미지를 필수로 등록해주세요."
+        size="5MB 이하 (1,080 x 1,080px)"
+      />
+
+      {/* Vertical image */}
+      <ImageUploadArea
+        label="세로형 이미지(2:3)"
+        ratio="2:3"
+        hint="필수는 아니지만 미리 등록하면 더 예쁘게 노출돼요."
+        size="5MB 이하 (1,080 x 1,620px)"
+      />
+
+      {/* Update notice */}
+      <div className="flex items-start gap-2.5 px-4 py-3.5 mb-8 bg-gray-50 rounded-xl border border-gray-100">
+        <Megaphone className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-gray-600 text-xs font-medium mb-1">26년 4월 중 업데이트 예정</p>
+          <p className="text-gray-400 text-xs leading-relaxed">
+            스토리 작품 썸네일이 <span className="text-brand font-semibold">세로형(2:3)</span>으로 바뀌어요.<br />
+            여백 없이 꽉 찬 화면으로 보여주고 싶다면 세로형 이미지를 추천해요.
+          </p>
+        </div>
+      </div>
+
+      {/* Name */}
+      <div className="mb-6">
+        <div className="flex items-center gap-1 mb-2">
+          <label className="text-gray-900 font-semibold text-sm">이름</label>
+          <span className="text-brand font-bold text-sm">*</span>
+        </div>
+        <p className="text-gray-400 text-xs mb-2">2~30자 이내로 입력해 주세요 (특수문자, 이모지 제외)</p>
+        <div className="relative">
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value.slice(0, 30))}
+            placeholder="스토리의 이름을 입력해 주세요"
+            className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-900 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 transition-colors pr-16"
+          />
+          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-300 text-xs">
+            {name.length} / 30
+          </span>
+        </div>
+      </div>
+
+      {/* Description */}
+      <div className="mb-6">
+        <div className="flex items-center gap-1 mb-2">
+          <label className="text-gray-900 font-semibold text-sm">한 줄 소개</label>
+          <span className="text-brand font-bold text-sm">*</span>
+        </div>
+        <div className="relative">
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value.slice(0, 30))}
+            placeholder="어떤 스토리인지 설명할 수 있는 간단한 소개를 입력해 주세요"
+            rows={3}
+            className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-900 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 transition-colors resize-none"
+          />
+          <span className="absolute right-4 bottom-3 text-gray-300 text-xs">
+            {description.length} / 30
+          </span>
+        </div>
+      </div>
+
+      {/* Content warning */}
+      <div className="flex items-start gap-2 text-gray-400 text-xs mb-12">
+        <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+        <p>폭력, 혐오, 성적묘사 등의 표현 및 이미지는 규정에 따라 영구적으로 제재될 수 있어요</p>
+      </div>
+
+      {/* Scroll to top button */}
+      <button
+        type="button"
+        onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+        className="fixed bottom-20 right-8 w-10 h-10 rounded-full bg-white border border-gray-200 shadow-md flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors z-10"
+      >
+        <ChevronUp className="w-5 h-5" />
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// START SETTINGS TAB  (시작 설정)
+// ─────────────────────────────────────────────
+interface StartSetting {
+  id: string;
+  name: string;
+  prologue: string;
+  situation: string;
+  playGuide: string;
+  suggestedReplies: string[];
+}
+
+function StartSettingsTab() {
+  const [settings, setSettings] = useState<StartSetting[]>([
+    { id: '1', name: '기본 설정', prologue: '', situation: '', playGuide: '', suggestedReplies: [] },
+  ]);
+  const [activeSettingId, setActiveSettingId] = useState('1');
+  const [advancedOpen, setAdvancedOpen] = useState(true);
+
+  const activeSetting = settings.find(s => s.id === activeSettingId) ?? settings[0];
+
+  const update = (field: keyof StartSetting, value: string | string[]) => {
+    setSettings(prev => prev.map(s => s.id === activeSettingId ? { ...s, [field]: value } : s));
+  };
+
+  const addSetting = () => {
+    const newId = String(Date.now());
+    setSettings(prev => [...prev, {
+      id: newId, name: `설정 ${prev.length + 1}`,
+      prologue: '', situation: '', playGuide: '', suggestedReplies: [],
+    }]);
+    setActiveSettingId(newId);
+  };
+
+  const addReply = () => {
+    if (activeSetting.suggestedReplies.length >= 3) return;
+    update('suggestedReplies', [...activeSetting.suggestedReplies, '']);
+  };
+
+  const updateReply = (idx: number, val: string) => {
+    const arr = [...activeSetting.suggestedReplies];
+    arr[idx] = val;
+    update('suggestedReplies', arr);
+  };
+
+  const removeReply = (idx: number) => {
+    update('suggestedReplies', activeSetting.suggestedReplies.filter((_, i) => i !== idx));
+  };
+
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
+      {/* Setting pills */}
+      <div className="flex items-center gap-2 mb-6 flex-wrap">
+        {settings.map((s) => (
+          <button
+            key={s.id}
+            onClick={() => setActiveSettingId(s.id)}
+            className={cn(
+              'px-3 py-1.5 rounded-full text-sm font-semibold transition-all',
+              s.id === activeSettingId
+                ? 'bg-gray-900 text-white'
+                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            )}
+          >
+            {s.id === settings[0].id ? `기본 ${s.name}` : s.name}
+          </button>
+        ))}
+        {settings.length < 5 && (
+          <button
+            onClick={addSetting}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-full text-sm text-gray-400 hover:bg-gray-100 transition-colors border border-dashed border-gray-300"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            설정 추가
+          </button>
+        )}
+      </div>
+
+      {/* 프롤로그 */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-1">
+            <span className="text-gray-900 font-semibold text-sm">프롤로그</span>
+            <span className="text-brand font-bold text-sm">*</span>
+          </div>
+          <button className="px-3 py-1 rounded-lg border border-brand/40 text-brand text-xs font-semibold hover:bg-brand/5 transition-colors">
+            자동 생성
+          </button>
+        </div>
+        <p className="text-gray-400 text-xs mb-2">스토리의 프롤로그를 작성해 주세요</p>
+        <div className="relative">
+          <textarea
+            value={activeSetting.prologue}
+            onChange={e => update('prologue', e.target.value.slice(0, 1000))}
+            placeholder="자동 생성 기능을 활용하면 AI가 프롬프트를 참고하여 초안을 작성해 드려요"
+            rows={5}
+            className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
+          />
+          <span className="absolute right-4 bottom-3 text-gray-300 text-xs">{activeSetting.prologue.length} / 1000</span>
+        </div>
+      </div>
+
+      {/* 시작설정 이름 */}
+      <div className="mb-6">
+        <div className="flex items-center gap-1 mb-1">
+          <span className="text-gray-900 font-semibold text-sm">시작설정 이름</span>
+          <span className="text-brand font-bold text-sm">*</span>
+        </div>
+        <p className="text-gray-400 text-xs mb-2">시작설정의 이름을 작성해 주세요</p>
+        <div className="relative">
+          <input
+            type="text"
+            value={activeSetting.name}
+            onChange={e => update('name', e.target.value.slice(0, 12))}
+            className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-800 text-sm focus:outline-none focus:border-gray-400 pr-16"
+          />
+          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-300 text-xs">
+            {activeSetting.name.length} / 12
+          </span>
+        </div>
+      </div>
+
+      {/* 시작 상황 */}
+      <div className="mb-6">
+        <div className="flex items-center gap-1 mb-1">
+          <span className="text-gray-900 font-semibold text-sm">시작 상황</span>
+        </div>
+        <p className="text-gray-400 text-xs mb-2">스토리 전개를 위한 시작 상황 정보를 입력해 주세요</p>
+        <div className="relative">
+          <textarea
+            value={activeSetting.situation}
+            onChange={e => update('situation', e.target.value.slice(0, 1000))}
+            placeholder="사용자의 역할, 등장인물과의 관계, 이야기가 시작되는 세계관 등"
+            rows={5}
+            className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
+          />
+          <span className="absolute right-4 bottom-3 text-gray-300 text-xs">{activeSetting.situation.length} / 1000</span>
+        </div>
+      </div>
+
+      {/* 고급 설정 toggle */}
+      <button
+        onClick={() => setAdvancedOpen(p => !p)}
+        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-gray-200 text-gray-500 text-sm hover:bg-gray-50 transition-colors mb-6"
+      >
+        고급 설정
+        <ChevronUp className={cn('w-4 h-4 transition-transform', !advancedOpen && 'rotate-180')} />
+      </button>
+
+      <AnimatePresence>
+        {advancedOpen && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+          >
+            {/* 플레이 가이드 */}
+            <div className="mb-6">
+              <div className="flex items-center gap-1 mb-1">
+                <span className="text-gray-900 font-semibold text-sm">플레이 가이드</span>
+              </div>
+              <p className="text-gray-400 text-xs mb-2">
+                AI가 기억하지 않는, 사용자에게만 보이는 가이드 메시지를 추가해 플레이 방법을 안내해 보세요.
+              </p>
+              <div className="relative">
+                <textarea
+                  value={activeSetting.playGuide}
+                  onChange={e => update('playGuide', e.target.value.slice(0, 500))}
+                  placeholder="사용자를 위한 가이드를 작성해주세요"
+                  rows={4}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
+                />
+                <span className="absolute right-4 bottom-3 text-gray-300 text-xs">{activeSetting.playGuide.length} / 500</span>
+              </div>
+            </div>
+
+            {/* 추천 답변 */}
+            <div className="mb-8">
+              <div className="flex items-center gap-1 mb-1">
+                <span className="text-gray-900 font-semibold text-sm">추천 답변</span>
+              </div>
+              <p className="text-gray-400 text-xs mb-3">사용자들에게 첫 답변을 최대 3개 추천해 보세요.</p>
+              {activeSetting.suggestedReplies.map((reply, idx) => (
+                <div key={idx} className="flex items-center gap-2 mb-2">
+                  <input
+                    type="text"
+                    value={reply}
+                    onChange={e => updateReply(idx, e.target.value)}
+                    placeholder={`추천 답변 ${idx + 1}`}
+                    className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm focus:outline-none focus:border-gray-400"
+                  />
+                  <button onClick={() => removeReply(idx)} className="text-gray-300 hover:text-gray-500 transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+              {activeSetting.suggestedReplies.length < 3 && (
+                <button
+                  onClick={addReply}
+                  className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-dashed border-gray-300 text-gray-400 text-sm hover:bg-gray-50 hover:text-gray-600 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  추천 답변 추가
+                </button>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Scroll to top */}
+      <button
+        type="button"
+        onClick={() => document.querySelector('.overflow-y-auto')?.scrollTo({ top: 0, behavior: 'smooth' })}
+        className="fixed bottom-20 right-[44%] w-10 h-10 rounded-full bg-white border border-gray-200 shadow-md flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors z-10"
+      >
+        <ChevronUp className="w-5 h-5" />
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// STAT SETTINGS TAB  (스탯 설정)
+// ─────────────────────────────────────────────
+const STAT_ICONS = ['❤️', '⚔️', '🧠', '💪', '🏃', '💰', '⭐', '🔮', '🛡️', '🍀'];
+const STAT_COLORS = [
+  { label: '빨강', value: '#E63325' },
+  { label: '파랑', value: '#3B82F6' },
+  { label: '초록', value: '#10B981' },
+  { label: '노랑', value: '#F59E0B' },
+  { label: '보라', value: '#8B5CF6' },
+  { label: '분홍', value: '#EC4899' },
+  { label: '하늘', value: '#06B6D4' },
+  { label: '회색', value: '#6B7280' },
+];
+
+interface StatItem {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  minValue: string;
+  maxValue: string;
+  defaultValue: string;
+  unit: string;
+  description: string;
+  collapsed: boolean;
+  levels: { id: string; label: string; min: string; max: string }[];
+}
+
+function StatCard({
+  stat,
+  index,
+  onUpdate,
+  onRemove,
+}: {
+  stat: StatItem;
+  index: number;
+  onUpdate: (id: string, field: keyof StatItem, value: unknown) => void;
+  onRemove: (id: string) => void;
+}) {
+  const [iconOpen, setIconOpen] = useState(false);
+  const [colorOpen, setColorOpen] = useState(false);
+
+  const selectedColor = STAT_COLORS.find(c => c.value === stat.color);
+
+  const addLevel = () => {
+    onUpdate(stat.id, 'levels', [
+      ...stat.levels,
+      { id: String(Date.now()), label: '', min: '', max: '' },
+    ]);
+  };
+
+  const updateLevel = (levelId: string, field: string, val: string) => {
+    onUpdate(stat.id, 'levels', stat.levels.map(l =>
+      l.id === levelId ? { ...l, [field]: val } : l
+    ));
+  };
+
+  const removeLevel = (levelId: string) => {
+    onUpdate(stat.id, 'levels', stat.levels.filter(l => l.id !== levelId));
+  };
+
+  return (
+    <div className="mb-3 rounded-xl border border-gray-200 overflow-hidden">
+      {/* Stat header */}
+      <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-100">
+        <div className="flex items-center gap-2">
+          <GripVertical className="w-4 h-4 text-gray-300 cursor-grab" />
+          <span className="text-gray-700 font-semibold text-sm">스탯 {index + 1}</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => onRemove(stat.id)}
+            className="p-1.5 rounded-lg hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => onUpdate(stat.id, 'collapsed', !stat.collapsed)}
+            className="p-1.5 rounded-lg hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <ChevronUp className={cn('w-3.5 h-3.5 transition-transform', stat.collapsed && 'rotate-180')} />
+          </button>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {!stat.collapsed && (
+          <motion.div
+            initial={{ height: 0 }}
+            animate={{ height: 'auto' }}
+            exit={{ height: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="p-4 space-y-4">
+              {/* 스탯 이름 */}
+              <div>
+                <div className="flex items-center gap-1 mb-1.5">
+                  <span className="text-gray-700 font-semibold text-sm">스탯 이름</span>
+                  <span className="text-brand text-sm font-bold">*</span>
+                </div>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={stat.name}
+                    onChange={e => onUpdate(stat.id, 'name', e.target.value.slice(0, 10))}
+                    placeholder="예) 호감도, 체력, 전투력, 지능 등"
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 pr-14"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 text-xs">{stat.name.length} / 10</span>
+                </div>
+              </div>
+
+              {/* 아이콘 + 색상 */}
+              <div className="grid grid-cols-2 gap-3">
+                {/* 아이콘 */}
+                <div>
+                  <div className="flex items-center gap-1 mb-1.5">
+                    <span className="text-gray-700 font-semibold text-sm">아이콘</span>
+                    <span className="text-brand text-sm font-bold">*</span>
+                  </div>
+                  <div className="relative">
+                    <button
+                      onClick={() => { setIconOpen(p => !p); setColorOpen(false); }}
+                      className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-gray-200 text-sm hover:border-gray-300 transition-colors"
+                    >
+                      <span className={stat.icon ? 'text-base' : 'text-gray-300'}>
+                        {stat.icon || '선택'}
+                      </span>
+                      <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+                    </button>
+                    <AnimatePresence>
+                      {iconOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -4 }}
+                          className="absolute top-full mt-1 left-0 z-50 bg-white border border-gray-200 rounded-xl shadow-lg p-2 grid grid-cols-5 gap-1 w-48"
+                        >
+                          {STAT_ICONS.map(icon => (
+                            <button
+                              key={icon}
+                              onClick={() => { onUpdate(stat.id, 'icon', icon); setIconOpen(false); }}
+                              className={cn(
+                                'w-8 h-8 flex items-center justify-center rounded-lg text-base hover:bg-gray-100 transition-colors',
+                                stat.icon === icon && 'bg-brand/10'
+                              )}
+                            >
+                              {icon}
+                            </button>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </div>
+
+                {/* 색상 */}
+                <div>
+                  <div className="flex items-center gap-1 mb-1.5">
+                    <span className="text-gray-700 font-semibold text-sm">색상</span>
+                    <span className="text-brand text-sm font-bold">*</span>
+                  </div>
+                  <div className="relative">
+                    <button
+                      onClick={() => { setColorOpen(p => !p); setIconOpen(false); }}
+                      className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-gray-200 text-sm hover:border-gray-300 transition-colors"
+                    >
+                      <div className="flex items-center gap-2">
+                        {stat.color ? (
+                          <div className="w-4 h-4 rounded-full border border-gray-200" style={{ backgroundColor: stat.color }} />
+                        ) : null}
+                        <span className={stat.color ? 'text-gray-700' : 'text-gray-300'}>
+                          {selectedColor?.label || '선택'}
+                        </span>
+                      </div>
+                      <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+                    </button>
+                    <AnimatePresence>
+                      {colorOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -4 }}
+                          className="absolute top-full mt-1 left-0 z-50 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden w-36"
+                        >
+                          {STAT_COLORS.map(c => (
+                            <button
+                              key={c.value}
+                              onClick={() => { onUpdate(stat.id, 'color', c.value); setColorOpen(false); }}
+                              className={cn(
+                                'w-full flex items-center gap-2.5 px-3 py-2 text-sm hover:bg-gray-50 transition-colors',
+                                stat.color === c.value && 'bg-gray-50 font-semibold'
+                              )}
+                            >
+                              <div className="w-3.5 h-3.5 rounded-full border border-gray-200 flex-shrink-0" style={{ backgroundColor: c.value }} />
+                              {c.label}
+                            </button>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </div>
+              </div>
+
+              {/* 최소/최대/기본값 */}
+              <div>
+                <div className="flex items-center gap-1 mb-1.5">
+                  <span className="text-gray-700 font-semibold text-sm">최소 / 최대 / 기본값 설정</span>
+                  <span className="text-brand text-sm font-bold">*</span>
+                </div>
+                <p className="text-gray-400 text-xs mb-2">기본값은 최소~최댓값의 범위 내에 있어야 해요 (입력 가능 수치: -99,999 ~ 99,999)</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['minValue', 'maxValue', 'defaultValue'] as const).map((field, i) => (
+                    <input
+                      key={field}
+                      type="number"
+                      value={stat[field]}
+                      onChange={e => onUpdate(stat.id, field, e.target.value)}
+                      placeholder={['최솟값', '최댓값', '기본값'][i]}
+                      className="px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 text-center"
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* 스탯 단위 */}
+              <div>
+                <div className="flex items-center gap-1 mb-1.5">
+                  <span className="text-gray-700 font-semibold text-sm">스탯 단위 설정</span>
+                </div>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={stat.unit}
+                    onChange={e => onUpdate(stat.id, 'unit', e.target.value.slice(0, 3))}
+                    placeholder="예) 억원, 순위, 개, %"
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 pr-14"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 text-xs">{stat.unit.length} / 3</span>
+                </div>
+              </div>
+
+              {/* 스탯 설명 */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-1">
+                    <span className="text-gray-700 font-semibold text-sm">스탯 설명</span>
+                    <span className="text-brand text-sm font-bold">*</span>
+                  </div>
+                  <button className="px-2.5 py-1 rounded-lg border border-brand/40 text-brand text-xs font-semibold hover:bg-brand/5 transition-colors">
+                    자동생성
+                  </button>
+                </div>
+                <p className="text-gray-400 text-xs mb-2">
+                  AI가 스탯을 이해하고 스토리에 적용할 수 있도록 스탯에 대한 설명을 작성해주세요
+                </p>
+                <div className="relative">
+                  <textarea
+                    value={stat.description}
+                    onChange={e => onUpdate(stat.id, 'description', e.target.value.slice(0, 500))}
+                    placeholder={`예) {user}가 간식을 주면 증가한다.\n{char}가 혼자 있으면 감소한다.\n{user}가 스킨십을 해주면 증가한다.`}
+                    rows={4}
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
+                  />
+                  <span className="absolute right-3 bottom-3 text-gray-300 text-xs">{stat.description.length} / 500</span>
+                </div>
+              </div>
+
+              {/* 스탯 레벨 설정 */}
+              <div>
+                <div className="flex items-center gap-1 mb-1">
+                  <span className="text-gray-700 font-semibold text-sm">스탯 레벨 설정</span>
+                </div>
+                <p className="text-gray-400 text-xs mb-3">레벨에 따라 다채롭게 전개되는 작품을 만들어 보세요</p>
+                {stat.levels.map((level, li) => (
+                  <div key={level.id} className="flex items-center gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={level.label}
+                      onChange={e => updateLevel(level.id, 'label', e.target.value)}
+                      placeholder={`레벨 ${li + 1} 이름`}
+                      className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400"
+                    />
+                    <input
+                      type="number"
+                      value={level.min}
+                      onChange={e => updateLevel(level.id, 'min', e.target.value)}
+                      placeholder="최솟값"
+                      className="w-20 px-2 py-2 rounded-xl border border-gray-200 text-gray-800 text-sm text-center focus:outline-none focus:border-gray-400"
+                    />
+                    <input
+                      type="number"
+                      value={level.max}
+                      onChange={e => updateLevel(level.id, 'max', e.target.value)}
+                      placeholder="최댓값"
+                      className="w-20 px-2 py-2 rounded-xl border border-gray-200 text-gray-800 text-sm text-center focus:outline-none focus:border-gray-400"
+                    />
+                    <button onClick={() => removeLevel(level.id)} className="text-gray-300 hover:text-gray-500 transition-colors flex-shrink-0">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  onClick={addLevel}
+                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-dashed border-gray-300 text-gray-400 text-sm hover:bg-gray-50 hover:text-gray-600 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  레벨 추가
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function StatSettingsTab({ stats, setStats }: {
+  stats: StatItem[];
+  setStats: React.Dispatch<React.SetStateAction<StatItem[]>>;
+}) {
+  const addStat = () => {
+    if (stats.length >= 7) return;
+    setStats(prev => [...prev, {
+      id: String(Date.now()),
+      name: '', icon: '', color: '#E63325',
+      minValue: '0', maxValue: '100', defaultValue: '50',
+      unit: '', description: '', collapsed: false, levels: [],
+    }]);
+  };
+
+  const updateStat = (id: string, field: keyof StatItem, value: unknown) => {
+    setStats(prev => prev.map(s => s.id === id ? { ...s, [field]: value } : s));
+  };
+
+  const removeStat = (id: string) => {
+    setStats(prev => prev.filter(s => s.id !== id));
+  };
+
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
+      <div className="mb-2">
+        <h2 className="text-gray-900 font-bold text-base mb-1">스탯 설정</h2>
+        <p className="text-gray-400 text-xs">
+          스탯을 설정하여 스토리에 생동감을 불어넣어 보세요. 시작 설정별로 최대 7개까지 추가할 수 있어요.
+        </p>
+      </div>
+
+      {/* Active setting pill */}
+      <div className="flex items-center gap-2 mt-4 mb-5">
+        <button className="px-3 py-1.5 rounded-full text-sm font-semibold bg-gray-900 text-white">
+          기본 설정 {stats.length}
+        </button>
+      </div>
+
+      {/* Stat cards */}
+      {stats.map((stat, i) => (
+        <StatCard
+          key={stat.id}
+          stat={stat}
+          index={i}
+          onUpdate={updateStat}
+          onRemove={removeStat}
+        />
+      ))}
+
+      {/* Add stat button */}
+      <button
+        onClick={addStat}
+        disabled={stats.length >= 7}
+        className="w-full flex items-center justify-center gap-1.5 py-3 rounded-xl border border-dashed border-gray-300 text-gray-400 text-sm hover:bg-gray-50 hover:text-gray-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed mt-2 mb-8"
+      >
+        <Plus className="w-4 h-4" />
+        스탯 추가
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// MEDIA TAB  (미디어)
+// ─────────────────────────────────────────────
+interface MediaImage {
+  id: string;
+  settingId: string;
+  url: string;
+  name: string;
+}
+
+function MediaTab({ startSettings }: { startSettings: { id: string; name: string }[] }) {
+  const [images, setImages] = useState<MediaImage[]>([]);
+  const [activeFilter, setActiveFilter] = useState<string>('all');
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setImages(prev => [...prev, {
+      id: String(Date.now()),
+      settingId: activeFilter === 'all' ? (startSettings[0]?.id ?? '1') : activeFilter,
+      url,
+      name: file.name,
+    }]);
+    setUploadModalOpen(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const filteredImages = activeFilter === 'all'
+    ? images
+    : images.filter(img => img.settingId === activeFilter);
+
+  const countFor = (id: string) => images.filter(img => img.settingId === id).length;
+
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-2">
+        <div>
+          <div className="flex items-center gap-1.5 mb-1">
+            <h2 className="text-gray-900 font-bold text-base">상황 이미지</h2>
+            <button className="text-gray-300 hover:text-gray-500 transition-colors">
+              <HelpCircle className="w-4 h-4" />
+            </button>
+          </div>
+          <p className="text-gray-400 text-xs">
+            상황에 어울리는 인물, 배경 등의 이미지를 등록해 보세요 (시작 설정별로 최대 50개)
+          </p>
+        </div>
+        <button className="flex-shrink-0 px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors">
+          이미지 생성
+        </button>
+      </div>
+
+      {/* Filter pills */}
+      <div className="flex items-center gap-2 mt-4 mb-5 flex-wrap">
+        <button
+          onClick={() => setActiveFilter('all')}
+          className={cn(
+            'px-3 py-1.5 rounded-full text-sm font-semibold transition-all',
+            activeFilter === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+          )}
+        >
+          전체 {images.length}
+        </button>
+        {startSettings.map(s => (
+          <button
+            key={s.id}
+            onClick={() => setActiveFilter(s.id)}
+            className={cn(
+              'px-3 py-1.5 rounded-full text-sm font-semibold transition-all',
+              activeFilter === s.id ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            )}
+          >
+            기본 {s.name} {countFor(s.id)}
+          </button>
+        ))}
+      </div>
+
+      {/* Image grid */}
+      {filteredImages.length > 0 && (
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          {filteredImages.map(img => (
+            <div key={img.id} className="relative group rounded-xl overflow-hidden aspect-video bg-gray-100">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
+              <button
+                onClick={() => setImages(prev => prev.filter(i => i.id !== img.id))}
+                className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/50 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add button */}
+      <button
+        onClick={() => setUploadModalOpen(true)}
+        className="w-full flex items-center justify-center gap-1.5 py-3 rounded-xl border border-dashed border-gray-300 text-gray-400 text-sm hover:bg-gray-50 hover:text-gray-600 transition-colors"
+      >
+        <Plus className="w-4 h-4" />
+        상황 이미지 추가
+      </button>
+
+      {/* Upload modal */}
+      <AnimatePresence>
+        {uploadModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
+            onClick={(e) => { if (e.target === e.currentTarget) setUploadModalOpen(false); }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              transition={{ duration: 0.15 }}
+              className="bg-white rounded-2xl shadow-xl w-[480px] p-6"
+            >
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="text-gray-900 font-bold text-base">이미지 업로드</h3>
+                <button
+                  onClick={() => setUploadModalOpen(false)}
+                  className="w-7 h-7 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-400 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                {/* 기기에서 가져오기 */}
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex flex-col items-start gap-2 p-4 rounded-xl border border-gray-200 hover:border-blue-300 hover:bg-blue-50/50 transition-all text-left"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                    <Upload className="w-4 h-4 text-blue-500" />
+                  </div>
+                  <div>
+                    <p className="text-gray-900 font-semibold text-sm mb-1">기기에서 가져오기</p>
+                    <p className="text-gray-400 text-xs leading-relaxed">
+                      내 기기에 있는 이미지를 선택해요,<br />최대 5MB까지 업로드할 수 있어요.
+                    </p>
+                  </div>
+                </button>
+
+                {/* 라이브러리에서 가져오기 */}
+                <button
+                  className="flex flex-col items-start gap-2 p-4 rounded-xl border border-gray-200 hover:border-amber-300 hover:bg-amber-50/50 transition-all text-left"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
+                    <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-gray-900 font-semibold text-sm mb-1">라이브러리에서 가져오기</p>
+                    <p className="text-gray-400 text-xs leading-relaxed">
+                      내 라이브러리에 저장된<br />생성 이미지를 업로드할 수 있어요.
+                    </p>
+                  </div>
+                </button>
+              </div>
+
+              <button
+                onClick={() => setUploadModalOpen(false)}
+                className="w-full py-3 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors"
+              >
+                취소
+              </button>
+              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// KEYWORD BOOK TAB  (키워드북)
+// ─────────────────────────────────────────────
+interface KeywordNote {
+  id: string;
+  settingId: string;
+  title: string;
+  keywords: string;
+  content: string;
+  expanded: boolean;
+  editing: boolean;
+}
+
+function KeywordsTab({ startSettings }: { startSettings: { id: string; name: string }[] }) {
+  const [notes, setNotes] = useState<KeywordNote[]>([]);
+  const [activeFilter, setActiveFilter] = useState<string>('all');
+
+  const addNote = () => {
+    const settingId = activeFilter === 'all' ? (startSettings[0]?.id ?? '1') : activeFilter;
+    setNotes(prev => [...prev, {
+      id: String(Date.now()),
+      settingId,
+      title: `키워드 노트 ${prev.length + 1}`,
+      keywords: '',
+      content: '',
+      expanded: false,
+      editing: false,
+    }]);
+  };
+
+  const updateNote = (id: string, field: keyof KeywordNote, value: unknown) => {
+    setNotes(prev => prev.map(n => n.id === id ? { ...n, [field]: value } : n));
+  };
+
+  const removeNote = (id: string) => {
+    setNotes(prev => prev.filter(n => n.id !== id));
+  };
+
+  const filteredNotes = activeFilter === 'all'
+    ? notes
+    : notes.filter(n => n.settingId === activeFilter);
+
+  const countFor = (id: string) => notes.filter(n => n.settingId === id).length;
+
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
+      {/* Header */}
+      <div className="flex items-center gap-1.5 mb-1">
+        <h2 className="text-gray-900 font-bold text-base">키워드북</h2>
+        <button className="text-gray-300 hover:text-gray-500 transition-colors">
+          <HelpCircle className="w-4 h-4" />
+        </button>
+      </div>
+      <p className="text-gray-400 text-xs leading-relaxed mb-4">
+        스토리의 세계관이나 추가 정보를 저장해두는 기능이에요.<br />
+        스토리나 사용자 메시지가 특정 키워드를 포함하면, 키워드북에 저장된 정보를 자동으로 불러와요.
+      </p>
+
+      {/* Filter pills */}
+      <div className="flex items-center gap-2 mb-5 flex-wrap">
+        <button
+          onClick={() => setActiveFilter('all')}
+          className={cn(
+            'px-3 py-1.5 rounded-full text-sm font-semibold transition-all',
+            activeFilter === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+          )}
+        >
+          전체 {notes.length}
+        </button>
+        {startSettings.map(s => (
+          <button
+            key={s.id}
+            onClick={() => setActiveFilter(s.id)}
+            className={cn(
+              'px-3 py-1.5 rounded-full text-sm font-semibold transition-all',
+              activeFilter === s.id ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            )}
+          >
+            기본 {s.name} {countFor(s.id)}
+          </button>
+        ))}
+      </div>
+
+      {/* Note list */}
+      {filteredNotes.map((note, i) => (
+        <div key={note.id} className="mb-2 rounded-xl border border-gray-200 overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 bg-white">
+            <GripVertical className="w-4 h-4 text-gray-300 cursor-grab flex-shrink-0" />
+            {note.editing ? (
+              <input
+                autoFocus
+                value={note.title}
+                onChange={e => updateNote(note.id, 'title', e.target.value)}
+                onBlur={() => updateNote(note.id, 'editing', false)}
+                onKeyDown={e => e.key === 'Enter' && updateNote(note.id, 'editing', false)}
+                className="flex-1 text-gray-900 font-semibold text-sm bg-transparent outline-none border-b border-gray-300 pb-0.5"
+              />
+            ) : (
+              <span className="flex-1 text-gray-900 font-semibold text-sm">{note.title}</span>
+            )}
+            <div className="flex items-center gap-0.5">
+              <button
+                onClick={() => updateNote(note.id, 'editing', true)}
+                className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
+              <button
+                onClick={() => removeNote(note.id)}
+                className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => updateNote(note.id, 'expanded', !note.expanded)}
+                className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                <ChevronDown className={cn('w-3.5 h-3.5 transition-transform', note.expanded && 'rotate-180')} />
+              </button>
+            </div>
+          </div>
+
+          <AnimatePresence>
+            {note.expanded && (
+              <motion.div
+                initial={{ height: 0 }}
+                animate={{ height: 'auto' }}
+                exit={{ height: 0 }}
+                className="overflow-hidden border-t border-gray-100"
+              >
+                <div className="p-4 space-y-3">
+                  <div>
+                    <label className="text-gray-700 font-semibold text-xs mb-1.5 block">
+                      트리거 키워드 <span className="text-brand">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={note.keywords}
+                      onChange={e => updateNote(note.id, 'keywords', e.target.value)}
+                      placeholder="쉼표로 구분하여 입력하세요 (예: 마법, 검술, 용)"
+                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-gray-700 font-semibold text-xs mb-1.5 block">
+                      내용 <span className="text-brand">*</span>
+                    </label>
+                    <div className="relative">
+                      <textarea
+                        value={note.content}
+                        onChange={e => updateNote(note.id, 'content', e.target.value.slice(0, 1000))}
+                        placeholder="키워드가 감지되면 AI에게 전달할 추가 정보를 입력하세요"
+                        rows={4}
+                        className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
+                      />
+                      <span className="absolute right-3 bottom-3 text-gray-300 text-xs">{note.content.length} / 1000</span>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      ))}
+
+      {/* Add note button */}
+      <button
+        onClick={addNote}
+        className="w-full flex items-center justify-center gap-1.5 py-3 rounded-xl border border-dashed border-gray-300 text-gray-400 text-sm hover:bg-gray-50 hover:text-gray-600 transition-colors"
+      >
+        <Plus className="w-4 h-4" />
+        키워드 노트 추가
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// ENDING SETTINGS TAB  (엔딩 설정)
+// ─────────────────────────────────────────────
+interface EndingItem {
+  id: string;
+  name: string;
+  condition: string;
+  epilogue: string;
+  hint: string;
+  collapsed: boolean;
+}
+
+function EndingSettingsTab({
+  onNavigateToStats,
+}: {
+  onNavigateToStats: () => void;
+}) {
+  const [endings, setEndings] = useState<EndingItem[]>([]);
+  const [minTurns, setMinTurns] = useState('30');
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const addEnding = () => {
+    if (endings.length >= 10) return;
+    setEndings(prev => [...prev, {
+      id: String(Date.now()),
+      name: '',
+      condition: '',
+      epilogue: '',
+      hint: '',
+      collapsed: false,
+    }]);
+  };
+
+  const updateEnding = (id: string, field: keyof EndingItem, value: unknown) => {
+    setEndings(prev => prev.map(e => e.id === id ? { ...e, [field]: value } : e));
+  };
+
+  const removeEnding = (id: string) => {
+    setEndings(prev => prev.filter(e => e.id !== id));
+  };
+
+  return (
+    <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
+      {/* Header */}
+      <h2 className="text-gray-900 font-bold text-base mb-1">엔딩 설정</h2>
+      <p className="text-gray-400 text-xs leading-relaxed mb-4">
+        각 시작 설정에 따른 엔딩을 설정해보세요. 가장 먼저 조건에 도달한 엔딩 하나만 제공됩니다
+        <br />(시작설정 별 최대 10개)
+      </p>
+
+      {/* Setting pill */}
+      <div className="flex items-center gap-2 mb-5">
+        <button className="px-3 py-1.5 rounded-full text-sm font-semibold bg-gray-900 text-white">
+          기본 설정 {endings.length}
+        </button>
+      </div>
+
+      {/* 엔딩 제공 시점 */}
+      <div className="mb-5">
+        <div className="flex items-center gap-1 mb-1">
+          <span className="text-gray-900 font-semibold text-sm">엔딩 제공 시점</span>
+          <span className="text-brand font-bold text-sm">*</span>
+        </div>
+        <p className="text-gray-400 text-xs mb-2">해당 시점 이후 AI가 상황을 판단해 엔딩을 보여드려요(최소 10턴 이상)</p>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            value={minTurns}
+            min={10}
+            onChange={e => setMinTurns(e.target.value)}
+            className="w-32 px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm focus:outline-none focus:border-gray-400 text-center"
+          />
+          <span className="text-gray-500 text-sm">턴 이상</span>
+        </div>
+      </div>
+
+      {/* Ending cards */}
+      {endings.map((ending, i) => (
+        <div key={ending.id} className="mb-3 rounded-xl border border-gray-200 overflow-hidden bg-white">
+          {/* Card header */}
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
+            <GripVertical className="w-4 h-4 text-gray-300 cursor-grab flex-shrink-0" />
+            <span className="flex-1 text-gray-900 font-semibold text-sm">엔딩 {i + 1}</span>
+            <button
+              onClick={() => removeEnding(ending.id)}
+              className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => updateEnding(ending.id, 'collapsed', !ending.collapsed)}
+              className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            >
+              <ChevronUp className={cn('w-3.5 h-3.5 transition-transform', ending.collapsed && 'rotate-180')} />
+            </button>
+          </div>
+
+          <AnimatePresence>
+            {!ending.collapsed && (
+              <motion.div
+                initial={{ height: 0 }}
+                animate={{ height: 'auto' }}
+                exit={{ height: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="p-4 space-y-5">
+                  {/* 엔딩 이름 */}
+                  <div>
+                    <div className="flex items-center gap-1 mb-1.5">
+                      <span className="text-gray-900 font-semibold text-sm">엔딩 이름</span>
+                      <span className="text-brand font-bold text-sm">*</span>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={ending.name}
+                        onChange={e => updateEnding(ending.id, 'name', e.target.value.slice(0, 20))}
+                        placeholder="예) 미뉴의 해피엔딩"
+                        className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 pr-14"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 text-xs">
+                        {ending.name.length} / 20
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 엔딩 기본 조건 */}
+                  <div>
+                    <div className="flex items-center gap-1 mb-1">
+                      <span className="text-gray-900 font-semibold text-sm">엔딩 기본 조건</span>
+                      <span className="text-brand font-bold text-sm">*</span>
+                    </div>
+                    <p className="text-gray-400 text-xs mb-2">엔딩을 판단하기 위한 상세한 조건을 묘사해 주세요</p>
+                    <div className="relative">
+                      <textarea
+                        value={ending.condition}
+                        onChange={e => updateEnding(ending.id, 'condition', e.target.value.slice(0, 500))}
+                        placeholder={`예) 미뉴가 가족을 찾는 과정에서 구체적인 단서(냄새, 장소, 목소리 등)를 발견했고 미뉴와 가족이 서로를 확실히 인지하여 미뉴가 안전함·안도감을 느끼고 있음 또는 가족과 이미 재회하여 좋은 시간을 보내고 있음`}
+                        rows={5}
+                        className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
+                      />
+                      <span className="absolute right-3 bottom-3 text-gray-300 text-xs">
+                        {ending.condition.length} / 500
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 에필로그 */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1">
+                        <span className="text-gray-900 font-semibold text-sm">에필로그</span>
+                        <span className="text-brand font-bold text-sm">*</span>
+                      </div>
+                      <button className="px-2.5 py-1 rounded-lg border border-brand/40 text-brand text-xs font-semibold hover:bg-brand/5 transition-colors">
+                        자동생성
+                      </button>
+                    </div>
+                    <p className="text-gray-400 text-xs mb-2">입력한 내용을 예시로 AI가 에필로그를 상황에 더 맞게 작성해요</p>
+                    <div className="relative">
+                      <textarea
+                        value={ending.epilogue}
+                        onChange={e => updateEnding(ending.id, 'epilogue', e.target.value.slice(0, 1000))}
+                        placeholder="자동 생성 기능을 활용하면 AI가 프롬프트를 참고하여 초안을 작성해 드려요"
+                        rows={5}
+                        className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
+                      />
+                      <span className="absolute right-3 bottom-3 text-gray-300 text-xs">
+                        {ending.epilogue.length} / 1000
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 엔딩 세부 조건 */}
+                  <div>
+                    <div className="flex items-center gap-1 mb-1">
+                      <span className="text-gray-900 font-semibold text-sm">엔딩 세부 조건</span>
+                    </div>
+                    <p className="text-gray-400 text-xs leading-relaxed mb-3">
+                      ※ 1개의 조건만 충족돼도 엔딩이 제공됩니다 (최대 7개)<br />
+                      ※ 턴 수 조건과 관련 없이 해당 조건이 충족되면 엔딩이 노출됩니다
+                    </p>
+                    <button
+                      onClick={onNavigateToStats}
+                      className="flex items-center gap-1 text-gray-700 text-sm font-semibold hover:text-gray-900 transition-colors"
+                    >
+                      스탯 추가하기
+                      <ChevronDown className="w-3.5 h-3.5 -rotate-90" />
+                    </button>
+                  </div>
+
+                  {/* 엔딩 힌트 */}
+                  <div>
+                    <div className="flex items-center gap-1 mb-1">
+                      <span className="text-gray-900 font-semibold text-sm">엔딩 힌트</span>
+                    </div>
+                    <p className="text-gray-400 text-xs mb-2">유저에게 보여질 엔딩 힌트를 작성해 주세요</p>
+                    <div className="relative">
+                      <textarea
+                        value={ending.hint}
+                        onChange={e => updateEnding(ending.id, 'hint', e.target.value.slice(0, 20))}
+                        placeholder="예) 어디서 익숙한 소리가 들린다냥..!"
+                        rows={2}
+                        className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
+                      />
+                      <span className="absolute right-3 bottom-3 text-gray-300 text-xs">
+                        {ending.hint.length} / 20
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      ))}
+
+      {/* Scroll to top */}
+      {endings.length > 0 && (
+        <div className="flex justify-end mb-2">
+          <button
+            onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+            className="w-9 h-9 rounded-full border border-gray-200 bg-white shadow-sm flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <ChevronUp className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Add ending button */}
+      <button
+        onClick={addEnding}
+        disabled={endings.length >= 10}
+        className="w-full flex items-center justify-center gap-1.5 py-3 rounded-xl border border-dashed border-gray-300 text-gray-400 text-sm hover:bg-gray-50 hover:text-gray-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed mb-8"
+      >
+        <Plus className="w-4 h-4" />
+        엔딩 추가
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// REGISTER TAB  (등록)
+// ─────────────────────────────────────────────
+const GENRE_OPTIONS = ['판타지', '로맨스', '액션', '미스터리', '공포', 'SF', '일상', '역사', '무협', '스포츠'];
+const TARGET_OPTIONS = ['전체', '남성향', '여성향'];
+const CHAT_STYLE_OPTIONS = ['1인칭', '3인칭', '혼합'];
+const MODEL_OPTIONS = [
+  { label: '🍇 슈퍼챗 2.0 (기본)', value: 'super_chat_20' },
+  { label: '🍇 슈퍼챗 2.5', value: 'super_chat_25' },
+  { label: '🍇 슈퍼챗 1.5', value: 'super_chat_15' },
+  { label: '⚡ 하이퍼챗', value: 'hyper_chat' },
+  { label: '💬 프로챗 2.5', value: 'pro_chat_25' },
+  { label: '💬 프로챗 1.0', value: 'pro_chat_10' },
+  { label: '📨 파워챗', value: 'power_chat' },
+  { label: '💭 일반챗', value: 'normal_chat' },
+];
+
+function RegisterTab({ name, coverUrl }: { name: string; coverUrl?: string }) {
+  const [showAgeNotice, setShowAgeNotice] = useState(true);
+  const [detailDesc, setDetailDesc] = useState('');
+  const [genre, setGenre] = useState('');
+  const [target, setTarget] = useState('');
+  const [chatStyle, setChatStyle] = useState('');
+  const [model, setModel] = useState('super_chat_20');
+  const [hashtags, setHashtags] = useState<string[]>([]);
+  const [hashtagInput, setHashtagInput] = useState('');
+  const [ageRating, setAgeRating] = useState<'all' | 'adult'>('all');
+  const [visibility, setVisibility] = useState<'public' | 'private' | 'link'>('private');
+  const [commentsOff, setCommentsOff] = useState(false);
+  const [genreOpen, setGenreOpen] = useState(false);
+  const [targetOpen, setTargetOpen] = useState(false);
+  const [chatStyleOpen, setChatStyleOpen] = useState(false);
+  const [modelOpen, setModelOpen] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const addHashtag = () => {
+    const tag = hashtagInput.trim().replace(/^#/, '');
+    if (!tag || hashtags.length >= 10 || hashtags.includes(tag)) return;
+    setHashtags(prev => [...prev, tag]);
+    setHashtagInput('');
+  };
+
+  const selectedModel = MODEL_OPTIONS.find(m => m.value === model);
+
+  return (
+    <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
+      {/* Age notice */}
+      {showAgeNotice && (
+        <div className="flex items-center justify-between gap-3 px-4 py-3 mb-6 bg-gray-900 text-white rounded-xl">
+          <p className="text-sm">민감한 스토리의 경우 제작 시 성인 인증이 필요해요.</p>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button className="px-3 py-1 rounded-lg bg-white text-gray-900 text-xs font-semibold hover:bg-gray-100 transition-colors">
+              성인 인증
+            </button>
+            <button onClick={() => setShowAgeNotice(false)} className="text-white/60 hover:text-white">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 상세 설명 */}
+      <div className="mb-6">
+        <div className="flex items-center gap-1 mb-1">
+          <span className="text-gray-900 font-semibold text-sm">상세 설명</span>
+          <span className="text-brand font-bold text-sm">*</span>
+        </div>
+        <p className="text-gray-400 text-xs mb-2">스토리에 대한 구체적인 설명을 입력해 주세요</p>
+        <div className="relative">
+          <textarea
+            value={detailDesc}
+            onChange={e => setDetailDesc(e.target.value.slice(0, 1000))}
+            placeholder="스토리의 성격이나 서사, 과거 사건 등 상세한 내용을 작성해주세요"
+            rows={5}
+            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
+          />
+          <span className="absolute right-3 bottom-3 text-gray-300 text-xs">{detailDesc.length} / 1000</span>
+        </div>
+      </div>
+
+      {/* 장르 설정 */}
+      <div className="mb-6 relative">
+        <div className="flex items-center gap-1 mb-1">
+          <span className="text-gray-900 font-semibold text-sm">장르 설정</span>
+          <span className="text-brand font-bold text-sm">*</span>
+        </div>
+        <p className="text-gray-400 text-xs mb-2">스토리에 맞는 장르를 선택해 주세요</p>
+        <button
+          onClick={() => { setGenreOpen(p => !p); setTargetOpen(false); setChatStyleOpen(false); setModelOpen(false); }}
+          className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-gray-200 text-sm hover:border-gray-300 transition-colors"
+        >
+          <span className={genre ? 'text-gray-800' : 'text-gray-300'}>{genre || '장르를 선택해주세요'}</span>
+          <ChevronDown className="w-4 h-4 text-gray-400" />
+        </button>
+        {genreOpen && (
+          <div className="absolute top-full mt-1 left-0 z-50 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+            {GENRE_OPTIONS.map(g => (
+              <button key={g} onClick={() => { setGenre(g); setGenreOpen(false); }}
+                className={cn('w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors', genre === g && 'bg-brand/5 text-brand font-semibold')}>
+                {g}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 타겟 설정 */}
+      <div className="mb-6 relative">
+        <div className="flex items-center gap-1 mb-1">
+          <span className="text-gray-900 font-semibold text-sm">타겟 설정</span>
+          <span className="text-brand font-bold text-sm">*</span>
+        </div>
+        <p className="text-gray-400 text-xs mb-2">스토리의 주 소비층을 선택해 주세요.<br />선택된 타겟에 따라 다른 사용자에게 추천돼요.</p>
+        <button
+          onClick={() => { setTargetOpen(p => !p); setGenreOpen(false); setChatStyleOpen(false); setModelOpen(false); }}
+          className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-gray-200 text-sm hover:border-gray-300 transition-colors"
+        >
+          <span className={target ? 'text-gray-800' : 'text-gray-300'}>{target || '타겟을 선택해주세요'}</span>
+          <ChevronDown className="w-4 h-4 text-gray-400" />
+        </button>
+        {targetOpen && (
+          <div className="absolute top-full mt-1 left-0 z-50 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+            {TARGET_OPTIONS.map(t => (
+              <button key={t} onClick={() => { setTarget(t); setTargetOpen(false); }}
+                className={cn('w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors', target === t && 'bg-brand/5 text-brand font-semibold')}>
+                {t}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 대화 형태 설정 */}
+      <div className="mb-6 relative">
+        <div className="flex items-center gap-1 mb-1">
+          <span className="text-gray-900 font-semibold text-sm">대화 형태 설정</span>
+          <span className="text-brand font-bold text-sm">*</span>
+        </div>
+        <p className="text-gray-400 text-xs mb-2">스토리의 대화 형태를 선택해 주세요</p>
+        <button
+          onClick={() => { setChatStyleOpen(p => !p); setGenreOpen(false); setTargetOpen(false); setModelOpen(false); }}
+          className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-gray-200 text-sm hover:border-gray-300 transition-colors"
+        >
+          <span className={chatStyle ? 'text-gray-800' : 'text-gray-300'}>{chatStyle || '대화 형태를 선택해주세요'}</span>
+          <ChevronDown className="w-4 h-4 text-gray-400" />
+        </button>
+        {chatStyleOpen && (
+          <div className="absolute top-full mt-1 left-0 z-50 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+            {CHAT_STYLE_OPTIONS.map(s => (
+              <button key={s} onClick={() => { setChatStyle(s); setChatStyleOpen(false); }}
+                className={cn('w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors', chatStyle === s && 'bg-brand/5 text-brand font-semibold')}>
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 권장 모드 */}
+      <div className="mb-6 relative">
+        <div className="flex items-center gap-1 mb-1">
+          <span className="text-gray-900 font-semibold text-sm">권장 모드</span>
+          <span className="text-brand font-bold text-sm">*</span>
+        </div>
+        <button
+          onClick={() => { setModelOpen(p => !p); setGenreOpen(false); setTargetOpen(false); setChatStyleOpen(false); }}
+          className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-gray-200 text-sm hover:border-gray-300 transition-colors"
+        >
+          <span className="text-gray-800">{selectedModel?.label}</span>
+          <ChevronDown className="w-4 h-4 text-gray-400" />
+        </button>
+        {modelOpen && (
+          <div className="absolute top-full mt-1 left-0 z-50 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+            {MODEL_OPTIONS.map(m => (
+              <button key={m.value} onClick={() => { setModel(m.value); setModelOpen(false); }}
+                className={cn('w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors', model === m.value && 'bg-brand/5 text-brand font-semibold')}>
+                {m.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 해시태그 */}
+      <div className="mb-6">
+        <div className="flex items-center gap-1 mb-1">
+          <span className="text-gray-900 font-semibold text-sm">해시태그</span>
+        </div>
+        <p className="text-gray-400 text-xs mb-2">해시태그를 입력해 주세요. 단어 입력 후 엔터를 눌러주세요. (최대 10개)</p>
+        <div className="relative">
+          <input
+            type="text"
+            value={hashtagInput}
+            onChange={e => setHashtagInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addHashtag(); } }}
+            placeholder="단어 입력 후 엔터"
+            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 pr-14"
+          />
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 text-xs">{hashtags.length} / 10</span>
+        </div>
+        {hashtags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {hashtags.map(tag => (
+              <span key={tag} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 text-xs font-medium">
+                #{tag}
+                <button onClick={() => setHashtags(prev => prev.filter(t => t !== tag))} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 이용자 층 설정 */}
+      <div className="mb-6">
+        <div className="flex items-center gap-1.5 mb-1">
+          <span className="text-gray-900 font-semibold text-sm">이용자 층 설정</span>
+          <span className="text-brand font-bold text-sm">*</span>
+          <button className="text-gray-300 hover:text-gray-500 transition-colors">
+            <HelpCircle className="w-4 h-4" />
+          </button>
+        </div>
+        <p className="text-gray-400 text-xs mb-3">
+          이용자 층은 한번 설정하면 변경할 수 없어요.<br />
+          민감한 스토리는 운영자에 의해 상태가 변경될 수 있어요.
+        </p>
+        <div className="rounded-xl border border-gray-200 overflow-hidden">
+          {[
+            { value: 'all', icon: '✅', label: '미성년자가 대화하기에 적절해요' },
+            { value: 'adult', icon: '🛡️', label: '미성년자가 대화하기에 적절하지 않아요' },
+          ].map(opt => (
+            <label
+              key={opt.value}
+              className={cn(
+                'flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-colors border-b border-gray-100 last:border-0',
+                ageRating === opt.value ? 'bg-gray-50' : 'hover:bg-gray-50'
+              )}
+            >
+              <input
+                type="radio"
+                name="ageRating"
+                value={opt.value}
+                checked={ageRating === opt.value}
+                onChange={() => setAgeRating(opt.value as 'all' | 'adult')}
+                className="accent-brand"
+              />
+              <span className="text-sm">{opt.icon}</span>
+              <span className={cn('text-sm', ageRating === opt.value ? 'text-gray-900 font-medium' : 'text-gray-600')}>
+                {opt.label}
+              </span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* 공개 여부 */}
+      <div className="mb-6">
+        <div className="flex items-center gap-1 mb-3">
+          <span className="text-gray-900 font-semibold text-sm">공개 여부</span>
+          <span className="text-brand font-bold text-sm">*</span>
+        </div>
+        <div className="space-y-2">
+          {[
+            { value: 'public', label: '공개', desc: '누구나 이 스토리를 플레이할 수 있어요' },
+            { value: 'private', label: '비공개', desc: '스토리 제작자만 이 스토리를 플레이할 수 있어요' },
+            { value: 'link', label: '링크 공개', desc: '링크를 가진 사용자만 이 스토리를 플레이할 수 있어요' },
+          ].map(opt => (
+            <label
+              key={opt.value}
+              className={cn(
+                'flex items-start gap-3 px-4 py-3.5 rounded-xl border cursor-pointer transition-all',
+                visibility === opt.value
+                  ? 'border-brand bg-brand/5'
+                  : 'border-gray-200 hover:border-gray-300'
+              )}
+            >
+              <input
+                type="radio"
+                name="visibility"
+                value={opt.value}
+                checked={visibility === opt.value}
+                onChange={() => setVisibility(opt.value as 'public' | 'private' | 'link')}
+                className="accent-brand mt-0.5"
+              />
+              <div>
+                <p className={cn('text-sm font-medium', visibility === opt.value ? 'text-gray-900' : 'text-gray-700')}>
+                  {opt.label}
+                </p>
+                <p className="text-gray-400 text-xs mt-0.5">{opt.desc}</p>
+              </div>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* 댓글 기능 닫기 */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-gray-900 font-semibold text-sm">댓글 기능 닫기</p>
+            <p className="text-gray-400 text-xs mt-0.5">스토리 정보 상단 메뉴(...)에서도 설정을 변경할 수 있어요</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCommentsOff(p => !p)}
+              className={cn(
+                'w-11 h-6 rounded-full relative transition-colors',
+                commentsOff ? 'bg-brand' : 'bg-gray-200'
+              )}
+            >
+              <span className={cn(
+                'absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
+                commentsOff ? 'translate-x-5' : 'translate-x-0.5'
+              )} />
+            </button>
+            <button
+              onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+              className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <ChevronUp className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// REGISTER RIGHT PANEL  (등록 탭 미리보기)
+// ─────────────────────────────────────────────
+function RegisterPreviewPanel({ name }: { name: string }) {
+  const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\. /g, '.').replace('.', '');
+
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto">
+      {/* Story card */}
+      <div className="mx-4 mt-4 rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+        {/* Cover image area */}
+        <div className="relative bg-gradient-to-br from-brand/80 to-brand aspect-[4/3] flex items-center justify-center">
+          <div className="text-5xl select-none">😊</div>
+          <div className="absolute bottom-3 right-3 flex items-center gap-1 bg-black/40 text-white text-xs font-semibold px-2 py-1 rounded-full">
+            <span>👍</span> 1.6K
+          </div>
+        </div>
+
+        {/* Info */}
+        <div className="p-3">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-gray-900 font-bold text-sm">{name || '스토리 이름'}</p>
+            <button className="text-gray-300 hover:text-gray-500">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h.01M12 12h.01M19 12h.01" />
+              </svg>
+            </button>
+          </div>
+          <p className="text-gray-400 text-xs mb-2">@나도이런거만들거야</p>
+          <div className="mb-3">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 text-xs font-medium">
+              <Plus className="w-3 h-3" /> 기본 프롬프트
+            </span>
+          </div>
+          <div className="flex items-center gap-3 text-gray-400 text-xs">
+            <span className="flex items-center gap-1">
+              <MessageSquare className="w-3 h-3" /> 20.2K
+            </span>
+            <span className="flex items-center gap-1">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
+              </svg>
+              10.2K
+            </span>
+            <span className="flex items-center gap-1">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+              </svg>
+              100
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Details */}
+      <div className="px-4 py-3 space-y-4">
+        <div>
+          <p className="text-gray-400 text-xs font-semibold mb-1">상세 설명</p>
+        </div>
+
+        <div>
+          <p className="text-gray-400 text-xs font-semibold mb-2">프롤로그 미리보기</p>
+          <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 text-xs font-medium">
+            기본 설정
+          </div>
+        </div>
+
+        <div>
+          <p className="text-gray-400 text-xs font-semibold mb-1">업데이트 날짜</p>
+          <div className="px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 text-gray-700 text-sm">
+            {today}
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-gray-400 text-xs font-semibold">댓글 1,000건</p>
+            <button className="text-brand text-xs font-semibold">전체보기</button>
+          </div>
+          <div className="flex items-start gap-2">
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-orange-400 to-pink-500 flex-shrink-0 flex items-center justify-center text-white text-xs font-bold">나</div>
+            <div className="flex-1 px-3 py-2 rounded-xl bg-gray-50 border border-gray-100">
+              <p className="text-gray-700 text-xs">나도이런거만들거야님 너무 재밌어요~~!!</p>
+            </div>
+          </div>
+        </div>
+
+        <button className="w-full py-3 rounded-xl bg-gray-200 text-gray-400 text-sm font-semibold">
+          플레이
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// PLACEHOLDER TAB (fallback only)
+// ─────────────────────────────────────────────
+function PlaceholderTab({ label }: { label: string }) {
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto px-8 py-12 flex items-center justify-center">
+      <div className="text-center">
+        <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-4">
+          <span className="text-2xl">⚙️</span>
+        </div>
+        <p className="text-gray-500 text-sm">{label} 설정을 완료하세요</p>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// STORY SETTINGS TAB (simplified example)
+// ─────────────────────────────────────────────
+function StorySettingsTab() {
+  const [systemPrompt, setSystemPrompt] = useState('');
+  const [examples, setExamples] = useState([{ user: '', assistant: '' }]);
+
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
+      {/* System prompt */}
+      <div className="mb-8">
+        <div className="flex items-center gap-1 mb-2">
+          <label className="text-gray-900 font-semibold text-sm">스토리 설정</label>
+          <span className="text-brand font-bold text-sm">*</span>
+        </div>
+        <p className="text-gray-400 text-xs mb-2">스토리의 세계관, 배경, 규칙을 상세히 설명해주세요</p>
+        <div className="relative">
+          <textarea
+            value={systemPrompt}
+            onChange={(e) => setSystemPrompt(e.target.value.slice(0, 3000))}
+            placeholder="스토리 설정을 입력해 주세요"
+            rows={8}
+            className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-900 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 transition-colors resize-none"
+          />
+          <span className="absolute right-4 bottom-3 text-gray-300 text-xs">{systemPrompt.length} / 3000</span>
+        </div>
+      </div>
+
+      {/* Advanced settings toggle */}
+      <button
+        type="button"
+        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-gray-200 text-gray-500 text-sm hover:bg-gray-50 transition-colors mb-8"
+      >
+        고급 설정
+        <ChevronUp className="w-4 h-4 rotate-180" />
+      </button>
+
+      {/* Examples */}
+      <div className="mb-4">
+        <div className="flex items-start justify-between mb-2">
+          <div>
+            <p className="text-gray-900 font-semibold text-sm mb-0.5">전개 예시</p>
+            <p className="text-gray-400 text-xs">전개 예시를 입력해서 스토리의 완성도를 높여보세요.<br />예시는 3개까지 등록할 수 있어요.</p>
+          </div>
+          <div className="flex gap-2">
+            <button type="button" className="px-3 py-1.5 rounded-lg border border-brand/40 text-brand text-xs font-medium hover:bg-brand/5 transition-colors">
+              전체 자동 생성
+            </button>
+            {examples.length < 3 && (
+              <button
+                type="button"
+                onClick={() => setExamples(p => [...p, { user: '', assistant: '' }])}
+                className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
+              >
+                예시 추가
+              </button>
+            )}
+          </div>
+        </div>
+
+        {examples.map((ex, i) => (
+          <div key={i} className="mb-4 rounded-xl border border-gray-200 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+              <span className="text-gray-700 font-semibold text-sm">예시 {i + 1}</span>
+              <button
+                type="button"
+                onClick={() => setExamples(p => p.filter((_, j) => j !== i))}
+                className="text-gray-400 hover:text-gray-600 text-sm transition-colors"
+              >
+                삭제
+              </button>
+            </div>
+            <div className="p-3 space-y-3">
+              {/* User example */}
+              <div>
+                <div className="flex items-center gap-2 mb-2 text-gray-500 text-xs">
+                  <div className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center text-[10px]">👤</div>
+                  나도이런거만들거야
+                </div>
+                <textarea
+                  value={ex.user}
+                  onChange={(e) => setExamples(p => p.map((item, j) => j === i ? { ...item, user: e.target.value.slice(0, 500) } : item))}
+                  placeholder="입력 예시"
+                  rows={3}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
+                />
+                <p className="text-gray-300 text-xs text-right mt-1">{ex.user.length} / 500</p>
+              </div>
+              {/* Divider with robot icon */}
+              <div className="flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-base">🤖</div>
+              </div>
+              {/* Assistant example */}
+              <div>
+                <textarea
+                  value={ex.assistant}
+                  onChange={(e) => setExamples(p => p.map((item, j) => j === i ? { ...item, assistant: e.target.value.slice(0, 500) } : item))}
+                  placeholder="출력 예시"
+                  rows={3}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
+                />
+                <p className="text-gray-300 text-xs text-right mt-1">{ex.assistant.length} / 500</p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// MAIN STORY CREATE FORM
+// ─────────────────────────────────────────────
+export function StoryCreateForm() {
+  const { isAuthenticated, isLoading: authLoading } = useAuthStore();
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState<StoryTab>('profile');
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [stats, setStats] = useState<StatItem[]>([]);
+  // Shared start-settings list for media/keywords/ending tabs
+  const [startSettingsList] = useState([{ id: '1', name: '기본 설정' }]);
+
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) router.push('/login?redirect=/creator/story/new');
+  }, [isAuthenticated, authLoading, router]);
+
+  const currentTabIndex = TABS.findIndex(t => t.key === activeTab);
+
+  const handleNext = () => {
+    const nextTab = TABS[currentTabIndex + 1];
+    if (nextTab) setActiveTab(nextTab.key);
+  };
+
+  const handlePrev = () => {
+    const prevTab = TABS[currentTabIndex - 1];
+    if (prevTab) setActiveTab(prevTab.key);
+  };
+
+  return (
+    <div className="h-screen flex flex-col bg-white overflow-hidden">
+      {/* ── TOP BAR ── */}
+      <div className="flex-shrink-0 flex items-center justify-between px-6 py-3 border-b border-gray-100 bg-white z-20">
+        {/* Left: back + title */}
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => router.push('/creator')}
+            className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-500 transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div className="flex items-center gap-2">
+            <h1 className="text-gray-900 font-bold text-base">스토리 만들기</h1>
+            <button type="button" className="text-gray-300 hover:text-gray-500 transition-colors">
+              <HelpCircle className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Right: save buttons */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors"
+          >
+            <Clock className="w-4 h-4" />
+            임시저장
+          </button>
+          <button type="button" className="p-2 rounded-xl border border-gray-200 text-gray-400 hover:bg-gray-50 transition-colors">
+            <History className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            className="px-5 py-2 rounded-xl bg-gray-900 text-white text-sm font-bold hover:bg-gray-800 transition-colors"
+          >
+            등록하기
+          </button>
+        </div>
+      </div>
+
+      {/* ── TAB NAV ── */}
+      <div className="flex-shrink-0 flex items-center gap-0 px-6 border-b border-gray-100 overflow-x-auto scrollbar-hide bg-white">
+        {TABS.map(({ key, label, required }) => (
+          <button
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className={cn(
+              'flex items-center gap-0.5 px-4 py-3.5 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-all',
+              activeTab === key
+                ? 'border-brand text-gray-900 font-semibold'
+                : 'border-transparent text-gray-400 hover:text-gray-600'
+            )}
+          >
+            {label}
+            {required && <span className="text-brand text-xs font-bold">*</span>}
+          </button>
+        ))}
+      </div>
+
+      {/* ── MAIN SPLIT ── */}
+      <div className="flex-1 flex overflow-hidden min-h-0">
+        {/* Left form */}
+        <div className="flex flex-col h-full" style={{ width: '58%', borderRight: '1px solid #f3f4f6' }}>
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, x: 8 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -8 }}
+              transition={{ duration: 0.12 }}
+              className="flex flex-col flex-1 min-h-0 overflow-hidden"
+            >
+              {activeTab === 'profile' && (
+                <ProfileForm
+                  name={name}
+                  setName={setName}
+                  description={description}
+                  setDescription={setDescription}
+                  onNext={handleNext}
+                />
+              )}
+              {activeTab === 'story-settings' && <StorySettingsTab />}
+              {activeTab === 'start-settings' && <StartSettingsTab />}
+              {activeTab === 'stat-settings' && <StatSettingsTab stats={stats} setStats={setStats} />}
+              {activeTab === 'media' && <MediaTab startSettings={startSettingsList} />}
+              {activeTab === 'keywords' && <KeywordsTab startSettings={startSettingsList} />}
+              {activeTab === 'ending' && (
+                <EndingSettingsTab onNavigateToStats={() => setActiveTab('stat-settings')} />
+              )}
+              {activeTab === 'register' && <RegisterTab name={name} />}
+            </motion.div>
+          </AnimatePresence>
+
+          {/* Bottom nav buttons */}
+          <div className="flex-shrink-0 flex items-center justify-between px-8 py-4 border-t border-gray-100 bg-white">
+            {currentTabIndex > 0 ? (
+              <button
+                type="button"
+                onClick={handlePrev}
+                className="px-5 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors"
+              >
+                이전
+              </button>
+            ) : <div />}
+
+            <button
+              type="button"
+              onClick={handleNext}
+              disabled={currentTabIndex === TABS.length - 1}
+              className="px-8 py-2.5 rounded-xl bg-brand text-white text-sm font-bold hover:bg-brand-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              다음
+            </button>
+          </div>
+        </div>
+
+        {/* Right preview panel */}
+        <div className="flex flex-col h-full overflow-hidden" style={{ width: '42%' }}>
+          {activeTab === 'profile' || activeTab === 'story-settings' ? (
+            <>
+              <div className="flex-shrink-0 text-center py-3 border-b border-gray-100">
+                <p className="text-gray-400 text-xs">이 대화는 AI로 생성된 가상의 이야기입니다</p>
+              </div>
+              <RightPreviewPanel name={name} description={description} />
+            </>
+          ) : activeTab === 'ending' ? (
+            /* Ending tab: EPILOGUE preview */
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="flex-shrink-0 px-4 py-3 border-b border-gray-100">
+                <span className="text-gray-700 font-semibold text-sm">미리보기</span>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto p-4">
+                <div className="rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+                    <span className="text-gray-400 text-xs font-bold tracking-widest">EPILOGUE</span>
+                  </div>
+                  <div className="px-4 py-4">
+                    <p className="text-gray-900 font-bold text-sm mb-1">EPILOGUE 1</p>
+                    <p className="text-gray-400 text-xs">스토리의 에필로그를 작성해주세요</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : activeTab === 'register' ? (
+            /* Register tab: story card preview */
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="flex-shrink-0 px-4 py-3 border-b border-gray-100">
+                <span className="text-gray-700 font-semibold text-sm">미리보기</span>
+              </div>
+              <RegisterPreviewPanel name={name} />
+            </div>
+          ) : (
+            /* Chat preview for start/stat/other tabs */
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Chat preview header bar */}
+              <div className="flex-shrink-0 flex items-center justify-between px-4 py-2.5 border-b border-gray-100">
+                <button className="flex items-center gap-1.5 text-gray-500 text-sm hover:text-gray-700 transition-colors">
+                  <ArrowLeft className="w-4 h-4" />
+                  채팅 미리보기
+                </button>
+                <div className="flex items-center gap-2">
+                  <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+                    <span>🍇</span>
+                    슈퍼챗 2.0
+                    <ChevronDown className="w-3 h-3 text-gray-400" />
+                  </button>
+                  <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    채팅 내역
+                  </button>
+                </div>
+              </div>
+
+              {/* Stat bars (only in stat-settings tab) */}
+              {activeTab === 'stat-settings' && stats.length > 0 && (
+                <div className="flex-shrink-0 px-4 py-3 border-b border-gray-100 space-y-2">
+                  {stats.slice(0, 3).map(stat => (
+                    <div key={stat.id} className="flex items-center gap-3">
+                      <div className="flex items-center gap-1.5 w-28 flex-shrink-0">
+                        {stat.icon && <span className="text-sm">{stat.icon}</span>}
+                        <span className="text-gray-600 text-xs font-medium truncate">
+                          {stat.name || '스탯 이름'}
+                        </span>
+                      </div>
+                      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{
+                            backgroundColor: stat.color || '#E63325',
+                            width: stat.maxValue
+                              ? `${Math.round((Number(stat.defaultValue) - Number(stat.minValue)) / (Number(stat.maxValue) - Number(stat.minValue)) * 100)}%`
+                              : '50%',
+                          }}
+                        />
+                      </div>
+                      <span className="text-gray-400 text-xs w-8 text-right flex-shrink-0">
+                        {stat.defaultValue || 0}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* AI disclaimer */}
+              <div className="flex-shrink-0 text-center py-3 border-b border-gray-100">
+                <p className="text-gray-400 text-xs">이 대화는 AI로 생성된 가상의 이야기입니다</p>
+              </div>
+
+              {/* Chat area */}
+              <div className="flex-1 overflow-y-auto p-4">
+                <div className="flex items-start gap-3 mb-4">
+                  <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-gray-400 text-xs mb-1.5">스토리 이름</p>
+                    <div className="h-10 w-52 bg-blue-50 rounded-2xl rounded-tl-sm" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Chat input */}
+              <div className="flex-shrink-0 px-4 py-3 border-t border-gray-100">
+                <div className="flex items-center gap-2 px-4 py-3 rounded-2xl border border-gray-200 bg-gray-50">
+                  <input
+                    type="text"
+                    placeholder="[이름, 캐릭터 설정 및 정보, 첫 메시지]를 입력해주세요"
+                    className="flex-1 bg-transparent text-xs text-gray-400 outline-none placeholder:text-gray-300"
+                    readOnly
+                  />
+                  <button className="w-7 h-7 rounded-full bg-gray-800 flex items-center justify-center flex-shrink-0">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                      <path d="M5 12h14m-7-7l7 7-7 7" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
