@@ -131,6 +131,32 @@ export const api = {
 
     my: (params?: Record<string, unknown>) =>
       apiClient.get('/api/stories/my', { params }).then((r) => r.data),
+
+    // AI generation
+    generateRandomName: () =>
+      apiClient.post('/api/stories/generate/random-name').then((r) => r.data),
+
+    generateStorySettings: (data: { name?: string; description?: string }) =>
+      apiClient.post('/api/stories/generate/story-settings', data).then((r) => r.data),
+
+    generateExamples: (data: { name?: string; description?: string; systemPrompt?: string }) =>
+      apiClient.post('/api/stories/generate/examples', data).then((r) => r.data),
+
+    generatePrologue: (data: { name?: string; description?: string; systemPrompt?: string; settingName?: string }) =>
+      apiClient.post('/api/stories/generate/prologue', data).then((r) => r.data),
+
+    // Start settings
+    listStartSettings: (storyId: string) =>
+      apiClient.get(`/api/stories/${storyId}/start-settings`).then((r) => r.data),
+
+    createStartSetting: (storyId: string, data: unknown) =>
+      apiClient.post(`/api/stories/${storyId}/start-settings`, data).then((r) => r.data),
+
+    updateStartSetting: (storyId: string, settingId: string, data: unknown) =>
+      apiClient.put(`/api/stories/${storyId}/start-settings/${settingId}`, data).then((r) => r.data),
+
+    deleteStartSetting: (storyId: string, settingId: string) =>
+      apiClient.delete(`/api/stories/${storyId}/start-settings/${settingId}`).then((r) => r.data),
   },
 
   characters: {

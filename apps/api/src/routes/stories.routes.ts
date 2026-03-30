@@ -490,4 +490,231 @@ export const storyRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({ data: stories, meta: { total, page: pageNum, limit: limitNum } });
     },
   });
+
+  // ─────────────────────────────────────────────
+  // AI GENERATION: RANDOM NAME
+  // ─────────────────────────────────────────────
+  fastify.post('/generate/random-name', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      try {
+        const msg = await anthropic.messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 100,
+          messages: [{
+            role: 'user',
+            content: '한국 판타지/로맨스 스토리에 어울리는 창의적인 스토리 제목이나 주인공 이름을 한 개만 생성해줘. 이름만 답변해. 특수문자 없이 2~10자.',
+          }],
+        });
+        const name = (msg.content[0] as { text: string }).text.trim().slice(0, 30);
+        return reply.send({ name });
+      } catch (err) {
+        logger.error(err, 'random name generation failed');
+        // Fallback names
+        const fallbacks = ['달빛 소녀', '검은 기사', '별의 수호자', '붉은 여명', '은빛 늑대', '하늘의 아이', '금빛 용사', '새벽의 전사'];
+        return reply.send({ name: fallbacks[Math.floor(Math.random() * fallbacks.length)] });
+      }
+    },
+  });
+
+  // ─────────────────────────────────────────────
+  // AI GENERATION: STORY SETTINGS (system prompt)
+  // ─────────────────────────────────────────────
+  fastify.post('/generate/story-settings', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { name, description } = request.body as { name?: string; description?: string };
+      if (!name && !description) {
+        return reply.status(400).send({ error: '프로필 이름 또는 소개를 먼저 입력해주세요.' });
+      }
+      try {
+        const msg = await anthropic.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 1500,
+          messages: [{
+            role: 'user',
+            content: `다음 스토리 정보를 바탕으로 AI 스토리 시스템 프롬프트를 한국어로 작성해줘.
+스토리 제목: ${name || '미정'}
+한줄소개: ${description || '미정'}
+
+시스템 프롬프트 작성 규칙:
+- {user}는 사용자, {char}는 주인공을 지칭
+- 세계관, 배경, 등장인물 성격, 관계를 상세히 설명
+- 스토리 분위기와 규칙을 명확히 기술
+- 1500자 이내
+- 시스템 프롬프트만 답변, 설명 없이`,
+          }],
+        });
+        const systemPrompt = (msg.content[0] as { text: string }).text.trim();
+        return reply.send({ systemPrompt });
+      } catch (err) {
+        logger.error(err, 'story settings generation failed');
+        return reply.status(500).send({ error: '생성 중 오류가 발생했습니다.' });
+      }
+    },
+  });
+
+  // ─────────────────────────────────────────────
+  // AI GENERATION: EXAMPLE DIALOGUES
+  // ─────────────────────────────────────────────
+  fastify.post('/generate/examples', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { name, description, systemPrompt } = request.body as {
+        name?: string; description?: string; systemPrompt?: string;
+      };
+      try {
+        const msg = await anthropic.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 2000,
+          messages: [{
+            role: 'user',
+            content: `다음 스토리를 위한 전개 예시 대화 3쌍을 생성해줘.
+스토리: ${name || '미정'} - ${description || ''}
+${systemPrompt ? `설정: ${systemPrompt.slice(0, 500)}` : ''}
+
+반드시 다음 JSON 형식으로만 답변:
+[
+  {"user": "사용자 입력 예시 1", "assistant": "AI 응답 예시 1"},
+  {"user": "사용자 입력 예시 2", "assistant": "AI 응답 예시 2"},
+  {"user": "사용자 입력 예시 3", "assistant": "AI 응답 예시 3"}
+]`,
+          }],
+        });
+        const text = (msg.content[0] as { text: string }).text.trim();
+        const jsonMatch = text.match(/\[[\s\S]*\]/);
+        const examples = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
+        return reply.send({ examples });
+      } catch (err) {
+        logger.error(err, 'examples generation failed');
+        return reply.status(500).send({ error: '생성 중 오류가 발생했습니다.' });
+      }
+    },
+  });
+
+  // ─────────────────────────────────────────────
+  // AI GENERATION: PROLOGUE
+  // ─────────────────────────────────────────────
+  fastify.post('/generate/prologue', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { name, description, systemPrompt, settingName } = request.body as {
+        name?: string; description?: string; systemPrompt?: string; settingName?: string;
+      };
+      try {
+        const msg = await anthropic.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 1000,
+          messages: [{
+            role: 'user',
+            content: `다음 스토리의 프롤로그를 한국어로 작성해줘.
+스토리: ${name || '미정'} - ${description || ''}
+시작 설정: ${settingName || '기본 설정'}
+${systemPrompt ? `세계관: ${systemPrompt.slice(0, 400)}` : ''}
+
+프롤로그 작성 규칙:
+- 독자를 스토리 세계로 끌어들이는 서술
+- 분위기와 배경을 생생하게 묘사
+- 1000자 이내
+- 프롤로그 텍스트만 답변`,
+          }],
+        });
+        const prologue = (msg.content[0] as { text: string }).text.trim();
+        return reply.send({ prologue });
+      } catch (err) {
+        logger.error(err, 'prologue generation failed');
+        return reply.status(500).send({ error: '생성 중 오류가 발생했습니다.' });
+      }
+    },
+  });
+
+  // ─────────────────────────────────────────────
+  // START SETTINGS CRUD  (/:storyId/start-settings)
+  // ─────────────────────────────────────────────
+  fastify.get('/:storyId/start-settings', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { storyId } = request.params as { storyId: string };
+      const userId = request.userId!;
+      const story = await prismaRead.story.findFirst({ where: { id: storyId, authorId: userId } });
+      if (!story) return reply.status(404).send({ error: '스토리를 찾을 수 없습니다.' });
+
+      const settings = await prismaRead.storyStartSetting.findMany({
+        where: { storyId },
+        orderBy: { order: 'asc' },
+        include: { suggestedReplies: { orderBy: { order: 'asc' } } },
+      });
+      return reply.send({ data: settings });
+    },
+  });
+
+  fastify.post('/:storyId/start-settings', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { storyId } = request.params as { storyId: string };
+      const userId = request.userId!;
+      const { name, prologue, situation, playGuide, suggestedReplies = [] } = request.body as {
+        name: string; prologue?: string; situation?: string; playGuide?: string; suggestedReplies?: string[];
+      };
+
+      const story = await prisma.story.findFirst({ where: { id: storyId, authorId: userId } });
+      if (!story) return reply.status(404).send({ error: '스토리를 찾을 수 없습니다.' });
+
+      const count = await prisma.storyStartSetting.count({ where: { storyId } });
+      if (count >= 5) return reply.status(400).send({ error: '시작 설정은 최대 5개까지 추가할 수 있습니다.' });
+
+      const setting = await prisma.storyStartSetting.create({
+        data: {
+          storyId, name, prologue: prologue ?? '', situation: situation ?? '',
+          playGuide: playGuide ?? '', order: count,
+          suggestedReplies: {
+            create: suggestedReplies.map((text, i) => ({ text, order: i })),
+          },
+        },
+        include: { suggestedReplies: true },
+      });
+      return reply.status(201).send({ data: setting });
+    },
+  });
+
+  fastify.put('/:storyId/start-settings/:settingId', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { storyId, settingId } = request.params as { storyId: string; settingId: string };
+      const userId = request.userId!;
+      const { name, prologue, situation, playGuide, suggestedReplies } = request.body as {
+        name?: string; prologue?: string; situation?: string; playGuide?: string; suggestedReplies?: string[];
+      };
+
+      const story = await prisma.story.findFirst({ where: { id: storyId, authorId: userId } });
+      if (!story) return reply.status(404).send({ error: '스토리를 찾을 수 없습니다.' });
+
+      const updated = await prisma.$transaction(async (tx) => {
+        if (suggestedReplies !== undefined) {
+          await tx.storySuggestedReply.deleteMany({ where: { startSettingId: settingId } });
+          await tx.storySuggestedReply.createMany({
+            data: suggestedReplies.map((text, i) => ({ startSettingId: settingId, text, order: i })),
+          });
+        }
+        return tx.storyStartSetting.update({
+          where: { id: settingId },
+          data: { ...(name && { name }), ...(prologue !== undefined && { prologue }), ...(situation !== undefined && { situation }), ...(playGuide !== undefined && { playGuide }) },
+          include: { suggestedReplies: { orderBy: { order: 'asc' } } },
+        });
+      });
+      return reply.send({ data: updated });
+    },
+  });
+
+  fastify.delete('/:storyId/start-settings/:settingId', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { storyId, settingId } = request.params as { storyId: string; settingId: string };
+      const userId = request.userId!;
+      const story = await prisma.story.findFirst({ where: { id: storyId, authorId: userId } });
+      if (!story) return reply.status(404).send({ error: '스토리를 찾을 수 없습니다.' });
+      await prisma.storyStartSetting.delete({ where: { id: settingId } });
+      return reply.status(204).send();
+    },
+  });
 };

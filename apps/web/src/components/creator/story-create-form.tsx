@@ -296,6 +296,20 @@ function ProfileForm({
   onNext: () => void;
 }) {
   const [showAgeNotice, setShowAgeNotice] = useState(true);
+  const [generatingName, setGeneratingName] = useState(false);
+
+  const handleRandomName = async () => {
+    setGeneratingName(true);
+    try {
+      const { api } = await import('../../lib/api');
+      const { name: generated } = await api.stories.generateRandomName();
+      setName(generated);
+    } catch {
+      // silent fail
+    } finally {
+      setGeneratingName(false);
+    }
+  };
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
@@ -304,9 +318,11 @@ function ProfileForm({
         <span className="text-gray-700 text-sm">프로필을 랜덤으로 생성해 보세요</span>
         <button
           type="button"
-          className="px-3 py-1.5 rounded-lg border border-brand text-brand text-xs font-semibold hover:bg-brand/5 transition-colors"
+          onClick={handleRandomName}
+          disabled={generatingName}
+          className="px-3 py-1.5 rounded-lg border border-brand text-brand text-xs font-semibold hover:bg-brand/5 transition-colors disabled:opacity-50"
         >
-          랜덤 생성
+          {generatingName ? '생성 중...' : '랜덤 생성'}
         </button>
       </div>
 
@@ -442,12 +458,17 @@ interface StartSetting {
   suggestedReplies: string[];
 }
 
-function StartSettingsTab() {
+function StartSettingsTab({ storyName, systemPrompt }: { storyName: string; systemPrompt: string }) {
   const [settings, setSettings] = useState<StartSetting[]>([
     { id: '1', name: '기본 설정', prologue: '', situation: '', playGuide: '', suggestedReplies: [] },
   ]);
   const [activeSettingId, setActiveSettingId] = useState('1');
   const [advancedOpen, setAdvancedOpen] = useState(true);
+  const [showInfoCard, setShowInfoCard] = useState(true);
+  const [generatingPrologue, setGeneratingPrologue] = useState(false);
+
+  const isDefaultSetting = activeSettingId === settings[0].id;
+  const isExtraSetting = !isDefaultSetting;
 
   const activeSetting = settings.find(s => s.id === activeSettingId) ?? settings[0];
 
@@ -457,11 +478,30 @@ function StartSettingsTab() {
 
   const addSetting = () => {
     const newId = String(Date.now());
+    const extraCount = settings.length; // 추가 설정 번호
     setSettings(prev => [...prev, {
-      id: newId, name: `설정 ${prev.length + 1}`,
+      id: newId, name: `추가 설정 ${extraCount}`,
       prologue: '', situation: '', playGuide: '', suggestedReplies: [],
     }]);
     setActiveSettingId(newId);
+    setShowInfoCard(true); // 새 설정 선택 시 인포카드 표시
+  };
+
+  const handleGeneratePrologue = async () => {
+    setGeneratingPrologue(true);
+    try {
+      const { api } = await import('../../lib/api');
+      const { prologue } = await api.stories.generatePrologue({
+        name: storyName,
+        systemPrompt,
+        settingName: activeSetting.name,
+      });
+      update('prologue', prologue);
+    } catch {
+      // silent fail
+    } finally {
+      setGeneratingPrologue(false);
+    }
   };
 
   const addReply = () => {
@@ -483,10 +523,10 @@ function StartSettingsTab() {
     <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
       {/* Setting pills */}
       <div className="flex items-center gap-2 mb-6 flex-wrap">
-        {settings.map((s) => (
+        {settings.map((s, i) => (
           <button
             key={s.id}
-            onClick={() => setActiveSettingId(s.id)}
+            onClick={() => { setActiveSettingId(s.id); if (i > 0) setShowInfoCard(true); }}
             className={cn(
               'px-3 py-1.5 rounded-full text-sm font-semibold transition-all',
               s.id === activeSettingId
@@ -494,7 +534,7 @@ function StartSettingsTab() {
                 : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
             )}
           >
-            {s.id === settings[0].id ? `기본 ${s.name}` : s.name}
+            {i === 0 ? `기본 ${s.name}` : s.name}
           </button>
         ))}
         {settings.length < 5 && (
@@ -508,6 +548,57 @@ function StartSettingsTab() {
         )}
       </div>
 
+      {/* 추가 설정 인포카드 (기본 설정이 아닌 경우에만 표시) */}
+      <AnimatePresence>
+        {isExtraSetting && showInfoCard && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden mb-6"
+          >
+            <div className="flex items-start gap-4 p-4 rounded-2xl border border-gray-200 bg-gray-50">
+              {/* Mock preview image */}
+              <div className="flex-shrink-0 w-[140px] h-[100px] rounded-xl bg-gray-700 overflow-hidden flex flex-col">
+                <div className="flex-1 p-2">
+                  <div className="bg-white/10 rounded-lg px-2 py-1 mb-1.5 text-[9px] text-white/70">시작설정</div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1 bg-white/20 rounded-md px-2 py-0.5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-white/60" />
+                      <span className="text-[9px] text-white/80">친구사이</span>
+                    </div>
+                    <div className="flex items-center gap-1 bg-white/10 rounded-md px-2 py-0.5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                      <span className="text-[9px] text-white/80">친구사이</span>
+                    </div>
+                    <div className="text-[9px] text-white/60 px-2">애인사이</div>
+                  </div>
+                </div>
+                <div className="bg-gray-900 px-2 py-1.5">
+                  <div className="bg-white/20 rounded-md text-center text-[9px] text-white py-0.5">대화 나누기</div>
+                </div>
+              </div>
+
+              {/* Explanation */}
+              <div className="flex-1 min-w-0">
+                <p className="text-gray-900 font-bold text-sm mb-1">스토리의 다양한 시작상황을 설정해 보세요</p>
+                <p className="text-gray-400 text-xs leading-relaxed">
+                  사용자가 스토리 정보에서 원하는 시작설정을 선택하여 대화를 시작할 수 있어요.
+                </p>
+              </div>
+
+              {/* Close */}
+              <button
+                onClick={() => setShowInfoCard(false)}
+                className="flex-shrink-0 text-gray-300 hover:text-gray-500 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* 프롤로그 */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-1">
@@ -515,8 +606,12 @@ function StartSettingsTab() {
             <span className="text-gray-900 font-semibold text-sm">프롤로그</span>
             <span className="text-brand font-bold text-sm">*</span>
           </div>
-          <button className="px-3 py-1 rounded-lg border border-brand/40 text-brand text-xs font-semibold hover:bg-brand/5 transition-colors">
-            자동 생성
+          <button
+            onClick={handleGeneratePrologue}
+            disabled={generatingPrologue}
+            className="px-3 py-1 rounded-lg border border-brand/40 text-brand text-xs font-semibold hover:bg-brand/5 transition-colors disabled:opacity-50"
+          >
+            {generatingPrologue ? '생성 중...' : '자동 생성'}
           </button>
         </div>
         <p className="text-gray-400 text-xs mb-2">스토리의 프롤로그를 작성해 주세요</p>
@@ -2084,9 +2179,55 @@ function PlaceholderTab({ label }: { label: string }) {
 // ─────────────────────────────────────────────
 // STORY SETTINGS TAB (simplified example)
 // ─────────────────────────────────────────────
-function StorySettingsTab() {
+function StorySettingsTab({
+  storyName, storyDescription, onSystemPromptChange,
+}: {
+  storyName: string; storyDescription: string; onSystemPromptChange: (v: string) => void;
+}) {
   const [systemPrompt, setSystemPrompt] = useState('');
   const [examples, setExamples] = useState([{ user: '', assistant: '' }]);
+  const [generatingPrompt, setGeneratingPrompt] = useState(false);
+  const [generatingExamples, setGeneratingExamples] = useState(false);
+
+  const handleUpdatePrompt = (v: string) => {
+    setSystemPrompt(v);
+    onSystemPromptChange(v);
+  };
+
+  const handleGeneratePrompt = async () => {
+    setGeneratingPrompt(true);
+    try {
+      const { api } = await import('../../lib/api');
+      const { systemPrompt: generated } = await api.stories.generateStorySettings({
+        name: storyName, description: storyDescription,
+      });
+      handleUpdatePrompt(generated.slice(0, 3000));
+    } catch {
+      // silent fail
+    } finally {
+      setGeneratingPrompt(false);
+    }
+  };
+
+  const handleGenerateExamples = async () => {
+    setGeneratingExamples(true);
+    try {
+      const { api } = await import('../../lib/api');
+      const { examples: generated } = await api.stories.generateExamples({
+        name: storyName, description: storyDescription, systemPrompt,
+      });
+      if (Array.isArray(generated) && generated.length > 0) {
+        setExamples(generated.slice(0, 3).map((e: { user: string; assistant: string }) => ({
+          user: (e.user || '').slice(0, 500),
+          assistant: (e.assistant || '').slice(0, 500),
+        })));
+      }
+    } catch {
+      // silent fail
+    } finally {
+      setGeneratingExamples(false);
+    }
+  };
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
@@ -2100,12 +2241,22 @@ function StorySettingsTab() {
         <div className="relative">
           <textarea
             value={systemPrompt}
-            onChange={(e) => setSystemPrompt(e.target.value.slice(0, 3000))}
+            onChange={(e) => handleUpdatePrompt(e.target.value.slice(0, 3000))}
             placeholder="스토리 설정을 입력해 주세요"
             rows={8}
             className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-900 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 transition-colors resize-none"
           />
           <span className="absolute right-4 bottom-3 text-gray-300 text-xs">{systemPrompt.length} / 3000</span>
+        </div>
+        <div className="flex justify-end mt-2">
+          <button
+            type="button"
+            onClick={handleGeneratePrompt}
+            disabled={generatingPrompt}
+            className="px-3 py-1.5 rounded-lg border border-brand/40 text-brand text-xs font-semibold hover:bg-brand/5 transition-colors disabled:opacity-50"
+          >
+            {generatingPrompt ? '생성 중...' : '자동 생성'}
+          </button>
         </div>
       </div>
 
@@ -2126,8 +2277,13 @@ function StorySettingsTab() {
             <p className="text-gray-400 text-xs">전개 예시를 입력해서 스토리의 완성도를 높여보세요.<br />예시는 3개까지 등록할 수 있어요.</p>
           </div>
           <div className="flex gap-2">
-            <button type="button" className="px-3 py-1.5 rounded-lg border border-brand/40 text-brand text-xs font-medium hover:bg-brand/5 transition-colors">
-              전체 자동 생성
+            <button
+              type="button"
+              onClick={handleGenerateExamples}
+              disabled={generatingExamples}
+              className="px-3 py-1.5 rounded-lg border border-brand/40 text-brand text-xs font-medium hover:bg-brand/5 transition-colors disabled:opacity-50"
+            >
+              {generatingExamples ? '생성 중...' : '전체 자동 생성'}
             </button>
             {examples.length < 3 && (
               <button
@@ -2202,6 +2358,7 @@ export function StoryCreateForm() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [stats, setStats] = useState<StatItem[]>([]);
+  const [systemPrompt, setSystemPrompt] = useState('');
   // Shared start-settings list for media/keywords/ending tabs
   const [startSettingsList] = useState([{ id: '1', name: '기본 설정' }]);
   // AI model selector
@@ -2307,8 +2464,16 @@ export function StoryCreateForm() {
                   onNext={handleNext}
                 />
               )}
-              {activeTab === 'story-settings' && <StorySettingsTab />}
-              {activeTab === 'start-settings' && <StartSettingsTab />}
+              {activeTab === 'story-settings' && (
+                <StorySettingsTab
+                  storyName={name}
+                  storyDescription={description}
+                  onSystemPromptChange={setSystemPrompt}
+                />
+              )}
+              {activeTab === 'start-settings' && (
+                <StartSettingsTab storyName={name} systemPrompt={systemPrompt} />
+              )}
               {activeTab === 'stat-settings' && <StatSettingsTab stats={stats} setStats={setStats} />}
               {activeTab === 'media' && <MediaTab startSettings={startSettingsList} />}
               {activeTab === 'keywords' && <KeywordsTab startSettings={startSettingsList} />}
