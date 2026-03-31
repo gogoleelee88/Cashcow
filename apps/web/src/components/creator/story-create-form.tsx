@@ -113,6 +113,171 @@ const CHAT_MODELS: ChatModel[] = [
 ];
 
 // ─────────────────────────────────────────────
+// AGE VERIFICATION MODAL
+// ─────────────────────────────────────────────
+type AgeVerifyStep = 'warning' | 'carrier';
+type Carrier = 'SKT' | 'KT' | 'LGU' | 'SKT_MVNO' | 'KT_MVNO' | 'LGU_MVNO';
+
+const CARRIERS: { value: Carrier; label: string }[] = [
+  { value: 'SKT',      label: 'SKT' },
+  { value: 'KT',       label: 'KT' },
+  { value: 'LGU',      label: 'LG U+' },
+  { value: 'SKT_MVNO', label: 'SKT 알뜰폰' },
+  { value: 'KT_MVNO',  label: 'KT 알뜰폰' },
+  { value: 'LGU_MVNO', label: 'LG U+ 알뜰폰' },
+];
+
+function AgeVerificationModal({ onClose }: { onClose: () => void }) {
+  const [step, setStep] = useState<AgeVerifyStep>('warning');
+  const [loading, setLoading] = useState(false);
+  const [selectedCarrier, setSelectedCarrier] = useState<Carrier | null>(null);
+
+  const handleProceed = () => setStep('carrier');
+
+  const handleCarrierSelect = async (carrier: Carrier) => {
+    setSelectedCarrier(carrier);
+    setLoading(true);
+    try {
+      const { api } = await import('../../lib/api');
+      const result = await api.users.ageVerifyInitiate(carrier);
+      // Open PASS deep link in new tab/window
+      if (result.passDeepLink) {
+        window.open(result.passDeepLink, '_blank');
+      }
+    } catch {
+      // silent fail
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 8 }}
+        transition={{ duration: 0.2 }}
+        className="w-full max-w-sm bg-white rounded-2xl overflow-hidden shadow-2xl"
+      >
+        {step === 'warning' ? (
+          /* ── Step 1: 19세 경고 ── */
+          <div className="p-6 text-center">
+            {/* Close */}
+            <div className="flex justify-end mb-2">
+              <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* 19 badge */}
+            <div className="flex justify-center mb-5">
+              <div className="w-20 h-20 rounded-full bg-brand flex items-center justify-center">
+                <span className="text-white font-black text-3xl leading-none">19</span>
+              </div>
+            </div>
+
+            <h2 className="text-gray-900 font-bold text-lg mb-3">청소년 유해매체물</h2>
+            <p className="text-gray-500 text-sm leading-relaxed mb-1">
+              이 서비스는 청소년 유해매체물로서 정보통신망 이용 촉진 및 정보 보호 등에 관한 법률 및 청소년 보호법의 규정에 의해
+            </p>
+            <p className="text-gray-900 font-semibold text-sm mb-1">19세 미만의 청소년은 이용할 수 없습니다.</p>
+            <p className="text-gray-500 text-sm leading-relaxed mb-6">
+              성인인증을 통해 성인 여부를 확인합니다.
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-50 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleProceed}
+                className="flex-1 py-3 rounded-xl bg-gray-900 text-white font-semibold text-sm hover:bg-gray-800 transition-colors"
+              >
+                성인인증
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* ── Step 2: PASS 통신사 선택 ── */
+          <div className="p-6">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-5">
+              <button type="button" onClick={() => setStep('warning')} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* PASS logo */}
+            <div className="flex flex-col items-center mb-6">
+              <div className="w-14 h-14 rounded-2xl bg-brand flex items-center justify-center mb-3">
+                <span className="text-white font-black text-xl tracking-tight">PASS</span>
+              </div>
+              <p className="text-gray-500 text-xs">인증을 넘어 일상으로 PASS</p>
+            </div>
+
+            <h3 className="text-gray-900 font-bold text-base text-center mb-1">이용 중인 통신사를 선택해 주세요</h3>
+            <p className="text-gray-400 text-xs text-center mb-5">본인 명의의 통신사를 선택하세요</p>
+
+            {/* Carrier grid */}
+            <div className="grid grid-cols-3 gap-2.5 mb-4">
+              {CARRIERS.map((c) => (
+                <button
+                  key={c.value}
+                  type="button"
+                  disabled={loading}
+                  onClick={() => handleCarrierSelect(c.value)}
+                  className={cn(
+                    'py-3 rounded-xl border text-sm font-semibold transition-all',
+                    selectedCarrier === c.value
+                      ? 'border-brand bg-brand/5 text-brand'
+                      : 'border-gray-200 text-gray-700 hover:border-brand/40 hover:text-brand hover:bg-brand/5',
+                    loading && 'opacity-50 cursor-not-allowed'
+                  )}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+
+            {/* MVNO link */}
+            <div className="text-center mb-5">
+              <button type="button" className="text-brand text-xs underline underline-offset-2">
+                알뜰폰 사업자 확인
+              </button>
+            </div>
+
+            {/* Security notice */}
+            <div className="flex items-start gap-2 px-3 py-3 bg-gray-50 rounded-xl">
+              <svg className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+              <p className="text-gray-400 text-[11px] leading-relaxed">
+                보안 프로그램 설치 없이 본인인증이 가능합니다. PASS 앱이 없어도 문자 인증으로 진행됩니다.
+              </p>
+            </div>
+          </div>
+        )}
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ─────────────────────────────────────────────
 // IMAGE UPLOAD AREA
 // ─────────────────────────────────────────────
 function ImageUploadArea({
@@ -296,6 +461,7 @@ function ProfileForm({
   onNext: () => void;
 }) {
   const [showAgeNotice, setShowAgeNotice] = useState(true);
+  const [showAgeModal, setShowAgeModal] = useState(false);
   const [generatingName, setGeneratingName] = useState(false);
 
   const handleRandomName = async () => {
@@ -342,6 +508,7 @@ function ProfileForm({
             <div className="flex items-center gap-2 flex-shrink-0">
               <button
                 type="button"
+                onClick={() => setShowAgeModal(true)}
                 className="px-3 py-1 rounded-lg bg-white text-gray-900 text-xs font-semibold hover:bg-gray-100 transition-colors"
               >
                 성인 인증
@@ -442,6 +609,11 @@ function ProfileForm({
       >
         <ChevronUp className="w-5 h-5" />
       </button>
+
+      {/* Age Verification Modal */}
+      <AnimatePresence>
+        {showAgeModal && <AgeVerificationModal onClose={() => setShowAgeModal(false)} />}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1755,6 +1927,7 @@ const MODEL_OPTIONS = [
 
 function RegisterTab({ name, coverUrl }: { name: string; coverUrl?: string }) {
   const [showAgeNotice, setShowAgeNotice] = useState(true);
+  const [showAgeModal, setShowAgeModal] = useState(false);
   const [detailDesc, setDetailDesc] = useState('');
   const [genre, setGenre] = useState('');
   const [target, setTarget] = useState('');
@@ -1787,7 +1960,10 @@ function RegisterTab({ name, coverUrl }: { name: string; coverUrl?: string }) {
         <div className="flex items-center justify-between gap-3 px-4 py-3 mb-6 bg-gray-900 text-white rounded-xl">
           <p className="text-sm">민감한 스토리의 경우 제작 시 성인 인증이 필요해요.</p>
           <div className="flex items-center gap-2 flex-shrink-0">
-            <button className="px-3 py-1 rounded-lg bg-white text-gray-900 text-xs font-semibold hover:bg-gray-100 transition-colors">
+            <button
+              onClick={() => setShowAgeModal(true)}
+              className="px-3 py-1 rounded-lg bg-white text-gray-900 text-xs font-semibold hover:bg-gray-100 transition-colors"
+            >
               성인 인증
             </button>
             <button onClick={() => setShowAgeNotice(false)} className="text-white/60 hover:text-white">
@@ -2061,6 +2237,11 @@ function RegisterTab({ name, coverUrl }: { name: string; coverUrl?: string }) {
           </div>
         </div>
       </div>
+
+      {/* Age Verification Modal */}
+      <AnimatePresence>
+        {showAgeModal && <AgeVerificationModal onClose={() => setShowAgeModal(false)} />}
+      </AnimatePresence>
     </div>
   );
 }
