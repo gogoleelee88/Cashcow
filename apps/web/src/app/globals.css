@@ -33,7 +33,7 @@
   }
 
   * {
-    @apply border-border;
+    border-color: hsl(var(--border));
     box-sizing: border-box;
   }
 
@@ -46,7 +46,9 @@
   }
 
   body {
-    @apply bg-background text-text-primary font-sans;
+    background-color: #FFFFFF;
+    color: #111111;
+    font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
     overflow-x: hidden;
   }
 
