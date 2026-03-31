@@ -4,7 +4,8 @@ import { prisma, prismaRead } from '../lib/prisma';
 import { cache } from '../lib/redis';
 import { encrypt, decrypt } from '../lib/encryption';
 import { requireAuth } from '../plugins/auth.plugin';
-import { searchRateLimit } from '../plugins/rate-limit.plugin';
+import { searchRateLimit, uploadRateLimit } from '../plugins/rate-limit.plugin';
+import { generatePresignedUploadUrl } from '../services/s3.service';
 import { logger } from '../lib/logger';
 // StoryCategory, CharacterVisibility, AgeRating types used as strings (Prisma client not yet generated)
 import Anthropic from '@anthropic-ai/sdk';
@@ -27,6 +28,22 @@ const createStorySchema = z.object({
 
 export const storyRoutes: FastifyPluginAsync = async (fastify) => {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  // ─────────────────────────────────────────────
+  // UPLOAD URL (Pre-signed S3 for story covers)
+  // ─────────────────────────────────────────────
+  fastify.post('/upload-url', {
+    preHandler: [requireAuth, uploadRateLimit],
+    handler: async (request, reply) => {
+      const { contentType, type } = request.body as {
+        contentType: string;
+        type: 'cover';
+      };
+      const path = 'stories/covers';
+      const result = await generatePresignedUploadUrl(path, contentType, request.userId!);
+      return reply.send({ success: true, data: result });
+    },
+  });
 
   // ─────────────────────────────────────────────
   // LIST STORIES

@@ -131,6 +131,9 @@ export const api = {
 
     my: (params?: Record<string, unknown>) =>
       apiClient.get('/api/stories/my', { params }).then((r) => r.data),
+
+    getUploadUrl: (contentType: string, type: 'cover') =>
+      apiClient.post('/api/stories/upload-url', { contentType, type }).then((r) => r.data),
   },
 
   characters: {

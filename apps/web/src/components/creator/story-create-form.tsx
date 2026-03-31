@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, HelpCircle, Clock, History, X, Upload, Trash2, Wand2, ChevronUp, ChevronDown, AlertCircle, Megaphone, Plus, GripVertical, MessageSquare } from 'lucide-react';
+import { ArrowLeft, HelpCircle, Clock, History, X, Upload, Trash2, Wand2, ChevronUp, ChevronDown, AlertCircle, Megaphone, Plus, GripVertical, MessageSquare, Loader2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useAuthStore } from '../../stores/auth.store';
-import { useEffect } from 'react';
+import { toast } from '../ui/toaster';
+import { api } from '../../lib/api';
 
 // ─────────────────────────────────────────────
 // TABS
@@ -25,6 +26,271 @@ const TABS: { key: StoryTab; label: string; required?: boolean }[] = [
 ];
 
 // ─────────────────────────────────────────────
+// IMAGE CROP MODAL
+// ─────────────────────────────────────────────
+function ImageCropModal({
+  src,
+  aspectRatio,
+  outputWidth,
+  outputHeight,
+  onConfirm,
+  onCancel,
+}: {
+  src: string;
+  aspectRatio: '1:1' | '2:3';
+  outputWidth: number;
+  outputHeight: number;
+  onConfirm: (croppedDataUrl: string) => void;
+  onCancel: () => void;
+}) {
+  const DISPLAY_W = aspectRatio === '1:1' ? 320 : 213;
+  const DISPLAY_H = aspectRatio === '1:1' ? 320 : 320;
+
+  const [zoom, setZoom] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const dragStart = useRef({ mx: 0, my: 0, ox: 0, oy: 0 });
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  const [imgNaturalSize, setImgNaturalSize] = useState({ w: 1, h: 1 });
+
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => {
+      setImgNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
+      // Fit image to fill crop area by default
+      const fitZoom = Math.max(DISPLAY_W / img.naturalWidth, DISPLAY_H / img.naturalHeight);
+      setZoom(fitZoom);
+      setOffset({
+        x: (DISPLAY_W - img.naturalWidth * fitZoom) / 2,
+        y: (DISPLAY_H - img.naturalHeight * fitZoom) / 2,
+      });
+    };
+    img.src = src;
+    imgRef.current = img;
+  }, [src, DISPLAY_W, DISPLAY_H]);
+
+  const clampOffset = useCallback((ox: number, oy: number, z: number) => {
+    const imgW = imgNaturalSize.w * z;
+    const imgH = imgNaturalSize.h * z;
+    return {
+      x: Math.min(0, Math.max(DISPLAY_W - imgW, ox)),
+      y: Math.min(0, Math.max(DISPLAY_H - imgH, oy)),
+    };
+  }, [imgNaturalSize, DISPLAY_W, DISPLAY_H]);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setDragging(true);
+    dragStart.current = { mx: e.clientX, my: e.clientY, ox: offset.x, oy: offset.y };
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!dragging) return;
+    const dx = e.clientX - dragStart.current.mx;
+    const dy = e.clientY - dragStart.current.my;
+    setOffset(clampOffset(dragStart.current.ox + dx, dragStart.current.oy + dy, zoom));
+  };
+
+  const handleMouseUp = () => setDragging(false);
+
+  const handleZoomChange = (newZoom: number) => {
+    const minZoom = Math.max(DISPLAY_W / imgNaturalSize.w, DISPLAY_H / imgNaturalSize.h);
+    const clampedZoom = Math.max(minZoom, Math.min(3, newZoom));
+    // Keep center stable while zooming
+    const centerX = DISPLAY_W / 2;
+    const centerY = DISPLAY_H / 2;
+    const imgX = (centerX - offset.x) / zoom;
+    const imgY = (centerY - offset.y) / zoom;
+    const newOx = centerX - imgX * clampedZoom;
+    const newOy = centerY - imgY * clampedZoom;
+    setZoom(clampedZoom);
+    setOffset(clampOffset(newOx, newOy, clampedZoom));
+  };
+
+  const handleConfirm = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = outputWidth;
+    canvas.height = outputHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx || !imgRef.current) return;
+    // srcX, srcY: top-left of crop area in image coords
+    const scaleX = outputWidth / DISPLAY_W;
+    const scaleY = outputHeight / DISPLAY_H;
+    const srcX = -offset.x / zoom;
+    const srcY = -offset.y / zoom;
+    const srcW = DISPLAY_W / zoom;
+    const srcH = DISPLAY_H / zoom;
+    ctx.drawImage(imgRef.current, srcX, srcY, srcW, srcH, 0, 0, outputWidth, outputHeight);
+    void scaleX; void scaleY;
+    onConfirm(canvas.toDataURL('image/jpeg', 0.92));
+  };
+
+  const minZoom = Math.max(DISPLAY_W / imgNaturalSize.w, DISPLAY_H / imgNaturalSize.h);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="bg-white rounded-2xl shadow-2xl overflow-hidden" style={{ width: 480 }}>
+        {/* Image crop area */}
+        <div
+          className="relative overflow-hidden bg-gray-100 cursor-grab active:cursor-grabbing select-none mx-auto"
+          style={{ width: DISPLAY_W + 80, height: DISPLAY_H + 80, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+        >
+          {/* Checkered background */}
+          <div className="absolute inset-0" style={{ backgroundImage: 'repeating-conic-gradient(#e5e7eb 0% 25%, #f9fafb 0% 50%)', backgroundSize: '16px 16px' }} />
+          {/* Image */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={src}
+            alt="crop"
+            draggable={false}
+            style={{
+              position: 'absolute',
+              left: offset.x + 40,
+              top: offset.y + 40,
+              width: imgNaturalSize.w * zoom,
+              height: imgNaturalSize.h * zoom,
+              userSelect: 'none',
+            }}
+          />
+          {/* Crop overlay - dark outside crop zone */}
+          <div className="absolute inset-0 pointer-events-none" style={{
+            boxShadow: `inset 0 0 0 40px rgba(0,0,0,0.5)`,
+          }} />
+          {/* Crop border */}
+          <div className="absolute pointer-events-none border-2 border-white/80" style={{
+            left: 40, top: 40, width: DISPLAY_W, height: DISPLAY_H,
+          }} />
+        </div>
+
+        {/* Zoom slider */}
+        <div className="px-8 py-4">
+          <input
+            type="range"
+            min={minZoom}
+            max={minZoom * 3}
+            step={0.01}
+            value={zoom}
+            onChange={(e) => handleZoomChange(Number(e.target.value))}
+            className="w-full accent-gray-900"
+          />
+        </div>
+
+        {/* Buttons */}
+        <div className="flex gap-3 px-8 pb-6">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors"
+          >
+            취소
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            className="flex-1 py-3 rounded-xl bg-gray-900 text-white text-sm font-bold hover:bg-gray-800 transition-colors"
+          >
+            자르기
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// IMAGE GENERATE MODAL
+// ─────────────────────────────────────────────
+function ImageGenerateModal({
+  aspectRatio,
+  onConfirm,
+  onCancel,
+}: {
+  aspectRatio: '1:1' | '2:3';
+  onConfirm: (url: string) => void;
+  onCancel: () => void;
+}) {
+  const [prompt, setPrompt] = useState('');
+  const [style, setStyle] = useState<'anime' | 'realistic' | 'webtoon'>('anime');
+  const [loading, setLoading] = useState(false);
+
+  const styles = [
+    { key: 'anime' as const, label: '애니' },
+    { key: 'realistic' as const, label: '실사' },
+    { key: 'webtoon' as const, label: '웹툰' },
+  ];
+
+  const handleGenerate = async () => {
+    if (!prompt.trim()) { toast.error('이미지 설명을 입력해주세요'); return; }
+    setLoading(true);
+    try {
+      // Image generation endpoint placeholder — replace with actual API
+      toast.error('이미지 생성 기능은 준비 중입니다');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="bg-white rounded-2xl shadow-2xl p-6 w-[440px]">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-gray-900 font-bold text-base">이미지 생성</h3>
+          <button type="button" onClick={onCancel} className="text-gray-400 hover:text-gray-600 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <p className="text-gray-500 text-xs mb-4">
+          {aspectRatio === '1:1' ? '정방형(1:1)' : '세로형(2:3)'} 이미지가 생성됩니다
+        </p>
+
+        {/* Style selection */}
+        <div className="flex gap-2 mb-4">
+          {styles.map((s) => (
+            <button
+              key={s.key}
+              type="button"
+              onClick={() => setStyle(s.key)}
+              className={cn(
+                'flex-1 py-2 rounded-xl text-xs font-semibold border transition-colors',
+                style === s.key
+                  ? 'bg-gray-900 text-white border-gray-900'
+                  : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+              )}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Prompt input */}
+        <textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value.slice(0, 200))}
+          placeholder="예: 검은 머리의 소녀, 마법사 복장, 판타지 배경..."
+          rows={4}
+          className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-900 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none mb-1"
+        />
+        <p className="text-gray-300 text-xs text-right mb-4">{prompt.length} / 200</p>
+
+        <button
+          type="button"
+          onClick={handleGenerate}
+          disabled={loading}
+          className="w-full py-3 rounded-xl bg-gray-900 text-white text-sm font-bold hover:bg-gray-800 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+        >
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+          {loading ? '생성 중...' : '생성하기'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
 // IMAGE UPLOAD AREA
 // ─────────────────────────────────────────────
 function ImageUploadArea({
@@ -33,160 +299,258 @@ function ImageUploadArea({
   ratio,
   hint,
   size,
+  value,
+  onChange,
 }: {
   label: string;
   required?: boolean;
-  ratio: string;
+  ratio: '1:1' | '2:3';
   hint: string;
   size: string;
+  value: string | null;
+  onChange: (url: string | null) => void;
 }) {
-  const [preview, setPreview] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [rawSrc, setRawSrc] = useState<string | null>(null);
+  const [showCrop, setShowCrop] = useState(false);
+  const [showGenerate, setShowGenerate] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  const outputWidth = ratio === '1:1' ? 1080 : 1080;
+  const outputHeight = ratio === '1:1' ? 1080 : 1620;
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('이미지 파일만 업로드 가능합니다');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('파일 크기는 5MB 이하여야 합니다');
+      return;
+    }
     const url = URL.createObjectURL(file);
-    setPreview(url);
+    setRawSrc(url);
+    setShowCrop(true);
+    if (inputRef.current) inputRef.current.value = '';
+  };
+
+  const handleCropConfirm = async (croppedDataUrl: string) => {
+    setShowCrop(false);
+    setUploading(true);
+    try {
+      // Convert data URL to blob
+      const res = await fetch(croppedDataUrl);
+      const blob = await res.blob();
+      const file = new File([blob], 'image.jpg', { type: 'image/jpeg' });
+
+      // Get presigned URL from backend
+      const uploadRes = await api.stories.getUploadUrl('image/jpeg', 'cover');
+      const { uploadUrl, publicUrl } = uploadRes.data;
+
+      // Upload to S3
+      await fetch(uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': 'image/jpeg' },
+      });
+
+      onChange(publicUrl);
+      toast.success('이미지가 업로드되었습니다');
+    } catch {
+      // Fallback: use cropped data URL for preview only
+      onChange(croppedDataUrl);
+      toast.error('업로드 실패 — 미리보기만 표시됩니다');
+    } finally {
+      setUploading(false);
+      if (rawSrc) URL.revokeObjectURL(rawSrc);
+      setRawSrc(null);
+    }
+  };
+
+  const handleDelete = () => {
+    onChange(null);
+    if (inputRef.current) inputRef.current.value = '';
   };
 
   return (
-    <div className="mb-8">
-      <div className="flex items-center gap-1 mb-2">
-        <span className="text-gray-900 font-semibold text-sm">{label}</span>
-        {required && <span className="text-brand text-sm font-bold">*</span>}
-      </div>
-
-      <div className="flex items-start gap-4">
-        {/* Preview box */}
-        <div
-          className={cn(
-            'flex-shrink-0 rounded-xl overflow-hidden border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center cursor-pointer hover:border-gray-300 transition-colors',
-            ratio === '1:1' ? 'w-20 h-20' : 'w-20 h-[calc(20px*4/3)] min-h-[107px]'
-          )}
-          onClick={() => inputRef.current?.click()}
-        >
-          {preview ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={preview} alt="preview" className="w-full h-full object-cover" />
-          ) : (
-            <div className="flex flex-col items-center gap-1 text-gray-300">
-              {/* Mountain/image placeholder icon */}
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </div>
-          )}
-          <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+    <>
+      <div className="mb-8">
+        <div className="flex items-center gap-1 mb-2">
+          <span className="text-gray-900 font-semibold text-sm">{label}</span>
+          {required && <span className="text-brand text-sm font-bold">*</span>}
         </div>
 
-        {/* Info + buttons */}
-        <div className="flex-1">
-          <p className="text-gray-500 text-xs leading-relaxed mb-3">{hint}<br />부적절한 이미지는 업로드가 제한됩니다.<br />{size}</p>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => inputRef.current?.click()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
-            >
-              <Upload className="w-3.5 h-3.5" />
-              업로드
-            </button>
-            {preview && (
+        <div className="flex items-start gap-4">
+          {/* Preview box */}
+          <div
+            className={cn(
+              'flex-shrink-0 rounded-xl overflow-hidden border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center cursor-pointer hover:border-gray-300 transition-colors relative',
+              ratio === '1:1' ? 'w-20 h-20' : 'w-[54px] min-h-[80px]'
+            )}
+            style={ratio === '2:3' ? { aspectRatio: '2/3' } : undefined}
+            onClick={() => !uploading && inputRef.current?.click()}
+          >
+            {uploading ? (
+              <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
+            ) : value ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={value} alt="preview" className="w-full h-full object-cover" />
+            ) : (
+              <div className="flex flex-col items-center gap-1 text-gray-300">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+            )}
+            <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleFile} />
+          </div>
+
+          {/* Info + buttons */}
+          <div className="flex-1">
+            <p className="text-gray-500 text-xs leading-relaxed mb-3">{hint}<br />부적절한 이미지는 업로드가 제한됩니다.<br />{size}</p>
+            <div className="flex items-center gap-2 flex-wrap">
               <button
                 type="button"
-                onClick={() => { setPreview(null); if (inputRef.current) inputRef.current.value = ''; }}
+                onClick={() => inputRef.current?.click()}
+                disabled={uploading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                업로드
+              </button>
+              {value && (
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  삭제
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowGenerate(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
               >
-                <Trash2 className="w-3.5 h-3.5" />
-                삭제
+                <Wand2 className="w-3.5 h-3.5" />
+                생성
               </button>
-            )}
-            <button
-              type="button"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
-            >
-              <Wand2 className="w-3.5 h-3.5" />
-              생성
-            </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+
+      {/* Crop modal */}
+      {showCrop && rawSrc && (
+        <ImageCropModal
+          src={rawSrc}
+          aspectRatio={ratio}
+          outputWidth={outputWidth}
+          outputHeight={outputHeight}
+          onConfirm={handleCropConfirm}
+          onCancel={() => { setShowCrop(false); setRawSrc(null); }}
+        />
+      )}
+
+      {/* Generate modal */}
+      {showGenerate && (
+        <ImageGenerateModal
+          aspectRatio={ratio}
+          onConfirm={(url) => { onChange(url); setShowGenerate(false); }}
+          onCancel={() => setShowGenerate(false)}
+        />
+      )}
+    </>
   );
 }
 
 // ─────────────────────────────────────────────
 // RIGHT PANEL — 기존/업데이트 프로필 미리보기
 // ─────────────────────────────────────────────
-function RightPreviewPanel({ name, description }: { name: string; description: string }) {
-  const MOCK_EXISTING = [
-    { title: '작품 이름', desc: '어떤 스토리인지 설명할 수 있는 간단한 소개를 입력해 주세요', author: '나도이런거만들거야', cover: null },
-    { title: '로판 악녀가 되다', desc: '깨어나보니 최악의 악녀에게 빙의되었다', author: '강형', cover: null, hasImage: true },
-  ];
-  const MOCK_UPDATED = [
-    { title: '', cover: null },
-    { title: '명부를 쥔 SSS급 헌터', cover: null, hasImage: true },
-  ];
+function RightPreviewPanel({
+  name,
+  description,
+  squareImageUrl,
+  verticalImageUrl,
+}: {
+  name: string;
+  description: string;
+  squareImageUrl: string | null;
+  verticalImageUrl: string | null;
+}) {
+  const PlaceholderIcon = ({ size = 32 }: { size?: number }) => (
+    <div className="text-gray-300">
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+    </div>
+  );
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6">
-      {/* 기존 프로필 */}
+      {/* 기존 프로필 — 정방형(1:1) */}
       <section className="mb-8">
         <h3 className="text-gray-700 font-semibold text-sm mb-4">기존 프로필</h3>
         <div className="grid grid-cols-2 gap-3">
-          {MOCK_EXISTING.map((item, i) => (
-            <div key={i} className="rounded-xl overflow-hidden border border-gray-100">
-              <div className={cn(
-                'aspect-square bg-gray-100 flex items-center justify-center',
-                item.hasImage && 'bg-gradient-to-br from-gray-700 via-purple-900 to-pink-800'
-              )}>
-                {item.hasImage ? (
-                  <div className="w-full h-full flex items-end p-3">
-                    <span className="text-white text-xs font-bold leading-tight">{item.title}</span>
-                  </div>
-                ) : (
-                  <div className="text-gray-300">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                )}
-              </div>
-              <div className="p-2.5">
-                <p className="text-gray-700 font-medium text-xs truncate mb-0.5">{item.title || '작품 이름'}</p>
-                {item.desc && <p className="text-gray-400 text-[10px] line-clamp-2 leading-relaxed">{item.desc}</p>}
-                {item.author && <p className="text-gray-400 text-[10px] mt-1">@ {item.author}</p>}
-              </div>
+          {/* My new story card */}
+          <div className="rounded-xl overflow-hidden border border-gray-100">
+            <div className="aspect-square bg-gray-100 flex items-center justify-center overflow-hidden">
+              {squareImageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={squareImageUrl} alt="square preview" className="w-full h-full object-cover" />
+              ) : (
+                <PlaceholderIcon size={32} />
+              )}
             </div>
-          ))}
+            <div className="p-2.5">
+              <p className="text-gray-700 font-medium text-xs truncate mb-0.5">{name || '작품 이름'}</p>
+              <p className="text-gray-400 text-[10px] line-clamp-2 leading-relaxed">
+                {description || '어떤 스토리인지 설명할 수 있는 간단한 소개를 입력해 주세요'}
+              </p>
+            </div>
+          </div>
+          {/* Mock existing story */}
+          <div className="rounded-xl overflow-hidden border border-gray-100">
+            <div className="aspect-square bg-gradient-to-br from-gray-700 via-purple-900 to-pink-800 flex items-end p-3">
+              <span className="text-white text-xs font-bold leading-tight">로판 악녀가 되다</span>
+            </div>
+            <div className="p-2.5">
+              <p className="text-gray-700 font-medium text-xs truncate mb-0.5">로판 악녀가 되다</p>
+              <p className="text-gray-400 text-[10px] line-clamp-2 leading-relaxed">깨어나보니 최악의 악녀에게 빙의되었다</p>
+              <p className="text-gray-400 text-[10px] mt-1">@ 강형</p>
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* 업데이트 이후 변경 프로필 */}
+      {/* 업데이트 이후 변경 프로필 — 세로형(2:3) */}
       <section>
         <h3 className="text-gray-700 font-semibold text-sm mb-4">업데이트 이후 변경 프로필</h3>
         <div className="grid grid-cols-2 gap-3">
-          {MOCK_UPDATED.map((item, i) => (
-            <div key={i} className="rounded-xl overflow-hidden border border-gray-100">
-              <div className={cn(
-                'aspect-[2/3] bg-gray-100 flex items-center justify-center',
-                item.hasImage && 'bg-gradient-to-b from-gray-900 via-gray-800 to-black'
-              )}>
-                {item.hasImage ? (
-                  <div className="w-full h-full flex items-center justify-center p-3">
-                    <span className="text-white text-xs font-bold text-center leading-tight">{item.title}</span>
-                  </div>
-                ) : (
-                  <div className="text-gray-300">
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                )}
-              </div>
+          {/* My new story card vertical */}
+          <div className="rounded-xl overflow-hidden border border-gray-100">
+            <div className="aspect-[2/3] bg-gray-100 flex items-center justify-center overflow-hidden">
+              {verticalImageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={verticalImageUrl} alt="vertical preview" className="w-full h-full object-cover" />
+              ) : squareImageUrl ? (
+                // Fall back to square image with cover fit
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={squareImageUrl} alt="vertical preview fallback" className="w-full h-full object-cover" />
+              ) : (
+                <PlaceholderIcon size={28} />
+              )}
             </div>
-          ))}
+          </div>
+          {/* Mock existing story vertical */}
+          <div className="rounded-xl overflow-hidden border border-gray-100">
+            <div className="aspect-[2/3] bg-gradient-to-b from-gray-900 via-gray-800 to-black flex items-center justify-center p-3">
+              <span className="text-white text-xs font-bold text-center leading-tight">명부를 쥔 SSS급 헌터</span>
+            </div>
+          </div>
         </div>
       </section>
     </div>
@@ -199,12 +563,18 @@ function RightPreviewPanel({ name, description }: { name: string; description: s
 function ProfileForm({
   name, setName,
   description, setDescription,
+  squareImageUrl, setSquareImageUrl,
+  verticalImageUrl, setVerticalImageUrl,
   onNext,
 }: {
   name: string;
   setName: (v: string) => void;
   description: string;
   setDescription: (v: string) => void;
+  squareImageUrl: string | null;
+  setSquareImageUrl: (v: string | null) => void;
+  verticalImageUrl: string | null;
+  setVerticalImageUrl: (v: string | null) => void;
   onNext: () => void;
 }) {
   const [showAgeNotice, setShowAgeNotice] = useState(true);
@@ -261,6 +631,8 @@ function ProfileForm({
         ratio="1:1"
         hint="이미지를 필수로 등록해주세요."
         size="5MB 이하 (1,080 x 1,080px)"
+        value={squareImageUrl}
+        onChange={setSquareImageUrl}
       />
 
       {/* Vertical image */}
@@ -269,6 +641,8 @@ function ProfileForm({
         ratio="2:3"
         hint="필수는 아니지만 미리 등록하면 더 예쁘게 노출돼요."
         size="5MB 이하 (1,080 x 1,620px)"
+        value={verticalImageUrl}
+        onChange={setVerticalImageUrl}
       />
 
       {/* Update notice */}
@@ -2113,6 +2487,8 @@ export function StoryCreateForm() {
   const [activeTab, setActiveTab] = useState<StoryTab>('profile');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [squareImageUrl, setSquareImageUrl] = useState<string | null>(null);
+  const [verticalImageUrl, setVerticalImageUrl] = useState<string | null>(null);
   const [stats, setStats] = useState<StatItem[]>([]);
   // Shared start-settings list for media/keywords/ending tabs
   const [startSettingsList] = useState([{ id: '1', name: '기본 설정' }]);
@@ -2213,6 +2589,10 @@ export function StoryCreateForm() {
                   setName={setName}
                   description={description}
                   setDescription={setDescription}
+                  squareImageUrl={squareImageUrl}
+                  setSquareImageUrl={setSquareImageUrl}
+                  verticalImageUrl={verticalImageUrl}
+                  setVerticalImageUrl={setVerticalImageUrl}
                   onNext={handleNext}
                 />
               )}
@@ -2258,7 +2638,12 @@ export function StoryCreateForm() {
               <div className="flex-shrink-0 text-center py-3 border-b border-gray-100">
                 <p className="text-gray-400 text-xs">이 대화는 AI로 생성된 가상의 이야기입니다</p>
               </div>
-              <RightPreviewPanel name={name} description={description} />
+              <RightPreviewPanel
+                name={name}
+                description={description}
+                squareImageUrl={squareImageUrl}
+                verticalImageUrl={verticalImageUrl}
+              />
             </>
           ) : activeTab === 'ending' ? (
             /* Ending tab: EPILOGUE preview */

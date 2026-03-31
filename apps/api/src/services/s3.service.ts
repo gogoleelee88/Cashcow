@@ -13,7 +13,7 @@ const s3 = new AWS.S3({
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
-export type S3UploadPath = 'avatars' | 'characters/avatars' | 'characters/backgrounds';
+export type S3UploadPath = 'avatars' | 'characters/avatars' | 'characters/backgrounds' | 'stories/covers';
 
 /**
  * Generate a pre-signed upload URL for direct client-to-S3 upload.
