@@ -25,6 +25,259 @@ const TABS: { key: StoryTab; label: string; required?: boolean }[] = [
 ];
 
 // ─────────────────────────────────────────────
+// AI CHAT MODELS
+// ─────────────────────────────────────────────
+interface ChatModel {
+  value: string;
+  label: string;
+  icon: string;
+  iconColor: string;
+  description: string;
+  coins: number | null;
+  coinColor: string;
+}
+
+const CHAT_MODELS: ChatModel[] = [
+  {
+    value: 'hyper_chat',
+    label: '하이퍼챗',
+    icon: '⚡',
+    iconColor: '#F59E0B',
+    description: 'Opus-4.6을 활용한 최고 품질의 스토리',
+    coins: 75,
+    coinColor: '#F59E0B',
+  },
+  {
+    value: 'super_chat_25',
+    label: '슈퍼챗 2.5',
+    icon: '🔥',
+    iconColor: '#F97316',
+    description: 'Sonnet-4.6을 활용한 다채로운 인물 묘사로 풍부하게 즐기는 스토리',
+    coins: 50,
+    coinColor: '#F97316',
+  },
+  {
+    value: 'super_chat_20',
+    label: '슈퍼챗 2.0',
+    icon: '💧',
+    iconColor: '#3B82F6',
+    description: 'Sonnet-4.5를 활용한 생동감 넘치고 재미있는 스토리',
+    coins: 50,
+    coinColor: '#3B82F6',
+  },
+  {
+    value: 'super_chat_15',
+    label: '슈퍼챗 1.5',
+    icon: '💧',
+    iconColor: '#60A5FA',
+    description: 'Sonnet-4.0을 활용한 실감나는 스토리',
+    coins: 50,
+    coinColor: '#60A5FA',
+  },
+  {
+    value: 'pro_chat_25',
+    label: '프로챗 2.5',
+    icon: '✦',
+    iconColor: '#8B5CF6',
+    description: 'Gemini 3.1 Pro를 활용한 한층 깊어진 몰입감의 스토리',
+    coins: 58,
+    coinColor: '#8B5CF6',
+  },
+  {
+    value: 'pro_chat_10',
+    label: '프로챗 1.0',
+    icon: '✦',
+    iconColor: '#A78BFA',
+    description: 'Gemini 2.5 Pro를 활용한 상황 묘사로 몰입도 있는 스토리',
+    coins: 50,
+    coinColor: '#A78BFA',
+  },
+  {
+    value: 'power_chat',
+    label: '파워챗',
+    icon: '✦',
+    iconColor: '#10B981',
+    description: '가볍게 즐길 수 있는 스토리',
+    coins: 20,
+    coinColor: '#10B981',
+  },
+  {
+    value: 'normal_chat',
+    label: '일반챗',
+    icon: '●',
+    iconColor: '#9CA3AF',
+    description: '무료로 이용할 수 있는 스토리',
+    coins: null,
+    coinColor: '#9CA3AF',
+  },
+];
+
+// ─────────────────────────────────────────────
+// AGE VERIFICATION MODAL
+// ─────────────────────────────────────────────
+type AgeVerifyStep = 'warning' | 'carrier';
+type Carrier = 'SKT' | 'KT' | 'LGU' | 'SKT_MVNO' | 'KT_MVNO' | 'LGU_MVNO';
+
+const CARRIERS: { value: Carrier; label: string }[] = [
+  { value: 'SKT',      label: 'SKT' },
+  { value: 'KT',       label: 'KT' },
+  { value: 'LGU',      label: 'LG U+' },
+  { value: 'SKT_MVNO', label: 'SKT 알뜰폰' },
+  { value: 'KT_MVNO',  label: 'KT 알뜰폰' },
+  { value: 'LGU_MVNO', label: 'LG U+ 알뜰폰' },
+];
+
+function AgeVerificationModal({ onClose }: { onClose: () => void }) {
+  const [step, setStep] = useState<AgeVerifyStep>('warning');
+  const [loading, setLoading] = useState(false);
+  const [selectedCarrier, setSelectedCarrier] = useState<Carrier | null>(null);
+
+  const handleProceed = () => setStep('carrier');
+
+  const handleCarrierSelect = async (carrier: Carrier) => {
+    setSelectedCarrier(carrier);
+    setLoading(true);
+    try {
+      const { api } = await import('../../lib/api');
+      const result = await api.users.ageVerifyInitiate(carrier);
+      // Open PASS deep link in new tab/window
+      if (result.passDeepLink) {
+        window.open(result.passDeepLink, '_blank');
+      }
+    } catch {
+      // silent fail
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 8 }}
+        transition={{ duration: 0.2 }}
+        className="w-full max-w-sm bg-white rounded-2xl overflow-hidden shadow-2xl"
+      >
+        {step === 'warning' ? (
+          /* ── Step 1: 19세 경고 ── */
+          <div className="p-6 text-center">
+            {/* Close */}
+            <div className="flex justify-end mb-2">
+              <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* 19 badge */}
+            <div className="flex justify-center mb-5">
+              <div className="w-20 h-20 rounded-full bg-brand flex items-center justify-center">
+                <span className="text-white font-black text-3xl leading-none">19</span>
+              </div>
+            </div>
+
+            <h2 className="text-gray-900 font-bold text-lg mb-3">청소년 유해매체물</h2>
+            <p className="text-gray-500 text-sm leading-relaxed mb-1">
+              이 서비스는 청소년 유해매체물로서 정보통신망 이용 촉진 및 정보 보호 등에 관한 법률 및 청소년 보호법의 규정에 의해
+            </p>
+            <p className="text-gray-900 font-semibold text-sm mb-1">19세 미만의 청소년은 이용할 수 없습니다.</p>
+            <p className="text-gray-500 text-sm leading-relaxed mb-6">
+              성인인증을 통해 성인 여부를 확인합니다.
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-50 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleProceed}
+                className="flex-1 py-3 rounded-xl bg-gray-900 text-white font-semibold text-sm hover:bg-gray-800 transition-colors"
+              >
+                성인인증
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* ── Step 2: PASS 통신사 선택 ── */
+          <div className="p-6">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-5">
+              <button type="button" onClick={() => setStep('warning')} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* PASS logo */}
+            <div className="flex flex-col items-center mb-6">
+              <div className="w-14 h-14 rounded-2xl bg-brand flex items-center justify-center mb-3">
+                <span className="text-white font-black text-xl tracking-tight">PASS</span>
+              </div>
+              <p className="text-gray-500 text-xs">인증을 넘어 일상으로 PASS</p>
+            </div>
+
+            <h3 className="text-gray-900 font-bold text-base text-center mb-1">이용 중인 통신사를 선택해 주세요</h3>
+            <p className="text-gray-400 text-xs text-center mb-5">본인 명의의 통신사를 선택하세요</p>
+
+            {/* Carrier grid */}
+            <div className="grid grid-cols-3 gap-2.5 mb-4">
+              {CARRIERS.map((c) => (
+                <button
+                  key={c.value}
+                  type="button"
+                  disabled={loading}
+                  onClick={() => handleCarrierSelect(c.value)}
+                  className={cn(
+                    'py-3 rounded-xl border text-sm font-semibold transition-all',
+                    selectedCarrier === c.value
+                      ? 'border-brand bg-brand/5 text-brand'
+                      : 'border-gray-200 text-gray-700 hover:border-brand/40 hover:text-brand hover:bg-brand/5',
+                    loading && 'opacity-50 cursor-not-allowed'
+                  )}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+
+            {/* MVNO link */}
+            <div className="text-center mb-5">
+              <button type="button" className="text-brand text-xs underline underline-offset-2">
+                알뜰폰 사업자 확인
+              </button>
+            </div>
+
+            {/* Security notice */}
+            <div className="flex items-start gap-2 px-3 py-3 bg-gray-50 rounded-xl">
+              <svg className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+              <p className="text-gray-400 text-[11px] leading-relaxed">
+                보안 프로그램 설치 없이 본인인증이 가능합니다. PASS 앱이 없어도 문자 인증으로 진행됩니다.
+              </p>
+            </div>
+          </div>
+        )}
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ─────────────────────────────────────────────
 // IMAGE UPLOAD AREA
 // ─────────────────────────────────────────────
 function ImageUploadArea({
@@ -208,6 +461,21 @@ function ProfileForm({
   onNext: () => void;
 }) {
   const [showAgeNotice, setShowAgeNotice] = useState(true);
+  const [showAgeModal, setShowAgeModal] = useState(false);
+  const [generatingName, setGeneratingName] = useState(false);
+
+  const handleRandomName = async () => {
+    setGeneratingName(true);
+    try {
+      const { api } = await import('../../lib/api');
+      const { name: generated } = await api.stories.generateRandomName();
+      setName(generated);
+    } catch {
+      // silent fail
+    } finally {
+      setGeneratingName(false);
+    }
+  };
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
@@ -216,9 +484,11 @@ function ProfileForm({
         <span className="text-gray-700 text-sm">프로필을 랜덤으로 생성해 보세요</span>
         <button
           type="button"
-          className="px-3 py-1.5 rounded-lg border border-brand text-brand text-xs font-semibold hover:bg-brand/5 transition-colors"
+          onClick={handleRandomName}
+          disabled={generatingName}
+          className="px-3 py-1.5 rounded-lg border border-brand text-brand text-xs font-semibold hover:bg-brand/5 transition-colors disabled:opacity-50"
         >
-          랜덤 생성
+          {generatingName ? '생성 중...' : '랜덤 생성'}
         </button>
       </div>
 
@@ -238,6 +508,7 @@ function ProfileForm({
             <div className="flex items-center gap-2 flex-shrink-0">
               <button
                 type="button"
+                onClick={() => setShowAgeModal(true)}
                 className="px-3 py-1 rounded-lg bg-white text-gray-900 text-xs font-semibold hover:bg-gray-100 transition-colors"
               >
                 성인 인증
@@ -338,6 +609,11 @@ function ProfileForm({
       >
         <ChevronUp className="w-5 h-5" />
       </button>
+
+      {/* Age Verification Modal */}
+      <AnimatePresence>
+        {showAgeModal && <AgeVerificationModal onClose={() => setShowAgeModal(false)} />}
+      </AnimatePresence>
     </div>
   );
 }
@@ -354,12 +630,17 @@ interface StartSetting {
   suggestedReplies: string[];
 }
 
-function StartSettingsTab() {
+function StartSettingsTab({ storyName, systemPrompt }: { storyName: string; systemPrompt: string }) {
   const [settings, setSettings] = useState<StartSetting[]>([
     { id: '1', name: '기본 설정', prologue: '', situation: '', playGuide: '', suggestedReplies: [] },
   ]);
   const [activeSettingId, setActiveSettingId] = useState('1');
   const [advancedOpen, setAdvancedOpen] = useState(true);
+  const [showInfoCard, setShowInfoCard] = useState(true);
+  const [generatingPrologue, setGeneratingPrologue] = useState(false);
+
+  const isDefaultSetting = activeSettingId === settings[0].id;
+  const isExtraSetting = !isDefaultSetting;
 
   const activeSetting = settings.find(s => s.id === activeSettingId) ?? settings[0];
 
@@ -369,11 +650,30 @@ function StartSettingsTab() {
 
   const addSetting = () => {
     const newId = String(Date.now());
+    const extraCount = settings.length; // 추가 설정 번호
     setSettings(prev => [...prev, {
-      id: newId, name: `설정 ${prev.length + 1}`,
+      id: newId, name: `추가 설정 ${extraCount}`,
       prologue: '', situation: '', playGuide: '', suggestedReplies: [],
     }]);
     setActiveSettingId(newId);
+    setShowInfoCard(true); // 새 설정 선택 시 인포카드 표시
+  };
+
+  const handleGeneratePrologue = async () => {
+    setGeneratingPrologue(true);
+    try {
+      const { api } = await import('../../lib/api');
+      const { prologue } = await api.stories.generatePrologue({
+        name: storyName,
+        systemPrompt,
+        settingName: activeSetting.name,
+      });
+      update('prologue', prologue);
+    } catch {
+      // silent fail
+    } finally {
+      setGeneratingPrologue(false);
+    }
   };
 
   const addReply = () => {
@@ -395,10 +695,10 @@ function StartSettingsTab() {
     <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
       {/* Setting pills */}
       <div className="flex items-center gap-2 mb-6 flex-wrap">
-        {settings.map((s) => (
+        {settings.map((s, i) => (
           <button
             key={s.id}
-            onClick={() => setActiveSettingId(s.id)}
+            onClick={() => { setActiveSettingId(s.id); if (i > 0) setShowInfoCard(true); }}
             className={cn(
               'px-3 py-1.5 rounded-full text-sm font-semibold transition-all',
               s.id === activeSettingId
@@ -406,7 +706,7 @@ function StartSettingsTab() {
                 : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
             )}
           >
-            {s.id === settings[0].id ? `기본 ${s.name}` : s.name}
+            {i === 0 ? `기본 ${s.name}` : s.name}
           </button>
         ))}
         {settings.length < 5 && (
@@ -420,6 +720,57 @@ function StartSettingsTab() {
         )}
       </div>
 
+      {/* 추가 설정 인포카드 (기본 설정이 아닌 경우에만 표시) */}
+      <AnimatePresence>
+        {isExtraSetting && showInfoCard && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden mb-6"
+          >
+            <div className="flex items-start gap-4 p-4 rounded-2xl border border-gray-200 bg-gray-50">
+              {/* Mock preview image */}
+              <div className="flex-shrink-0 w-[140px] h-[100px] rounded-xl bg-gray-700 overflow-hidden flex flex-col">
+                <div className="flex-1 p-2">
+                  <div className="bg-white/10 rounded-lg px-2 py-1 mb-1.5 text-[9px] text-white/70">시작설정</div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1 bg-white/20 rounded-md px-2 py-0.5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-white/60" />
+                      <span className="text-[9px] text-white/80">친구사이</span>
+                    </div>
+                    <div className="flex items-center gap-1 bg-white/10 rounded-md px-2 py-0.5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                      <span className="text-[9px] text-white/80">친구사이</span>
+                    </div>
+                    <div className="text-[9px] text-white/60 px-2">애인사이</div>
+                  </div>
+                </div>
+                <div className="bg-gray-900 px-2 py-1.5">
+                  <div className="bg-white/20 rounded-md text-center text-[9px] text-white py-0.5">대화 나누기</div>
+                </div>
+              </div>
+
+              {/* Explanation */}
+              <div className="flex-1 min-w-0">
+                <p className="text-gray-900 font-bold text-sm mb-1">스토리의 다양한 시작상황을 설정해 보세요</p>
+                <p className="text-gray-400 text-xs leading-relaxed">
+                  사용자가 스토리 정보에서 원하는 시작설정을 선택하여 대화를 시작할 수 있어요.
+                </p>
+              </div>
+
+              {/* Close */}
+              <button
+                onClick={() => setShowInfoCard(false)}
+                className="flex-shrink-0 text-gray-300 hover:text-gray-500 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* 프롤로그 */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-1">
@@ -427,8 +778,12 @@ function StartSettingsTab() {
             <span className="text-gray-900 font-semibold text-sm">프롤로그</span>
             <span className="text-brand font-bold text-sm">*</span>
           </div>
-          <button className="px-3 py-1 rounded-lg border border-brand/40 text-brand text-xs font-semibold hover:bg-brand/5 transition-colors">
-            자동 생성
+          <button
+            onClick={handleGeneratePrologue}
+            disabled={generatingPrologue}
+            className="px-3 py-1 rounded-lg border border-brand/40 text-brand text-xs font-semibold hover:bg-brand/5 transition-colors disabled:opacity-50"
+          >
+            {generatingPrologue ? '생성 중...' : '자동 생성'}
           </button>
         </div>
         <p className="text-gray-400 text-xs mb-2">스토리의 프롤로그를 작성해 주세요</p>
@@ -1572,6 +1927,7 @@ const MODEL_OPTIONS = [
 
 function RegisterTab({ name, coverUrl }: { name: string; coverUrl?: string }) {
   const [showAgeNotice, setShowAgeNotice] = useState(true);
+  const [showAgeModal, setShowAgeModal] = useState(false);
   const [detailDesc, setDetailDesc] = useState('');
   const [genre, setGenre] = useState('');
   const [target, setTarget] = useState('');
@@ -1604,7 +1960,10 @@ function RegisterTab({ name, coverUrl }: { name: string; coverUrl?: string }) {
         <div className="flex items-center justify-between gap-3 px-4 py-3 mb-6 bg-gray-900 text-white rounded-xl">
           <p className="text-sm">민감한 스토리의 경우 제작 시 성인 인증이 필요해요.</p>
           <div className="flex items-center gap-2 flex-shrink-0">
-            <button className="px-3 py-1 rounded-lg bg-white text-gray-900 text-xs font-semibold hover:bg-gray-100 transition-colors">
+            <button
+              onClick={() => setShowAgeModal(true)}
+              className="px-3 py-1 rounded-lg bg-white text-gray-900 text-xs font-semibold hover:bg-gray-100 transition-colors"
+            >
               성인 인증
             </button>
             <button onClick={() => setShowAgeNotice(false)} className="text-white/60 hover:text-white">
@@ -1878,6 +2237,11 @@ function RegisterTab({ name, coverUrl }: { name: string; coverUrl?: string }) {
           </div>
         </div>
       </div>
+
+      {/* Age Verification Modal */}
+      <AnimatePresence>
+        {showAgeModal && <AgeVerificationModal onClose={() => setShowAgeModal(false)} />}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1996,9 +2360,55 @@ function PlaceholderTab({ label }: { label: string }) {
 // ─────────────────────────────────────────────
 // STORY SETTINGS TAB (simplified example)
 // ─────────────────────────────────────────────
-function StorySettingsTab() {
+function StorySettingsTab({
+  storyName, storyDescription, onSystemPromptChange,
+}: {
+  storyName: string; storyDescription: string; onSystemPromptChange: (v: string) => void;
+}) {
   const [systemPrompt, setSystemPrompt] = useState('');
   const [examples, setExamples] = useState([{ user: '', assistant: '' }]);
+  const [generatingPrompt, setGeneratingPrompt] = useState(false);
+  const [generatingExamples, setGeneratingExamples] = useState(false);
+
+  const handleUpdatePrompt = (v: string) => {
+    setSystemPrompt(v);
+    onSystemPromptChange(v);
+  };
+
+  const handleGeneratePrompt = async () => {
+    setGeneratingPrompt(true);
+    try {
+      const { api } = await import('../../lib/api');
+      const { systemPrompt: generated } = await api.stories.generateStorySettings({
+        name: storyName, description: storyDescription,
+      });
+      handleUpdatePrompt(generated.slice(0, 3000));
+    } catch {
+      // silent fail
+    } finally {
+      setGeneratingPrompt(false);
+    }
+  };
+
+  const handleGenerateExamples = async () => {
+    setGeneratingExamples(true);
+    try {
+      const { api } = await import('../../lib/api');
+      const { examples: generated } = await api.stories.generateExamples({
+        name: storyName, description: storyDescription, systemPrompt,
+      });
+      if (Array.isArray(generated) && generated.length > 0) {
+        setExamples(generated.slice(0, 3).map((e: { user: string; assistant: string }) => ({
+          user: (e.user || '').slice(0, 500),
+          assistant: (e.assistant || '').slice(0, 500),
+        })));
+      }
+    } catch {
+      // silent fail
+    } finally {
+      setGeneratingExamples(false);
+    }
+  };
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
@@ -2012,12 +2422,22 @@ function StorySettingsTab() {
         <div className="relative">
           <textarea
             value={systemPrompt}
-            onChange={(e) => setSystemPrompt(e.target.value.slice(0, 3000))}
+            onChange={(e) => handleUpdatePrompt(e.target.value.slice(0, 3000))}
             placeholder="스토리 설정을 입력해 주세요"
             rows={8}
             className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-900 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 transition-colors resize-none"
           />
           <span className="absolute right-4 bottom-3 text-gray-300 text-xs">{systemPrompt.length} / 3000</span>
+        </div>
+        <div className="flex justify-end mt-2">
+          <button
+            type="button"
+            onClick={handleGeneratePrompt}
+            disabled={generatingPrompt}
+            className="px-3 py-1.5 rounded-lg border border-brand/40 text-brand text-xs font-semibold hover:bg-brand/5 transition-colors disabled:opacity-50"
+          >
+            {generatingPrompt ? '생성 중...' : '자동 생성'}
+          </button>
         </div>
       </div>
 
@@ -2038,8 +2458,13 @@ function StorySettingsTab() {
             <p className="text-gray-400 text-xs">전개 예시를 입력해서 스토리의 완성도를 높여보세요.<br />예시는 3개까지 등록할 수 있어요.</p>
           </div>
           <div className="flex gap-2">
-            <button type="button" className="px-3 py-1.5 rounded-lg border border-brand/40 text-brand text-xs font-medium hover:bg-brand/5 transition-colors">
-              전체 자동 생성
+            <button
+              type="button"
+              onClick={handleGenerateExamples}
+              disabled={generatingExamples}
+              className="px-3 py-1.5 rounded-lg border border-brand/40 text-brand text-xs font-medium hover:bg-brand/5 transition-colors disabled:opacity-50"
+            >
+              {generatingExamples ? '생성 중...' : '전체 자동 생성'}
             </button>
             {examples.length < 3 && (
               <button
@@ -2114,8 +2539,12 @@ export function StoryCreateForm() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [stats, setStats] = useState<StatItem[]>([]);
+  const [systemPrompt, setSystemPrompt] = useState('');
   // Shared start-settings list for media/keywords/ending tabs
   const [startSettingsList] = useState([{ id: '1', name: '기본 설정' }]);
+  // AI model selector
+  const [selectedModel, setSelectedModel] = useState<ChatModel>(CHAT_MODELS[2]); // default: 슈퍼챗 2.0
+  const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) router.push('/login?redirect=/creator/story/new');
@@ -2216,8 +2645,16 @@ export function StoryCreateForm() {
                   onNext={handleNext}
                 />
               )}
-              {activeTab === 'story-settings' && <StorySettingsTab />}
-              {activeTab === 'start-settings' && <StartSettingsTab />}
+              {activeTab === 'story-settings' && (
+                <StorySettingsTab
+                  storyName={name}
+                  storyDescription={description}
+                  onSystemPromptChange={setSystemPrompt}
+                />
+              )}
+              {activeTab === 'start-settings' && (
+                <StartSettingsTab storyName={name} systemPrompt={systemPrompt} />
+              )}
               {activeTab === 'stat-settings' && <StatSettingsTab stats={stats} setStats={setStats} />}
               {activeTab === 'media' && <MediaTab startSettings={startSettingsList} />}
               {activeTab === 'keywords' && <KeywordsTab startSettings={startSettingsList} />}
@@ -2296,11 +2733,81 @@ export function StoryCreateForm() {
                   채팅 미리보기
                 </button>
                 <div className="flex items-center gap-2">
-                  <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
-                    <span>🍇</span>
-                    슈퍼챗 2.0
-                    <ChevronDown className="w-3 h-3 text-gray-400" />
-                  </button>
+                  {/* Model selector */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setModelDropdownOpen(p => !p)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                      <span style={{ color: selectedModel.iconColor }} className="text-sm leading-none">
+                        {selectedModel.icon}
+                      </span>
+                      <span>{selectedModel.label}</span>
+                      <ChevronDown className={cn('w-3 h-3 text-gray-400 transition-transform', modelDropdownOpen && 'rotate-180')} />
+                    </button>
+
+                    <AnimatePresence>
+                      {modelDropdownOpen && (
+                        <>
+                          {/* Backdrop */}
+                          <div
+                            className="fixed inset-0 z-40"
+                            onClick={() => setModelDropdownOpen(false)}
+                          />
+                          <motion.div
+                            initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                            transition={{ duration: 0.12 }}
+                            className="absolute right-0 top-full mt-1.5 w-72 bg-white rounded-2xl border border-gray-200 shadow-xl z-50 overflow-hidden py-1"
+                          >
+                            {CHAT_MODELS.map(model => (
+                              <button
+                                key={model.value}
+                                onClick={() => { setSelectedModel(model); setModelDropdownOpen(false); }}
+                                className={cn(
+                                  'w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors',
+                                  selectedModel.value === model.value && 'bg-gray-50'
+                                )}
+                              >
+                                {/* Icon */}
+                                <span
+                                  className="text-base leading-none mt-0.5 flex-shrink-0 w-5 text-center"
+                                  style={{ color: model.iconColor }}
+                                >
+                                  {model.icon}
+                                </span>
+
+                                {/* Label + desc */}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-0.5">
+                                    <span className="text-gray-900 font-semibold text-sm">{model.label}</span>
+                                    {model.coins !== null && (
+                                      <span
+                                        className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-bold"
+                                        style={{ backgroundColor: `${model.coinColor}15`, color: model.coinColor }}
+                                      >
+                                        ◆ {model.coins}개
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-gray-400 text-xs leading-relaxed">{model.description}</p>
+                                </div>
+
+                                {/* Checkmark */}
+                                {selectedModel.value === model.value && (
+                                  <svg className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: '#E63325' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                  </svg>
+                                )}
+                              </button>
+                            ))}
+                          </motion.div>
+                        </>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
                   <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
                     <MessageSquare className="w-3.5 h-3.5" />
                     채팅 내역
