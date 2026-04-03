@@ -25,6 +25,411 @@ const TABS: { key: StoryTab; label: string; required?: boolean }[] = [
 ];
 
 // ─────────────────────────────────────────────
+<<<<<<< HEAD
+=======
+// AI CHAT MODELS
+// ─────────────────────────────────────────────
+interface ChatModel {
+  value: string;
+  label: string;
+  icon: string;
+  iconColor: string;
+  description: string;
+  coins: number | null;
+  coinColor: string;
+}
+
+const CHAT_MODELS: ChatModel[] = [
+  {
+    value: 'hyper_chat',
+    label: '하이퍼챗',
+    icon: '⚡',
+    iconColor: '#F59E0B',
+    description: 'Opus-4.6을 활용한 최고 품질의 스토리',
+    coins: 75,
+    coinColor: '#F59E0B',
+  },
+  {
+    value: 'super_chat_25',
+    label: '슈퍼챗 2.5',
+    icon: '🔥',
+    iconColor: '#F97316',
+    description: 'Sonnet-4.6을 활용한 다채로운 인물 묘사로 풍부하게 즐기는 스토리',
+    coins: 50,
+    coinColor: '#F97316',
+  },
+  {
+    value: 'super_chat_20',
+    label: '슈퍼챗 2.0',
+    icon: '💧',
+    iconColor: '#3B82F6',
+    description: 'Sonnet-4.5를 활용한 생동감 넘치고 재미있는 스토리',
+    coins: 50,
+    coinColor: '#3B82F6',
+  },
+  {
+    value: 'super_chat_15',
+    label: '슈퍼챗 1.5',
+    icon: '💧',
+    iconColor: '#60A5FA',
+    description: 'Sonnet-4.0을 활용한 실감나는 스토리',
+    coins: 50,
+    coinColor: '#60A5FA',
+  },
+  {
+    value: 'pro_chat_25',
+    label: '프로챗 2.5',
+    icon: '✦',
+    iconColor: '#8B5CF6',
+    description: 'Gemini 3.1 Pro를 활용한 한층 깊어진 몰입감의 스토리',
+    coins: 58,
+    coinColor: '#8B5CF6',
+  },
+  {
+    value: 'pro_chat_10',
+    label: '프로챗 1.0',
+    icon: '✦',
+    iconColor: '#A78BFA',
+    description: 'Gemini 2.5 Pro를 활용한 상황 묘사로 몰입도 있는 스토리',
+    coins: 50,
+    coinColor: '#A78BFA',
+  },
+  {
+    value: 'power_chat',
+    label: '파워챗',
+    icon: '✦',
+    iconColor: '#10B981',
+    description: '가볍게 즐길 수 있는 스토리',
+    coins: 20,
+    coinColor: '#10B981',
+  },
+  {
+    value: 'normal_chat',
+    label: '일반챗',
+    icon: '●',
+    iconColor: '#9CA3AF',
+    description: '무료로 이용할 수 있는 스토리',
+    coins: null,
+    coinColor: '#9CA3AF',
+  },
+];
+
+// ─────────────────────────────────────────────
+// AGE VERIFICATION MODAL
+// ─────────────────────────────────────────────
+type AgeVerifyStep = 'warning' | 'carrier' | 'waiting';
+type Carrier = 'SKT' | 'KT' | 'LGU' | 'SKT_MVNO' | 'KT_MVNO' | 'LGU_MVNO';
+
+const CARRIERS: { value: Carrier; label: string }[] = [
+  { value: 'SKT',      label: 'SKT' },
+  { value: 'KT',       label: 'KT' },
+  { value: 'LGU',      label: 'LG U+' },
+  { value: 'SKT_MVNO', label: 'SKT 알뜰폰' },
+  { value: 'KT_MVNO',  label: 'KT 알뜰폰' },
+  { value: 'LGU_MVNO', label: 'LG U+ 알뜰폰' },
+];
+
+function AgeVerificationModal({ onClose, onVerified }: { onClose: () => void; onVerified?: () => void }) {
+  const [step, setStep] = useState<AgeVerifyStep>('warning');
+  const [loading, setLoading] = useState(false);
+  const [selectedCarrier, setSelectedCarrier] = useState<Carrier | null>(null);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [verifyDone, setVerifyDone] = useState(false);
+  // sandbox 모드에서 인증 대기 중 여부
+  const [awaitingVerify, setAwaitingVerify] = useState(false);
+  const [sandboxToken, setSandboxToken] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // 컴포넌트 언마운트 시 폴링 정리
+  useEffect(() => {
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, []);
+
+  // 인증 완료 여부 폴링 (1초 간격, 최대 10분)
+  const startPolling = () => {
+    let attempts = 0;
+    const MAX = 600;
+    pollRef.current = setInterval(async () => {
+      attempts++;
+      try {
+        const { api } = await import('../../lib/api');
+        const res = await api.users.ageVerifyStatus();
+        if (res.isVerified) {
+          clearInterval(pollRef.current!);
+          setVerifyDone(true);
+          setAwaitingVerify(false);
+          onVerified?.();
+        }
+      } catch { /* ignore */ }
+      if (attempts >= MAX) {
+        clearInterval(pollRef.current!);
+        setAwaitingVerify(false);
+        setErrorMsg('인증 시간이 초과되었습니다. 다시 시도해 주세요.');
+      }
+    }, 1000);
+  };
+
+  const handleCarrierSelect = async (carrier: Carrier) => {
+    setSelectedCarrier(carrier);
+    setLoading(true);
+    setErrorMsg('');
+    try {
+      const { api } = await import('../../lib/api');
+      const result = await api.users.ageVerifyInitiate(carrier);
+
+      if (result.mode === 'nice' && result.encData) {
+        // ── 실제 NICE 팝업 실행 ──────────────────────────────────
+        // NICE 체크플러스는 form POST + 팝업 방식
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = result.checkUrl;
+        form.target = 'nice_popup';
+        const addInput = (name: string, value: string) => {
+          const input = document.createElement('input');
+          input.type = 'hidden'; input.name = name; input.value = value;
+          form.appendChild(input);
+        };
+        addInput('m', 'checkplusService');
+        addInput('token_version_id', result.tokenVersionId);
+        addInput('enc_data', result.encData);
+        addInput('integrity_value', result.integrityValue);
+        document.body.appendChild(form);
+
+        // 팝업 오픈 후 폼 제출
+        window.open('', 'nice_popup', 'width=500,height=550,scrollbars=yes,resizable=no');
+        form.submit();
+        document.body.removeChild(form);
+
+        setAwaitingVerify(true);
+        setStep('waiting');
+        startPolling();
+      } else if (result.mode === 'sandbox') {
+        // ── 샌드박스 모드 (개발/테스트 환경) ────────────────────
+        setSandboxToken(result.sandboxToken);
+        setStep('waiting');
+        setAwaitingVerify(true);
+      } else {
+        setErrorMsg('인증 서버 응답이 올바르지 않습니다.');
+      }
+    } catch (err: any) {
+      const msg = err?.response?.data?.error ?? '인증 요청에 실패했습니다. 잠시 후 다시 시도해 주세요.';
+      setErrorMsg(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 샌드박스 전용: "인증 완료" 버튼
+  const handleSandboxComplete = async () => {
+    if (!sandboxToken) return;
+    setLoading(true);
+    setErrorMsg('');
+    try {
+      const { api } = await import('../../lib/api');
+      await api.users.ageVerifySandboxComplete(sandboxToken);
+      if (pollRef.current) clearInterval(pollRef.current);
+      setVerifyDone(true);
+      setAwaitingVerify(false);
+      onVerified?.();
+    } catch (err: any) {
+      setErrorMsg(err?.response?.data?.error ?? '인증 처리에 실패했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+      onClick={(e) => { if (e.target === e.currentTarget && !awaitingVerify) onClose(); }}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 8 }}
+        transition={{ duration: 0.2 }}
+        className="w-full max-w-sm bg-white rounded-2xl overflow-hidden shadow-2xl"
+      >
+        {/* ── 인증 완료 ─────────────────────────────────── */}
+        {verifyDone ? (
+          <div className="p-6 text-center">
+            <div className="flex justify-center mb-5">
+              <div className="w-20 h-20 rounded-full bg-green-500 flex items-center justify-center">
+                <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+            </div>
+            <h2 className="text-gray-900 font-bold text-lg mb-2">성인인증 완료</h2>
+            <p className="text-gray-500 text-sm mb-6">성인인증이 성공적으로 완료되었습니다.</p>
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full py-3 rounded-xl bg-gray-900 text-white font-semibold text-sm hover:bg-gray-800 transition-colors"
+            >
+              확인
+            </button>
+          </div>
+
+        /* ── NICE 팝업 대기 / 샌드박스 ──────────────────── */
+        ) : step === 'waiting' ? (
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-5">
+              <button type="button" onClick={() => { if (pollRef.current) clearInterval(pollRef.current); setStep('carrier'); setAwaitingVerify(false); }} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <button type="button" onClick={() => { if (!awaitingVerify || sandboxToken) { if (pollRef.current) clearInterval(pollRef.current); onClose(); } }} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex flex-col items-center py-4">
+              {/* 스피너 */}
+              <div className="w-14 h-14 rounded-full border-4 border-gray-100 border-t-brand animate-spin mb-5" />
+              <h3 className="text-gray-900 font-bold text-base mb-2">인증 진행 중</h3>
+              {sandboxToken ? (
+                <p className="text-gray-400 text-sm text-center mb-6">
+                  <span className="inline-block px-2 py-0.5 bg-yellow-50 text-yellow-600 rounded text-xs font-medium mb-2">개발 샌드박스 모드</span><br />
+                  실제 서비스에서는 PASS 앱 또는 SMS 인증이 진행됩니다.
+                </p>
+              ) : (
+                <p className="text-gray-400 text-sm text-center mb-6">
+                  팝업창에서 PASS 본인인증을 완료해 주세요.<br />
+                  팝업이 보이지 않으면 브라우저의 팝업 차단을 해제해 주세요.
+                </p>
+              )}
+
+              {errorMsg && (
+                <p className="text-red-500 text-xs text-center mb-4">{errorMsg}</p>
+              )}
+
+              {/* 샌드박스 전용 완료 버튼 */}
+              {sandboxToken && (
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={handleSandboxComplete}
+                  className="w-full py-3 rounded-xl bg-gray-900 text-white font-semibold text-sm hover:bg-gray-800 transition-colors disabled:opacity-50 mb-3"
+                >
+                  {loading ? '처리 중...' : '[샌드박스] 인증 완료 처리'}
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => { if (pollRef.current) clearInterval(pollRef.current); setStep('carrier'); setAwaitingVerify(false); setSandboxToken(null); setErrorMsg(''); }}
+                className="text-gray-400 text-sm underline underline-offset-2"
+              >
+                통신사 다시 선택
+              </button>
+            </div>
+          </div>
+
+        /* ── Step 1: 19세 경고 ───────────────────────────── */
+        ) : step === 'warning' ? (
+          <div className="p-6 text-center">
+            <div className="flex justify-end mb-2">
+              <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex justify-center mb-5">
+              <div className="w-20 h-20 rounded-full bg-brand flex items-center justify-center">
+                <span className="text-white font-black text-3xl leading-none">19</span>
+              </div>
+            </div>
+            <h2 className="text-gray-900 font-bold text-lg mb-3">청소년 유해매체물</h2>
+            <p className="text-gray-500 text-sm leading-relaxed mb-1">
+              이 서비스는 청소년 유해매체물로서 정보통신망 이용 촉진 및 정보 보호 등에 관한 법률 및 청소년 보호법의 규정에 의해
+            </p>
+            <p className="text-gray-900 font-semibold text-sm mb-1">19세 미만의 청소년은 이용할 수 없습니다.</p>
+            <p className="text-gray-500 text-sm leading-relaxed mb-6">
+              성인인증을 통해 성인 여부를 확인합니다.
+            </p>
+            <div className="flex gap-3">
+              <button type="button" onClick={onClose} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-50 transition-colors">
+                취소
+              </button>
+              <button type="button" onClick={() => setStep('carrier')} className="flex-1 py-3 rounded-xl bg-gray-900 text-white font-semibold text-sm hover:bg-gray-800 transition-colors">
+                성인인증
+              </button>
+            </div>
+          </div>
+
+        /* ── Step 2: 통신사 선택 ─────────────────────────── */
+        ) : (
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-5">
+              <button type="button" onClick={() => setStep('warning')} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex flex-col items-center mb-6">
+              <div className="w-14 h-14 rounded-2xl bg-brand flex items-center justify-center mb-3">
+                <span className="text-white font-black text-xl tracking-tight">PASS</span>
+              </div>
+              <p className="text-gray-500 text-xs">인증을 넘어 일상으로 PASS</p>
+            </div>
+
+            <h3 className="text-gray-900 font-bold text-base text-center mb-1">이용 중인 통신사를 선택해 주세요</h3>
+            <p className="text-gray-400 text-xs text-center mb-5">본인 명의의 통신사를 선택하세요</p>
+
+            {errorMsg && (
+              <p className="text-red-500 text-xs text-center mb-3">{errorMsg}</p>
+            )}
+
+            <div className="grid grid-cols-3 gap-2.5 mb-4">
+              {CARRIERS.map((c) => (
+                <button
+                  key={c.value}
+                  type="button"
+                  disabled={loading}
+                  onClick={() => handleCarrierSelect(c.value)}
+                  className={cn(
+                    'py-3 rounded-xl border text-sm font-semibold transition-all',
+                    selectedCarrier === c.value && loading
+                      ? 'border-brand bg-brand/5 text-brand opacity-70'
+                      : 'border-gray-200 text-gray-700 hover:border-brand/40 hover:text-brand hover:bg-brand/5',
+                    loading && selectedCarrier !== c.value && 'opacity-40 cursor-not-allowed'
+                  )}
+                >
+                  {loading && selectedCarrier === c.value ? (
+                    <span className="inline-block w-4 h-4 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+                  ) : c.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="text-center mb-5">
+              <button type="button" className="text-brand text-xs underline underline-offset-2">
+                알뜰폰 사업자 확인
+              </button>
+            </div>
+
+            <div className="flex items-start gap-2 px-3 py-3 bg-gray-50 rounded-xl">
+              <svg className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+              <p className="text-gray-400 text-[11px] leading-relaxed">
+                보안 프로그램 설치 없이 본인인증이 가능합니다. PASS 앱이 없어도 문자 인증으로 진행됩니다.
+              </p>
+            </div>
+          </div>
+        )}
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ─────────────────────────────────────────────
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
 // IMAGE UPLOAD AREA
 // ─────────────────────────────────────────────
 function ImageUploadArea({
@@ -33,12 +438,20 @@ function ImageUploadArea({
   ratio,
   hint,
   size,
+<<<<<<< HEAD
+=======
+  onPreviewChange,
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
 }: {
   label: string;
   required?: boolean;
   ratio: string;
   hint: string;
   size: string;
+<<<<<<< HEAD
+=======
+  onPreviewChange?: (url: string | null) => void;
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
 }) {
   const [preview, setPreview] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -48,6 +461,16 @@ function ImageUploadArea({
     if (!file) return;
     const url = URL.createObjectURL(file);
     setPreview(url);
+<<<<<<< HEAD
+=======
+    onPreviewChange?.(url);
+  };
+
+  const handleDelete = () => {
+    setPreview(null);
+    if (inputRef.current) inputRef.current.value = '';
+    onPreviewChange?.(null);
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
   };
 
   return (
@@ -95,7 +518,11 @@ function ImageUploadArea({
             {preview && (
               <button
                 type="button"
+<<<<<<< HEAD
                 onClick={() => { setPreview(null); if (inputRef.current) inputRef.current.value = ''; }}
+=======
+                onClick={handleDelete}
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -119,6 +546,7 @@ function ImageUploadArea({
 // ─────────────────────────────────────────────
 // RIGHT PANEL — 기존/업데이트 프로필 미리보기
 // ─────────────────────────────────────────────
+<<<<<<< HEAD
 function RightPreviewPanel({ name, description }: { name: string; description: string }) {
   const MOCK_EXISTING = [
     { title: '작품 이름', desc: '어떤 스토리인지 설명할 수 있는 간단한 소개를 입력해 주세요', author: '나도이런거만들거야', cover: null },
@@ -187,6 +615,107 @@ function RightPreviewPanel({ name, description }: { name: string; description: s
               </div>
             </div>
           ))}
+=======
+function RightPreviewPanel({
+  name,
+  description,
+  squareImage,
+  verticalImage,
+}: {
+  name: string;
+  description: string;
+  squareImage?: string | null;
+  verticalImage?: string | null;
+}) {
+  const placeholderIcon = (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+    </svg>
+  );
+
+  const displayName = name.trim() || '작품 이름';
+  const displayDesc = description.trim() || '어떤 스토리인지 설명할 수 있는 간단한 소개를 입력해 주세요';
+
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6">
+      {/* 기존 프로필 — 정방형(1:1) */}
+      <section className="mb-8">
+        <h3 className="text-gray-700 font-semibold text-sm mb-4">기존 프로필</h3>
+        <div className="grid grid-cols-2 gap-3">
+          {/* 내 작품 카드 — 실시간 미리보기 */}
+          <div className="rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+            <div className="aspect-square bg-gray-100 flex items-center justify-center overflow-hidden relative">
+              {squareImage ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={squareImage} alt="정방형 미리보기" className="w-full h-full object-cover" />
+              ) : (
+                <div className="text-gray-300">{placeholderIcon}</div>
+              )}
+            </div>
+            <div className="p-2.5">
+              <p className="text-gray-700 font-medium text-xs truncate mb-0.5">{displayName}</p>
+              <p className="text-gray-400 text-[10px] line-clamp-2 leading-relaxed">{displayDesc}</p>
+            </div>
+          </div>
+          {/* 기존 예시 카드 */}
+          <div className="rounded-xl overflow-hidden border border-gray-100">
+            <div className="aspect-square bg-gradient-to-br from-gray-700 via-purple-900 to-pink-800 flex items-end p-3">
+              <span className="text-white text-xs font-bold leading-tight">로판 악녀가 되다</span>
+            </div>
+            <div className="p-2.5">
+              <p className="text-gray-700 font-medium text-xs truncate mb-0.5">로판 악녀가 되다</p>
+              <p className="text-gray-400 text-[10px] line-clamp-2 leading-relaxed">깨어나보니 최악의 악녀에게 빙의되었다</p>
+              <p className="text-gray-400 text-[10px] mt-1">@ 강형</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 업데이트 이후 변경 프로필 — 세로형(2:3) */}
+      <section>
+        <h3 className="text-gray-700 font-semibold text-sm mb-4">업데이트 이후 변경 프로필</h3>
+        <div className="grid grid-cols-2 gap-3">
+          {/* 내 작품 카드 — 실시간 미리보기 */}
+          <div className="rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+            <div className="aspect-[2/3] bg-gray-100 flex items-center justify-center overflow-hidden relative">
+              {verticalImage ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={verticalImage} alt="세로형 미리보기" className="w-full h-full object-cover" />
+              ) : squareImage ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={squareImage} alt="정방형 대체" className="w-full h-full object-cover" />
+              ) : (
+                <div className="text-gray-300">{placeholderIcon}</div>
+              )}
+              {/* 이름 오버레이 — 항상 표시 (이미지 있을 때는 그라데이션, 없을 때는 투명) */}
+              <div className={cn(
+                'absolute inset-0 flex items-end p-3',
+                (verticalImage || squareImage) && 'bg-gradient-to-t from-black/60 via-transparent to-transparent'
+              )}>
+                <span className={cn(
+                  'text-xs font-bold leading-tight line-clamp-2',
+                  (verticalImage || squareImage) ? 'text-white' : 'text-gray-500'
+                )}>
+                  {displayName}
+                </span>
+              </div>
+            </div>
+            {/* 세로형도 이름/소개 텍스트 표시 */}
+            <div className="p-2.5">
+              <p className="text-gray-700 font-medium text-xs truncate mb-0.5">{displayName}</p>
+              <p className="text-gray-400 text-[10px] line-clamp-2 leading-relaxed">{displayDesc}</p>
+            </div>
+          </div>
+          {/* 기존 예시 카드 */}
+          <div className="rounded-xl overflow-hidden border border-gray-100">
+            <div className="aspect-[2/3] bg-gradient-to-b from-gray-900 via-gray-800 to-black flex items-center justify-center p-3">
+              <span className="text-white text-xs font-bold text-center leading-tight">명부를 쥔 SSS급 헌터</span>
+            </div>
+            <div className="p-2.5">
+              <p className="text-gray-700 font-medium text-xs truncate mb-0.5">명부를 쥔 SSS급 헌터</p>
+            </div>
+          </div>
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
         </div>
       </section>
     </div>
@@ -200,14 +729,41 @@ function ProfileForm({
   name, setName,
   description, setDescription,
   onNext,
+<<<<<<< HEAD
+=======
+  onSquareImageChange,
+  onVerticalImageChange,
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
 }: {
   name: string;
   setName: (v: string) => void;
   description: string;
   setDescription: (v: string) => void;
   onNext: () => void;
+<<<<<<< HEAD
 }) {
   const [showAgeNotice, setShowAgeNotice] = useState(true);
+=======
+  onSquareImageChange?: (url: string | null) => void;
+  onVerticalImageChange?: (url: string | null) => void;
+}) {
+  const [showAgeNotice, setShowAgeNotice] = useState(true);
+  const [showAgeModal, setShowAgeModal] = useState(false);
+  const [generatingName, setGeneratingName] = useState(false);
+
+  const handleRandomName = async () => {
+    setGeneratingName(true);
+    try {
+      const { api } = await import('../../lib/api');
+      const { name: generated } = await api.stories.generateRandomName();
+      setName(generated);
+    } catch {
+      // silent fail
+    } finally {
+      setGeneratingName(false);
+    }
+  };
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
@@ -216,9 +772,17 @@ function ProfileForm({
         <span className="text-gray-700 text-sm">프로필을 랜덤으로 생성해 보세요</span>
         <button
           type="button"
+<<<<<<< HEAD
           className="px-3 py-1.5 rounded-lg border border-brand text-brand text-xs font-semibold hover:bg-brand/5 transition-colors"
         >
           랜덤 생성
+=======
+          onClick={handleRandomName}
+          disabled={generatingName}
+          className="px-3 py-1.5 rounded-lg border border-brand text-brand text-xs font-semibold hover:bg-brand/5 transition-colors disabled:opacity-50"
+        >
+          {generatingName ? '생성 중...' : '랜덤 생성'}
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
         </button>
       </div>
 
@@ -238,6 +802,10 @@ function ProfileForm({
             <div className="flex items-center gap-2 flex-shrink-0">
               <button
                 type="button"
+<<<<<<< HEAD
+=======
+                onClick={() => setShowAgeModal(true)}
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
                 className="px-3 py-1 rounded-lg bg-white text-gray-900 text-xs font-semibold hover:bg-gray-100 transition-colors"
               >
                 성인 인증
@@ -261,6 +829,10 @@ function ProfileForm({
         ratio="1:1"
         hint="이미지를 필수로 등록해주세요."
         size="5MB 이하 (1,080 x 1,080px)"
+<<<<<<< HEAD
+=======
+        onPreviewChange={onSquareImageChange}
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
       />
 
       {/* Vertical image */}
@@ -269,6 +841,10 @@ function ProfileForm({
         ratio="2:3"
         hint="필수는 아니지만 미리 등록하면 더 예쁘게 노출돼요."
         size="5MB 이하 (1,080 x 1,620px)"
+<<<<<<< HEAD
+=======
+        onPreviewChange={onVerticalImageChange}
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
       />
 
       {/* Update notice */}
@@ -338,6 +914,14 @@ function ProfileForm({
       >
         <ChevronUp className="w-5 h-5" />
       </button>
+<<<<<<< HEAD
+=======
+
+      {/* Age Verification Modal */}
+      <AnimatePresence>
+        {showAgeModal && <AgeVerificationModal onClose={() => setShowAgeModal(false)} />}
+      </AnimatePresence>
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
     </div>
   );
 }
@@ -354,26 +938,71 @@ interface StartSetting {
   suggestedReplies: string[];
 }
 
+<<<<<<< HEAD
 function StartSettingsTab() {
+=======
+function StartSettingsTab({ storyName, systemPrompt, onPlayGuideChange, onPrologueChange, onSuggestedRepliesChange }: { storyName: string; systemPrompt: string; onPlayGuideChange?: (v: string) => void; onPrologueChange?: (v: string) => void; onSuggestedRepliesChange?: (v: string[]) => void }) {
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
   const [settings, setSettings] = useState<StartSetting[]>([
     { id: '1', name: '기본 설정', prologue: '', situation: '', playGuide: '', suggestedReplies: [] },
   ]);
   const [activeSettingId, setActiveSettingId] = useState('1');
   const [advancedOpen, setAdvancedOpen] = useState(true);
+<<<<<<< HEAD
+=======
+  const [showInfoCard, setShowInfoCard] = useState(true);
+  const [generatingPrologue, setGeneratingPrologue] = useState(false);
+
+  const isDefaultSetting = activeSettingId === settings[0].id;
+  const isExtraSetting = !isDefaultSetting;
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
 
   const activeSetting = settings.find(s => s.id === activeSettingId) ?? settings[0];
 
   const update = (field: keyof StartSetting, value: string | string[]) => {
     setSettings(prev => prev.map(s => s.id === activeSettingId ? { ...s, [field]: value } : s));
+<<<<<<< HEAD
+=======
+    if (field === 'playGuide' && typeof value === 'string') onPlayGuideChange?.(value);
+    if (field === 'prologue' && typeof value === 'string') onPrologueChange?.(value);
+    if (field === 'suggestedReplies' && Array.isArray(value)) onSuggestedRepliesChange?.(value);
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
   };
 
   const addSetting = () => {
     const newId = String(Date.now());
+<<<<<<< HEAD
     setSettings(prev => [...prev, {
       id: newId, name: `설정 ${prev.length + 1}`,
       prologue: '', situation: '', playGuide: '', suggestedReplies: [],
     }]);
     setActiveSettingId(newId);
+=======
+    const extraCount = settings.length; // 추가 설정 번호
+    setSettings(prev => [...prev, {
+      id: newId, name: `추가 설정 ${extraCount}`,
+      prologue: '', situation: '', playGuide: '', suggestedReplies: [],
+    }]);
+    setActiveSettingId(newId);
+    setShowInfoCard(true); // 새 설정 선택 시 인포카드 표시
+  };
+
+  const handleGeneratePrologue = async () => {
+    setGeneratingPrologue(true);
+    try {
+      const { api } = await import('../../lib/api');
+      const { prologue } = await api.stories.generatePrologue({
+        name: storyName,
+        systemPrompt,
+        settingName: activeSetting.name,
+      });
+      update('prologue', prologue);
+    } catch {
+      // silent fail
+    } finally {
+      setGeneratingPrologue(false);
+    }
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
   };
 
   const addReply = () => {
@@ -395,10 +1024,17 @@ function StartSettingsTab() {
     <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
       {/* Setting pills */}
       <div className="flex items-center gap-2 mb-6 flex-wrap">
+<<<<<<< HEAD
         {settings.map((s) => (
           <button
             key={s.id}
             onClick={() => setActiveSettingId(s.id)}
+=======
+        {settings.map((s, i) => (
+          <button
+            key={s.id}
+            onClick={() => { setActiveSettingId(s.id); if (i > 0) setShowInfoCard(true); }}
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
             className={cn(
               'px-3 py-1.5 rounded-full text-sm font-semibold transition-all',
               s.id === activeSettingId
@@ -406,7 +1042,11 @@ function StartSettingsTab() {
                 : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
             )}
           >
+<<<<<<< HEAD
             {s.id === settings[0].id ? `기본 ${s.name}` : s.name}
+=======
+            {i === 0 ? `기본 ${s.name}` : s.name}
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
           </button>
         ))}
         {settings.length < 5 && (
@@ -420,6 +1060,60 @@ function StartSettingsTab() {
         )}
       </div>
 
+<<<<<<< HEAD
+=======
+      {/* 추가 설정 인포카드 (기본 설정이 아닌 경우에만 표시) */}
+      <AnimatePresence>
+        {isExtraSetting && showInfoCard && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden mb-6"
+          >
+            <div className="flex items-start gap-4 p-4 rounded-2xl border border-gray-200 bg-gray-50">
+              {/* Mock preview image */}
+              <div className="flex-shrink-0 w-[140px] h-[100px] rounded-xl bg-gray-700 overflow-hidden flex flex-col">
+                <div className="flex-1 p-2">
+                  <div className="bg-white/10 rounded-lg px-2 py-1 mb-1.5 text-[9px] text-white/70">시작설정</div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1 bg-white/20 rounded-md px-2 py-0.5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-white/60" />
+                      <span className="text-[9px] text-white/80">친구사이</span>
+                    </div>
+                    <div className="flex items-center gap-1 bg-white/10 rounded-md px-2 py-0.5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                      <span className="text-[9px] text-white/80">친구사이</span>
+                    </div>
+                    <div className="text-[9px] text-white/60 px-2">애인사이</div>
+                  </div>
+                </div>
+                <div className="bg-gray-900 px-2 py-1.5">
+                  <div className="bg-white/20 rounded-md text-center text-[9px] text-white py-0.5">대화 나누기</div>
+                </div>
+              </div>
+
+              {/* Explanation */}
+              <div className="flex-1 min-w-0">
+                <p className="text-gray-900 font-bold text-sm mb-1">스토리의 다양한 시작상황을 설정해 보세요</p>
+                <p className="text-gray-400 text-xs leading-relaxed">
+                  사용자가 스토리 정보에서 원하는 시작설정을 선택하여 대화를 시작할 수 있어요.
+                </p>
+              </div>
+
+              {/* Close */}
+              <button
+                onClick={() => setShowInfoCard(false)}
+                className="flex-shrink-0 text-gray-300 hover:text-gray-500 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
       {/* 프롤로그 */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-1">
@@ -427,8 +1121,17 @@ function StartSettingsTab() {
             <span className="text-gray-900 font-semibold text-sm">프롤로그</span>
             <span className="text-brand font-bold text-sm">*</span>
           </div>
+<<<<<<< HEAD
           <button className="px-3 py-1 rounded-lg border border-brand/40 text-brand text-xs font-semibold hover:bg-brand/5 transition-colors">
             자동 생성
+=======
+          <button
+            onClick={handleGeneratePrologue}
+            disabled={generatingPrologue}
+            className="px-3 py-1 rounded-lg border border-brand/40 text-brand text-xs font-semibold hover:bg-brand/5 transition-colors disabled:opacity-50"
+          >
+            {generatingPrologue ? '생성 중...' : '자동 생성'}
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
           </button>
         </div>
         <p className="text-gray-400 text-xs mb-2">스토리의 프롤로그를 작성해 주세요</p>
@@ -1572,6 +2275,10 @@ const MODEL_OPTIONS = [
 
 function RegisterTab({ name, coverUrl }: { name: string; coverUrl?: string }) {
   const [showAgeNotice, setShowAgeNotice] = useState(true);
+<<<<<<< HEAD
+=======
+  const [showAgeModal, setShowAgeModal] = useState(false);
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
   const [detailDesc, setDetailDesc] = useState('');
   const [genre, setGenre] = useState('');
   const [target, setTarget] = useState('');
@@ -1604,7 +2311,14 @@ function RegisterTab({ name, coverUrl }: { name: string; coverUrl?: string }) {
         <div className="flex items-center justify-between gap-3 px-4 py-3 mb-6 bg-gray-900 text-white rounded-xl">
           <p className="text-sm">민감한 스토리의 경우 제작 시 성인 인증이 필요해요.</p>
           <div className="flex items-center gap-2 flex-shrink-0">
+<<<<<<< HEAD
             <button className="px-3 py-1 rounded-lg bg-white text-gray-900 text-xs font-semibold hover:bg-gray-100 transition-colors">
+=======
+            <button
+              onClick={() => setShowAgeModal(true)}
+              className="px-3 py-1 rounded-lg bg-white text-gray-900 text-xs font-semibold hover:bg-gray-100 transition-colors"
+            >
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
               성인 인증
             </button>
             <button onClick={() => setShowAgeNotice(false)} className="text-white/60 hover:text-white">
@@ -1878,6 +2592,14 @@ function RegisterTab({ name, coverUrl }: { name: string; coverUrl?: string }) {
           </div>
         </div>
       </div>
+<<<<<<< HEAD
+=======
+
+      {/* Age Verification Modal */}
+      <AnimatePresence>
+        {showAgeModal && <AgeVerificationModal onClose={() => setShowAgeModal(false)} />}
+      </AnimatePresence>
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
     </div>
   );
 }
@@ -1996,9 +2718,61 @@ function PlaceholderTab({ label }: { label: string }) {
 // ─────────────────────────────────────────────
 // STORY SETTINGS TAB (simplified example)
 // ─────────────────────────────────────────────
+<<<<<<< HEAD
 function StorySettingsTab() {
   const [systemPrompt, setSystemPrompt] = useState('');
   const [examples, setExamples] = useState([{ user: '', assistant: '' }]);
+=======
+function StorySettingsTab({
+  storyName, storyDescription, onSystemPromptChange,
+}: {
+  storyName: string; storyDescription: string; onSystemPromptChange: (v: string) => void;
+}) {
+  const [systemPrompt, setSystemPrompt] = useState('');
+  const [examples, setExamples] = useState([{ user: '', assistant: '' }]);
+  const [generatingPrompt, setGeneratingPrompt] = useState(false);
+  const [generatingExamples, setGeneratingExamples] = useState(false);
+
+  const handleUpdatePrompt = (v: string) => {
+    setSystemPrompt(v);
+    onSystemPromptChange(v);
+  };
+
+  const handleGeneratePrompt = async () => {
+    setGeneratingPrompt(true);
+    try {
+      const { api } = await import('../../lib/api');
+      const { systemPrompt: generated } = await api.stories.generateStorySettings({
+        name: storyName, description: storyDescription,
+      });
+      handleUpdatePrompt(generated.slice(0, 3000));
+    } catch {
+      // silent fail
+    } finally {
+      setGeneratingPrompt(false);
+    }
+  };
+
+  const handleGenerateExamples = async () => {
+    setGeneratingExamples(true);
+    try {
+      const { api } = await import('../../lib/api');
+      const { examples: generated } = await api.stories.generateExamples({
+        name: storyName, description: storyDescription, systemPrompt,
+      });
+      if (Array.isArray(generated) && generated.length > 0) {
+        setExamples(generated.slice(0, 3).map((e: { user: string; assistant: string }) => ({
+          user: (e.user || '').slice(0, 500),
+          assistant: (e.assistant || '').slice(0, 500),
+        })));
+      }
+    } catch {
+      // silent fail
+    } finally {
+      setGeneratingExamples(false);
+    }
+  };
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
@@ -2012,13 +2786,30 @@ function StorySettingsTab() {
         <div className="relative">
           <textarea
             value={systemPrompt}
+<<<<<<< HEAD
             onChange={(e) => setSystemPrompt(e.target.value.slice(0, 3000))}
+=======
+            onChange={(e) => handleUpdatePrompt(e.target.value.slice(0, 3000))}
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
             placeholder="스토리 설정을 입력해 주세요"
             rows={8}
             className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-900 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 transition-colors resize-none"
           />
           <span className="absolute right-4 bottom-3 text-gray-300 text-xs">{systemPrompt.length} / 3000</span>
         </div>
+<<<<<<< HEAD
+=======
+        <div className="flex justify-end mt-2">
+          <button
+            type="button"
+            onClick={handleGeneratePrompt}
+            disabled={generatingPrompt}
+            className="px-3 py-1.5 rounded-lg border border-brand/40 text-brand text-xs font-semibold hover:bg-brand/5 transition-colors disabled:opacity-50"
+          >
+            {generatingPrompt ? '생성 중...' : '자동 생성'}
+          </button>
+        </div>
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
       </div>
 
       {/* Advanced settings toggle */}
@@ -2038,8 +2829,18 @@ function StorySettingsTab() {
             <p className="text-gray-400 text-xs">전개 예시를 입력해서 스토리의 완성도를 높여보세요.<br />예시는 3개까지 등록할 수 있어요.</p>
           </div>
           <div className="flex gap-2">
+<<<<<<< HEAD
             <button type="button" className="px-3 py-1.5 rounded-lg border border-brand/40 text-brand text-xs font-medium hover:bg-brand/5 transition-colors">
               전체 자동 생성
+=======
+            <button
+              type="button"
+              onClick={handleGenerateExamples}
+              disabled={generatingExamples}
+              className="px-3 py-1.5 rounded-lg border border-brand/40 text-brand text-xs font-medium hover:bg-brand/5 transition-colors disabled:opacity-50"
+            >
+              {generatingExamples ? '생성 중...' : '전체 자동 생성'}
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
             </button>
             {examples.length < 3 && (
               <button
@@ -2105,6 +2906,201 @@ function StorySettingsTab() {
 }
 
 // ─────────────────────────────────────────────
+<<<<<<< HEAD
+=======
+// CRACKER CHARGE MODAL
+// ─────────────────────────────────────────────
+const CRACKER_PACKAGES = [
+  { id: 'cracker_200',   label: '200 크래커',  price: 2000,  crackers: 200,   bonus: 0,    popular: false },
+  { id: 'cracker_500',   label: '500 크래커',  price: 4900,  crackers: 500,   bonus: 50,   popular: false },
+  { id: 'cracker_1000',  label: '1,000 크래커', price: 9600, crackers: 1000,  bonus: 100,  popular: false },
+  { id: 'cracker_3000',  label: '3,000 크래커', price: 28000, crackers: 3000, bonus: 500,  popular: true  },
+  { id: 'cracker_5000',  label: '5,000 크래커', price: 46000, crackers: 5000, bonus: 1000, popular: false },
+  { id: 'cracker_10000', label: '10,000 크래커', price: 90000, crackers: 10000, bonus: 3000, popular: false },
+];
+
+function CrackerChargeModal({ onClose }: { onClose: () => void }) {
+  const [selected, setSelected] = useState(CRACKER_PACKAGES[3].id);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const pkg = CRACKER_PACKAGES.find(p => p.id === selected) ?? CRACKER_PACKAGES[3];
+
+  const loadTossScript = (): Promise<void> =>
+    new Promise((resolve, reject) => {
+      if ((window as any).TossPayments) { resolve(); return; }
+      const script = document.createElement('script');
+      script.src = 'https://js.tosspayments.com/v1/payment';
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Toss 결제 스크립트 로드 실패'));
+      document.head.appendChild(script);
+    });
+
+  const handleTossPay = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const { api } = await import('../../lib/api');
+      const { data } = await api.payments.initiateTosse(selected);
+      // data: { orderId, orderName, amount, clientKey, successUrl, failUrl }
+      await loadTossScript();
+      const toss = (window as any).TossPayments(data.clientKey);
+      await toss.requestPayment('카드', {
+        amount: data.amount,
+        orderId: data.orderId,
+        orderName: data.orderName,
+        successUrl: data.successUrl,
+        failUrl: data.failUrl,
+        customerName: undefined,
+      });
+    } catch (e: unknown) {
+      // User cancelled (code PAY_PROCESS_CANCELED) - silent
+      const err = e as { code?: string; message?: string };
+      if (err?.code === 'PAY_PROCESS_CANCELED' || err?.code === 'USER_CANCEL') {
+        setLoading(false);
+        return;
+      }
+      const msg = err?.message ?? '결제 초기화에 실패했습니다.';
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+
+      {/* Modal */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 8 }}
+        transition={{ duration: 0.15 }}
+        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">◆</span>
+            <h2 className="text-gray-900 font-bold text-base">크래커 충전하기</h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-400 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Package list */}
+        <div className="px-6 py-4 space-y-2.5 max-h-[60vh] overflow-y-auto">
+          {CRACKER_PACKAGES.map(p => (
+            <button
+              key={p.id}
+              onClick={() => setSelected(p.id)}
+              className={cn(
+                'w-full flex items-center justify-between px-4 py-3.5 rounded-xl border-2 transition-all text-left',
+                selected === p.id
+                  ? 'border-brand bg-red-50'
+                  : 'border-gray-200 bg-white hover:border-gray-300'
+              )}
+            >
+              <div className="flex items-center gap-3">
+                {/* Radio */}
+                <div className={cn(
+                  'w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0',
+                  selected === p.id ? 'border-brand' : 'border-gray-300'
+                )}>
+                  {selected === p.id && <div className="w-2 h-2 rounded-full bg-brand" />}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-900 font-semibold text-sm">
+                      ◆ {p.crackers.toLocaleString()}
+                    </span>
+                    {p.bonus > 0 && (
+                      <span className="px-1.5 py-0.5 bg-orange-100 text-orange-600 text-[10px] font-bold rounded">
+                        +{p.bonus.toLocaleString()} 보너스
+                      </span>
+                    )}
+                    {p.popular && (
+                      <span className="px-1.5 py-0.5 bg-brand text-white text-[10px] font-bold rounded">
+                        추천
+                      </span>
+                    )}
+                  </div>
+                  {p.bonus > 0 && (
+                    <p className="text-gray-400 text-xs mt-0.5">
+                      총 {(p.crackers + p.bonus).toLocaleString()}개 지급
+                    </p>
+                  )}
+                </div>
+              </div>
+              <span className="text-gray-900 font-bold text-sm">{p.price.toLocaleString()}원</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Error */}
+        {error && (
+          <div className="mx-6 mb-2 px-4 py-2.5 bg-red-50 border border-red-200 rounded-xl">
+            <p className="text-red-600 text-xs">{error}</p>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-100 space-y-2.5">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-500">선택한 패키지</span>
+            <span className="font-semibold text-gray-900">
+              ◆ {pkg.crackers.toLocaleString()}
+              {pkg.bonus > 0 && <span className="text-orange-500"> +{pkg.bonus.toLocaleString()}</span>}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-500">결제 금액</span>
+            <span className="font-bold text-gray-900 text-base">{pkg.price.toLocaleString()}원</span>
+          </div>
+
+          {/* Toss Pay button */}
+          <button
+            onClick={handleTossPay}
+            disabled={loading}
+            className="w-full py-3.5 rounded-xl font-bold text-sm transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            style={{ backgroundColor: '#3182F6', color: 'white' }}
+          >
+            {loading ? (
+              <>
+                <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                </svg>
+                처리 중...
+              </>
+            ) : (
+              <>
+                <svg width="20" height="20" viewBox="0 0 40 40" fill="none">
+                  <rect width="40" height="40" rx="8" fill="white" fillOpacity="0.2"/>
+                  <text x="20" y="27" textAnchor="middle" fill="white" fontSize="16" fontWeight="bold">T</text>
+                </svg>
+                토스페이로 결제하기
+              </>
+            )}
+          </button>
+
+          <p className="text-gray-400 text-[11px] text-center">
+            결제는 토스페이먼츠를 통해 안전하게 처리됩니다
+          </p>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
 // MAIN STORY CREATE FORM
 // ─────────────────────────────────────────────
 export function StoryCreateForm() {
@@ -2113,9 +3109,25 @@ export function StoryCreateForm() {
   const [activeTab, setActiveTab] = useState<StoryTab>('profile');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+<<<<<<< HEAD
   const [stats, setStats] = useState<StatItem[]>([]);
   // Shared start-settings list for media/keywords/ending tabs
   const [startSettingsList] = useState([{ id: '1', name: '기본 설정' }]);
+=======
+  const [squareImage, setSquareImage] = useState<string | null>(null);
+  const [verticalImage, setVerticalImage] = useState<string | null>(null);
+  const [playGuide, setPlayGuide] = useState('');
+  const [prologue, setPrologue] = useState('');
+  const [suggestedReplies, setSuggestedReplies] = useState<string[]>([]);
+  const [crackerModalOpen, setCrackerModalOpen] = useState(false);
+  const [stats, setStats] = useState<StatItem[]>([]);
+  const [systemPrompt, setSystemPrompt] = useState('');
+  // Shared start-settings list for media/keywords/ending tabs
+  const [startSettingsList] = useState([{ id: '1', name: '기본 설정' }]);
+  // AI model selector
+  const [selectedModel, setSelectedModel] = useState<ChatModel>(CHAT_MODELS[2]); // default: 슈퍼챗 2.0
+  const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) router.push('/login?redirect=/creator/story/new');
@@ -2135,6 +3147,13 @@ export function StoryCreateForm() {
 
   return (
     <div className="h-screen flex flex-col bg-white overflow-hidden">
+<<<<<<< HEAD
+=======
+      {/* 크래커 충전 모달 */}
+      {crackerModalOpen && (
+        <CrackerChargeModal onClose={() => setCrackerModalOpen(false)} />
+      )}
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
       {/* ── TOP BAR ── */}
       <div className="flex-shrink-0 flex items-center justify-between px-6 py-3 border-b border-gray-100 bg-white z-20">
         {/* Left: back + title */}
@@ -2214,10 +3233,33 @@ export function StoryCreateForm() {
                   description={description}
                   setDescription={setDescription}
                   onNext={handleNext}
+<<<<<<< HEAD
                 />
               )}
               {activeTab === 'story-settings' && <StorySettingsTab />}
               {activeTab === 'start-settings' && <StartSettingsTab />}
+=======
+                  onSquareImageChange={setSquareImage}
+                  onVerticalImageChange={setVerticalImage}
+                />
+              )}
+              {activeTab === 'story-settings' && (
+                <StorySettingsTab
+                  storyName={name}
+                  storyDescription={description}
+                  onSystemPromptChange={setSystemPrompt}
+                />
+              )}
+              {activeTab === 'start-settings' && (
+                <StartSettingsTab
+                  storyName={name}
+                  systemPrompt={systemPrompt}
+                  onPlayGuideChange={setPlayGuide}
+                  onPrologueChange={setPrologue}
+                  onSuggestedRepliesChange={setSuggestedReplies}
+                />
+              )}
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
               {activeTab === 'stat-settings' && <StatSettingsTab stats={stats} setStats={setStats} />}
               {activeTab === 'media' && <MediaTab startSettings={startSettingsList} />}
               {activeTab === 'keywords' && <KeywordsTab startSettings={startSettingsList} />}
@@ -2253,12 +3295,25 @@ export function StoryCreateForm() {
 
         {/* Right preview panel */}
         <div className="flex flex-col h-full overflow-hidden" style={{ width: '42%' }}>
+<<<<<<< HEAD
           {activeTab === 'profile' || activeTab === 'story-settings' ? (
+=======
+          {activeTab === 'profile' ? (
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
             <>
               <div className="flex-shrink-0 text-center py-3 border-b border-gray-100">
                 <p className="text-gray-400 text-xs">이 대화는 AI로 생성된 가상의 이야기입니다</p>
               </div>
+<<<<<<< HEAD
               <RightPreviewPanel name={name} description={description} />
+=======
+              <RightPreviewPanel
+                name={name}
+                description={description}
+                squareImage={squareImage}
+                verticalImage={verticalImage}
+              />
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
             </>
           ) : activeTab === 'ending' ? (
             /* Ending tab: EPILOGUE preview */
@@ -2296,11 +3351,89 @@ export function StoryCreateForm() {
                   채팅 미리보기
                 </button>
                 <div className="flex items-center gap-2">
+<<<<<<< HEAD
                   <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
                     <span>🍇</span>
                     슈퍼챗 2.0
                     <ChevronDown className="w-3 h-3 text-gray-400" />
                   </button>
+=======
+                  {/* Model selector */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setModelDropdownOpen(p => !p)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                      <span style={{ color: selectedModel.iconColor }} className="text-sm leading-none">
+                        {selectedModel.icon}
+                      </span>
+                      <span>{selectedModel.label}</span>
+                      <ChevronDown className={cn('w-3 h-3 text-gray-400 transition-transform', modelDropdownOpen && 'rotate-180')} />
+                    </button>
+
+                    <AnimatePresence>
+                      {modelDropdownOpen && (
+                        <>
+                          {/* Backdrop */}
+                          <div
+                            className="fixed inset-0 z-40"
+                            onClick={() => setModelDropdownOpen(false)}
+                          />
+                          <motion.div
+                            initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                            transition={{ duration: 0.12 }}
+                            className="absolute right-0 top-full mt-1.5 w-72 bg-white rounded-2xl border border-gray-200 shadow-xl z-50 overflow-hidden py-1"
+                          >
+                            {CHAT_MODELS.map(model => (
+                              <button
+                                key={model.value}
+                                onClick={() => { setSelectedModel(model); setModelDropdownOpen(false); }}
+                                className={cn(
+                                  'w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors',
+                                  selectedModel.value === model.value && 'bg-gray-50'
+                                )}
+                              >
+                                {/* Icon */}
+                                <span
+                                  className="text-base leading-none mt-0.5 flex-shrink-0 w-5 text-center"
+                                  style={{ color: model.iconColor }}
+                                >
+                                  {model.icon}
+                                </span>
+
+                                {/* Label + desc */}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-0.5">
+                                    <span className="text-gray-900 font-semibold text-sm">{model.label}</span>
+                                    {model.coins !== null && (
+                                      <span
+                                        className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-bold"
+                                        style={{ backgroundColor: `${model.coinColor}15`, color: model.coinColor }}
+                                      >
+                                        ◆ {model.coins}개
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-gray-400 text-xs leading-relaxed">{model.description}</p>
+                                </div>
+
+                                {/* Checkmark */}
+                                {selectedModel.value === model.value && (
+                                  <svg className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: '#E63325' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                  </svg>
+                                )}
+                              </button>
+                            ))}
+                          </motion.div>
+                        </>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
                   <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
                     <MessageSquare className="w-3.5 h-3.5" />
                     채팅 내역
@@ -2345,6 +3478,7 @@ export function StoryCreateForm() {
 
               {/* Chat area */}
               <div className="flex-1 overflow-y-auto p-4">
+<<<<<<< HEAD
                 <div className="flex items-start gap-3 mb-4">
                   <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 mt-0.5" />
                   <div>
@@ -2352,6 +3486,61 @@ export function StoryCreateForm() {
                     <div className="h-10 w-52 bg-blue-50 rounded-2xl rounded-tl-sm" />
                   </div>
                 </div>
+=======
+                {/* AI 메시지 버블 */}
+                <div className="flex items-start gap-2.5 mb-4">
+                  {/* 프로필 이미지 */}
+                  <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 mt-0.5 overflow-hidden">
+                    {squareImage && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={squareImage} alt="profile" className="w-full h-full object-cover" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    {/* 스토리 이름 */}
+                    <p className="text-gray-500 text-xs mb-1.5 flex items-center gap-1">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                      </svg>
+                      {name.trim() || '스토리 이름'}
+                    </p>
+                    {/* 말풍선 - 프롤로그 내용 or placeholder */}
+                    {prologue.trim() ? (
+                      <div className="bg-blue-50 rounded-2xl rounded-tl-sm px-3.5 py-2.5 max-w-[220px]">
+                        <p className="text-gray-700 text-xs leading-relaxed whitespace-pre-wrap">{prologue}</p>
+                      </div>
+                    ) : (
+                      <div className="h-10 w-48 bg-blue-50 rounded-2xl rounded-tl-sm" />
+                    )}
+                  </div>
+                </div>
+
+                {/* 플레이 가이드 — 시작 설정 탭에서만 표시 */}
+                {activeTab === 'start-settings' && playGuide.trim() && (
+                  <div className="mt-4 mx-1">
+                    <p className="text-brand text-xs font-semibold mb-1.5">플레이 가이드</p>
+                    <p className="text-gray-500 text-xs leading-relaxed whitespace-pre-wrap">{playGuide}</p>
+                  </div>
+                )}
+
+                {/* 추천 답변 칩 — 시작 설정 탭에서만 표시 */}
+                {activeTab === 'start-settings' && suggestedReplies.filter(r => r.trim()).length > 0 && (
+                  <div className="mt-4 mx-1">
+                    <p className="text-gray-400 text-[11px] mb-2">이렇게 답변할 수 있어요</p>
+                    <div className="flex flex-wrap gap-2">
+                      {suggestedReplies.filter(r => r.trim()).map((reply, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => setCrackerModalOpen(true)}
+                          className="px-3 py-1.5 rounded-full border border-gray-300 text-gray-600 text-xs hover:bg-gray-50 hover:border-gray-400 transition-colors text-left"
+                        >
+                          {reply}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
               </div>
 
               {/* Chat input */}
@@ -2359,7 +3548,11 @@ export function StoryCreateForm() {
                 <div className="flex items-center gap-2 px-4 py-3 rounded-2xl border border-gray-200 bg-gray-50">
                   <input
                     type="text"
+<<<<<<< HEAD
                     placeholder="[이름, 캐릭터 설정 및 정보, 첫 메시지]를 입력해주세요"
+=======
+                    placeholder="[첫 메시지]를 입력해주세요"
+>>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
                     className="flex-1 bg-transparent text-xs text-gray-400 outline-none placeholder:text-gray-300"
                     readOnly
                   />

@@ -12,6 +12,13 @@ const CREDIT_PACKAGES = [
   { id: 'pack_500', name: '500 크레딧', credits: 500, price: 4900, bonusCredits: 50, isPopular: false },
   { id: 'pack_1000', name: '1,000 크레딧', credits: 1000, price: 8900, bonusCredits: 150, isPopular: true },
   { id: 'pack_5000', name: '5,000 크레딧', credits: 5000, price: 39000, bonusCredits: 1000, isPopular: false },
+  // 크래커 패키지 (crack.wrtn.ai 스타일)
+  { id: 'cracker_200',   name: '200 크래커',    credits: 200,   price: 2000,  bonusCredits: 0,    isPopular: false },
+  { id: 'cracker_500',   name: '500 크래커',    credits: 500,   price: 4900,  bonusCredits: 50,   isPopular: false },
+  { id: 'cracker_1000',  name: '1,000 크래커',  credits: 1000,  price: 9600,  bonusCredits: 100,  isPopular: false },
+  { id: 'cracker_3000',  name: '3,000 크래커',  credits: 3000,  price: 28000, bonusCredits: 500,  isPopular: true  },
+  { id: 'cracker_5000',  name: '5,000 크래커',  credits: 5000,  price: 46000, bonusCredits: 1000, isPopular: false },
+  { id: 'cracker_10000', name: '10,000 크래커', credits: 10000, price: 90000, bonusCredits: 3000, isPopular: false },
 ];
 
 const SUBSCRIPTION_PLANS = [
