@@ -258,12 +258,16 @@ export const api = {
     markNotificationRead: (id: string) =>
       apiClient.patch(`/api/notifications/${id}/read`).then((r) => r.data),
 
+    // ── 성인인증 (NICE 체크플러스) ─────────────────────────────
+    /** NICE 암호화 요청 데이터 생성. mode:'nice' 또는 mode:'sandbox' 반환 */
     ageVerifyInitiate: (carrier: 'SKT' | 'KT' | 'LGU' | 'SKT_MVNO' | 'KT_MVNO' | 'LGU_MVNO') =>
       apiClient.post('/api/users/me/age-verify/initiate', { carrier }).then((r) => r.data),
 
-    ageVerifyComplete: (verificationToken: string) =>
-      apiClient.post('/api/users/me/age-verify/complete', { verificationToken }).then((r) => r.data),
+    /** [샌드박스 전용] 인증 완료 처리 */
+    ageVerifySandboxComplete: (sandboxToken: string) =>
+      apiClient.post('/api/users/age-verify/sandbox-complete', { sandboxToken }).then((r) => r.data),
 
+    /** 인증 완료 여부 폴링 */
     ageVerifyStatus: () =>
       apiClient.get('/api/users/me/age-verify/status').then((r) => r.data),
   },
