@@ -825,7 +825,7 @@ interface StartSetting {
   suggestedReplies: string[];
 }
 
-function StartSettingsTab({ storyName, systemPrompt }: { storyName: string; systemPrompt: string }) {
+function StartSettingsTab({ storyName, systemPrompt, onPlayGuideChange }: { storyName: string; systemPrompt: string; onPlayGuideChange?: (v: string) => void }) {
   const [settings, setSettings] = useState<StartSetting[]>([
     { id: '1', name: '기본 설정', prologue: '', situation: '', playGuide: '', suggestedReplies: [] },
   ]);
@@ -841,6 +841,7 @@ function StartSettingsTab({ storyName, systemPrompt }: { storyName: string; syst
 
   const update = (field: keyof StartSetting, value: string | string[]) => {
     setSettings(prev => prev.map(s => s.id === activeSettingId ? { ...s, [field]: value } : s));
+    if (field === 'playGuide' && typeof value === 'string') onPlayGuideChange?.(value);
   };
 
   const addSetting = () => {
@@ -2735,6 +2736,7 @@ export function StoryCreateForm() {
   const [description, setDescription] = useState('');
   const [squareImage, setSquareImage] = useState<string | null>(null);
   const [verticalImage, setVerticalImage] = useState<string | null>(null);
+  const [playGuide, setPlayGuide] = useState('');
   const [stats, setStats] = useState<StatItem[]>([]);
   const [systemPrompt, setSystemPrompt] = useState('');
   // Shared start-settings list for media/keywords/ending tabs
@@ -2852,7 +2854,7 @@ export function StoryCreateForm() {
                 />
               )}
               {activeTab === 'start-settings' && (
-                <StartSettingsTab storyName={name} systemPrompt={systemPrompt} />
+                <StartSettingsTab storyName={name} systemPrompt={systemPrompt} onPlayGuideChange={setPlayGuide} />
               )}
               {activeTab === 'stat-settings' && <StatSettingsTab stats={stats} setStats={setStats} />}
               {activeTab === 'media' && <MediaTab startSettings={startSettingsList} />}
@@ -2889,7 +2891,7 @@ export function StoryCreateForm() {
 
         {/* Right preview panel */}
         <div className="flex flex-col h-full overflow-hidden" style={{ width: '42%' }}>
-          {activeTab === 'profile' || activeTab === 'story-settings' ? (
+          {activeTab === 'profile' ? (
             <>
               <div className="flex-shrink-0 text-center py-3 border-b border-gray-100">
                 <p className="text-gray-400 text-xs">이 대화는 AI로 생성된 가상의 이야기입니다</p>
@@ -3056,13 +3058,35 @@ export function StoryCreateForm() {
 
               {/* Chat area */}
               <div className="flex-1 overflow-y-auto p-4">
-                <div className="flex items-start gap-3 mb-4">
-                  <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-gray-400 text-xs mb-1.5">스토리 이름</p>
-                    <div className="h-10 w-52 bg-blue-50 rounded-2xl rounded-tl-sm" />
+                {/* AI 메시지 버블 */}
+                <div className="flex items-start gap-2.5 mb-4">
+                  {/* 프로필 이미지 */}
+                  <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 mt-0.5 overflow-hidden">
+                    {squareImage && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={squareImage} alt="profile" className="w-full h-full object-cover" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    {/* 스토리 이름 */}
+                    <p className="text-gray-500 text-xs mb-1.5 flex items-center gap-1">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                      </svg>
+                      {name.trim() || '스토리 이름'}
+                    </p>
+                    {/* 말풍선 placeholder */}
+                    <div className="h-10 w-48 bg-blue-50 rounded-2xl rounded-tl-sm" />
                   </div>
                 </div>
+
+                {/* 플레이 가이드 — 시작 설정 탭에서만 표시 */}
+                {activeTab === 'start-settings' && playGuide.trim() && (
+                  <div className="mt-4 mx-1">
+                    <p className="text-brand text-xs font-semibold mb-1.5">플레이 가이드</p>
+                    <p className="text-gray-500 text-xs leading-relaxed whitespace-pre-wrap">{playGuide}</p>
+                  </div>
+                )}
               </div>
 
               {/* Chat input */}
@@ -3070,7 +3094,7 @@ export function StoryCreateForm() {
                 <div className="flex items-center gap-2 px-4 py-3 rounded-2xl border border-gray-200 bg-gray-50">
                   <input
                     type="text"
-                    placeholder="[이름, 캐릭터 설정 및 정보, 첫 메시지]를 입력해주세요"
+                    placeholder="[첫 메시지]를 입력해주세요"
                     className="flex-1 bg-transparent text-xs text-gray-400 outline-none placeholder:text-gray-300"
                     readOnly
                   />
