@@ -596,24 +596,37 @@ function RightPreviewPanel({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={verticalImage} alt="세로형 미리보기" className="w-full h-full object-cover" />
               ) : squareImage ? (
-                // 세로형 없으면 정방형으로 대체 표시
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={squareImage} alt="정방형 대체" className="w-full h-full object-cover" />
               ) : (
                 <div className="text-gray-300">{placeholderIcon}</div>
               )}
-              {/* 이름 오버레이 */}
-              {(verticalImage || squareImage) && (
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent flex items-end p-3">
-                  <span className="text-white text-xs font-bold leading-tight line-clamp-2">{displayName}</span>
-                </div>
-              )}
+              {/* 이름 오버레이 — 항상 표시 (이미지 있을 때는 그라데이션, 없을 때는 투명) */}
+              <div className={cn(
+                'absolute inset-0 flex items-end p-3',
+                (verticalImage || squareImage) && 'bg-gradient-to-t from-black/60 via-transparent to-transparent'
+              )}>
+                <span className={cn(
+                  'text-xs font-bold leading-tight line-clamp-2',
+                  (verticalImage || squareImage) ? 'text-white' : 'text-gray-500'
+                )}>
+                  {displayName}
+                </span>
+              </div>
+            </div>
+            {/* 세로형도 이름/소개 텍스트 표시 */}
+            <div className="p-2.5">
+              <p className="text-gray-700 font-medium text-xs truncate mb-0.5">{displayName}</p>
+              <p className="text-gray-400 text-[10px] line-clamp-2 leading-relaxed">{displayDesc}</p>
             </div>
           </div>
           {/* 기존 예시 카드 */}
           <div className="rounded-xl overflow-hidden border border-gray-100">
             <div className="aspect-[2/3] bg-gradient-to-b from-gray-900 via-gray-800 to-black flex items-center justify-center p-3">
               <span className="text-white text-xs font-bold text-center leading-tight">명부를 쥔 SSS급 헌터</span>
+            </div>
+            <div className="p-2.5">
+              <p className="text-gray-700 font-medium text-xs truncate mb-0.5">명부를 쥔 SSS급 헌터</p>
             </div>
           </div>
         </div>
