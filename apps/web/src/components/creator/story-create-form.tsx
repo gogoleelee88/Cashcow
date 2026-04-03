@@ -435,12 +435,14 @@ function ImageUploadArea({
   ratio,
   hint,
   size,
+  onPreviewChange,
 }: {
   label: string;
   required?: boolean;
   ratio: string;
   hint: string;
   size: string;
+  onPreviewChange?: (url: string | null) => void;
 }) {
   const [preview, setPreview] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -450,6 +452,13 @@ function ImageUploadArea({
     if (!file) return;
     const url = URL.createObjectURL(file);
     setPreview(url);
+    onPreviewChange?.(url);
+  };
+
+  const handleDelete = () => {
+    setPreview(null);
+    if (inputRef.current) inputRef.current.value = '';
+    onPreviewChange?.(null);
   };
 
   return (
@@ -497,7 +506,7 @@ function ImageUploadArea({
             {preview && (
               <button
                 type="button"
-                onClick={() => { setPreview(null); if (inputRef.current) inputRef.current.value = ''; }}
+                onClick={handleDelete}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -521,74 +530,92 @@ function ImageUploadArea({
 // ─────────────────────────────────────────────
 // RIGHT PANEL — 기존/업데이트 프로필 미리보기
 // ─────────────────────────────────────────────
-function RightPreviewPanel({ name, description }: { name: string; description: string }) {
-  const MOCK_EXISTING = [
-    { title: '작품 이름', desc: '어떤 스토리인지 설명할 수 있는 간단한 소개를 입력해 주세요', author: '나도이런거만들거야', cover: null },
-    { title: '로판 악녀가 되다', desc: '깨어나보니 최악의 악녀에게 빙의되었다', author: '강형', cover: null, hasImage: true },
-  ];
-  const MOCK_UPDATED = [
-    { title: '', cover: null },
-    { title: '명부를 쥔 SSS급 헌터', cover: null, hasImage: true },
-  ];
+function RightPreviewPanel({
+  name,
+  description,
+  squareImage,
+  verticalImage,
+}: {
+  name: string;
+  description: string;
+  squareImage?: string | null;
+  verticalImage?: string | null;
+}) {
+  const placeholderIcon = (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+    </svg>
+  );
+
+  const displayName = name.trim() || '작품 이름';
+  const displayDesc = description.trim() || '어떤 스토리인지 설명할 수 있는 간단한 소개를 입력해 주세요';
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6">
-      {/* 기존 프로필 */}
+      {/* 기존 프로필 — 정방형(1:1) */}
       <section className="mb-8">
         <h3 className="text-gray-700 font-semibold text-sm mb-4">기존 프로필</h3>
         <div className="grid grid-cols-2 gap-3">
-          {MOCK_EXISTING.map((item, i) => (
-            <div key={i} className="rounded-xl overflow-hidden border border-gray-100">
-              <div className={cn(
-                'aspect-square bg-gray-100 flex items-center justify-center',
-                item.hasImage && 'bg-gradient-to-br from-gray-700 via-purple-900 to-pink-800'
-              )}>
-                {item.hasImage ? (
-                  <div className="w-full h-full flex items-end p-3">
-                    <span className="text-white text-xs font-bold leading-tight">{item.title}</span>
-                  </div>
-                ) : (
-                  <div className="text-gray-300">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                )}
-              </div>
-              <div className="p-2.5">
-                <p className="text-gray-700 font-medium text-xs truncate mb-0.5">{item.title || '작품 이름'}</p>
-                {item.desc && <p className="text-gray-400 text-[10px] line-clamp-2 leading-relaxed">{item.desc}</p>}
-                {item.author && <p className="text-gray-400 text-[10px] mt-1">@ {item.author}</p>}
-              </div>
+          {/* 내 작품 카드 — 실시간 미리보기 */}
+          <div className="rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+            <div className="aspect-square bg-gray-100 flex items-center justify-center overflow-hidden relative">
+              {squareImage ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={squareImage} alt="정방형 미리보기" className="w-full h-full object-cover" />
+              ) : (
+                <div className="text-gray-300">{placeholderIcon}</div>
+              )}
             </div>
-          ))}
+            <div className="p-2.5">
+              <p className="text-gray-700 font-medium text-xs truncate mb-0.5">{displayName}</p>
+              <p className="text-gray-400 text-[10px] line-clamp-2 leading-relaxed">{displayDesc}</p>
+            </div>
+          </div>
+          {/* 기존 예시 카드 */}
+          <div className="rounded-xl overflow-hidden border border-gray-100">
+            <div className="aspect-square bg-gradient-to-br from-gray-700 via-purple-900 to-pink-800 flex items-end p-3">
+              <span className="text-white text-xs font-bold leading-tight">로판 악녀가 되다</span>
+            </div>
+            <div className="p-2.5">
+              <p className="text-gray-700 font-medium text-xs truncate mb-0.5">로판 악녀가 되다</p>
+              <p className="text-gray-400 text-[10px] line-clamp-2 leading-relaxed">깨어나보니 최악의 악녀에게 빙의되었다</p>
+              <p className="text-gray-400 text-[10px] mt-1">@ 강형</p>
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* 업데이트 이후 변경 프로필 */}
+      {/* 업데이트 이후 변경 프로필 — 세로형(2:3) */}
       <section>
         <h3 className="text-gray-700 font-semibold text-sm mb-4">업데이트 이후 변경 프로필</h3>
         <div className="grid grid-cols-2 gap-3">
-          {MOCK_UPDATED.map((item, i) => (
-            <div key={i} className="rounded-xl overflow-hidden border border-gray-100">
-              <div className={cn(
-                'aspect-[2/3] bg-gray-100 flex items-center justify-center',
-                item.hasImage && 'bg-gradient-to-b from-gray-900 via-gray-800 to-black'
-              )}>
-                {item.hasImage ? (
-                  <div className="w-full h-full flex items-center justify-center p-3">
-                    <span className="text-white text-xs font-bold text-center leading-tight">{item.title}</span>
-                  </div>
-                ) : (
-                  <div className="text-gray-300">
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                )}
-              </div>
+          {/* 내 작품 카드 — 실시간 미리보기 */}
+          <div className="rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+            <div className="aspect-[2/3] bg-gray-100 flex items-center justify-center overflow-hidden relative">
+              {verticalImage ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={verticalImage} alt="세로형 미리보기" className="w-full h-full object-cover" />
+              ) : squareImage ? (
+                // 세로형 없으면 정방형으로 대체 표시
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={squareImage} alt="정방형 대체" className="w-full h-full object-cover" />
+              ) : (
+                <div className="text-gray-300">{placeholderIcon}</div>
+              )}
+              {/* 이름 오버레이 */}
+              {(verticalImage || squareImage) && (
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent flex items-end p-3">
+                  <span className="text-white text-xs font-bold leading-tight line-clamp-2">{displayName}</span>
+                </div>
+              )}
             </div>
-          ))}
+          </div>
+          {/* 기존 예시 카드 */}
+          <div className="rounded-xl overflow-hidden border border-gray-100">
+            <div className="aspect-[2/3] bg-gradient-to-b from-gray-900 via-gray-800 to-black flex items-center justify-center p-3">
+              <span className="text-white text-xs font-bold text-center leading-tight">명부를 쥔 SSS급 헌터</span>
+            </div>
+          </div>
         </div>
       </section>
     </div>
@@ -602,12 +629,16 @@ function ProfileForm({
   name, setName,
   description, setDescription,
   onNext,
+  onSquareImageChange,
+  onVerticalImageChange,
 }: {
   name: string;
   setName: (v: string) => void;
   description: string;
   setDescription: (v: string) => void;
   onNext: () => void;
+  onSquareImageChange?: (url: string | null) => void;
+  onVerticalImageChange?: (url: string | null) => void;
 }) {
   const [showAgeNotice, setShowAgeNotice] = useState(true);
   const [showAgeModal, setShowAgeModal] = useState(false);
@@ -681,6 +712,7 @@ function ProfileForm({
         ratio="1:1"
         hint="이미지를 필수로 등록해주세요."
         size="5MB 이하 (1,080 x 1,080px)"
+        onPreviewChange={onSquareImageChange}
       />
 
       {/* Vertical image */}
@@ -689,6 +721,7 @@ function ProfileForm({
         ratio="2:3"
         hint="필수는 아니지만 미리 등록하면 더 예쁘게 노출돼요."
         size="5MB 이하 (1,080 x 1,620px)"
+        onPreviewChange={onVerticalImageChange}
       />
 
       {/* Update notice */}
@@ -2687,6 +2720,8 @@ export function StoryCreateForm() {
   const [activeTab, setActiveTab] = useState<StoryTab>('profile');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [squareImage, setSquareImage] = useState<string | null>(null);
+  const [verticalImage, setVerticalImage] = useState<string | null>(null);
   const [stats, setStats] = useState<StatItem[]>([]);
   const [systemPrompt, setSystemPrompt] = useState('');
   // Shared start-settings list for media/keywords/ending tabs
@@ -2792,6 +2827,8 @@ export function StoryCreateForm() {
                   description={description}
                   setDescription={setDescription}
                   onNext={handleNext}
+                  onSquareImageChange={setSquareImage}
+                  onVerticalImageChange={setVerticalImage}
                 />
               )}
               {activeTab === 'story-settings' && (
@@ -2844,7 +2881,12 @@ export function StoryCreateForm() {
               <div className="flex-shrink-0 text-center py-3 border-b border-gray-100">
                 <p className="text-gray-400 text-xs">이 대화는 AI로 생성된 가상의 이야기입니다</p>
               </div>
-              <RightPreviewPanel name={name} description={description} />
+              <RightPreviewPanel
+                name={name}
+                description={description}
+                squareImage={squareImage}
+                verticalImage={verticalImage}
+              />
             </>
           ) : activeTab === 'ending' ? (
             /* Ending tab: EPILOGUE preview */
