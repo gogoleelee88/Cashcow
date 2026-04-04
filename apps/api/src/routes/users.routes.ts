@@ -327,4 +327,98 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({ success: true });
     },
   });
+
+  // ─────────────────────────────────────────────
+  // ADULT VERIFICATION — PASS 통신사 인증
+  // ─────────────────────────────────────────────
+
+  // Step 1: 인증 세션 시작 (통신사 선택 후 호출)
+  fastify.post('/me/age-verify/initiate', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { carrier } = request.body as {
+        carrier: 'SKT' | 'KT' | 'LGU' | 'SKT_MVNO' | 'KT_MVNO' | 'LGU_MVNO';
+      };
+
+      const CARRIERS = ['SKT', 'KT', 'LGU', 'SKT_MVNO', 'KT_MVNO', 'LGU_MVNO'];
+      if (!CARRIERS.includes(carrier)) {
+        return reply.status(400).send({ error: '올바른 통신사를 선택해주세요.' });
+      }
+
+      const userId = request.userId!;
+      const user = await prismaRead.user.findUnique({
+        where: { id: userId },
+        select: { ageVerified: true },
+      });
+
+      if (user?.ageVerified) {
+        return reply.status(400).send({ error: '이미 성인인증이 완료된 계정입니다.' });
+      }
+
+      // 실제 PASS API 연동 시: 드림시큐리티/KCB에 merchantId, serviceId, txId 요청
+      // 현재는 verificationToken을 생성하여 반환 (프론트에서 PASS 앱/웹 딥링크 호출)
+      const verificationToken = `pass_${userId}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+      // Redis에 토큰 저장 (10분 TTL)
+      const { cache } = await import('../lib/redis');
+      await cache.setex(`age_verify:${verificationToken}`, 600, JSON.stringify({ userId, carrier, status: 'pending' }));
+
+      // PASS 실제 연동 URL (운영 환경에서는 드림시큐리티 API 호출)
+      const passDeepLink = `https://pass.ktmobile.com/auth?token=${verificationToken}&returnUrl=${encodeURIComponent(process.env.FRONTEND_URL || 'http://localhost:3006')}/verify-age/callback`;
+
+      return reply.send({
+        verificationToken,
+        passDeepLink,
+        carrier,
+        expiresIn: 600,
+      });
+    },
+  });
+
+  // Step 2: 인증 완료 콜백 (PASS 앱에서 리다이렉트 후 호출)
+  fastify.post('/me/age-verify/complete', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { verificationToken } = request.body as { verificationToken: string };
+      const userId = request.userId!;
+
+      const { cache } = await import('../lib/redis');
+      const raw = await cache.get(`age_verify:${verificationToken}`);
+
+      if (!raw) {
+        return reply.status(400).send({ error: '인증 토큰이 만료되었거나 올바르지 않습니다.' });
+      }
+
+      const session = JSON.parse(raw) as { userId: string; carrier: string; status: string };
+      if (session.userId !== userId) {
+        return reply.status(403).send({ error: '인증 정보가 일치하지 않습니다.' });
+      }
+
+      // 인증 완료 처리
+      await prisma.user.update({
+        where: { id: userId },
+        data: { ageVerified: true, ageVerifiedAt: new Date() },
+      });
+
+      await cache.del(`age_verify:${verificationToken}`);
+
+      return reply.send({ success: true, message: '성인인증이 완료되었습니다.' });
+    },
+  });
+
+  // 인증 상태 확인
+  fastify.get('/me/age-verify/status', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const userId = request.userId!;
+      const user = await prismaRead.user.findUnique({
+        where: { id: userId },
+        select: { ageVerified: true, ageVerifiedAt: true },
+      });
+      return reply.send({
+        isVerified: user?.ageVerified ?? false,
+        verifiedAt: user?.ageVerifiedAt ?? null,
+      });
+    },
+  });
 };

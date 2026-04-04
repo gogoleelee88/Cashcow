@@ -243,6 +243,15 @@ export const api = {
 
     markNotificationRead: (id: string) =>
       apiClient.patch(`/api/notifications/${id}/read`).then((r) => r.data),
+
+    ageVerifyInitiate: (carrier: 'SKT' | 'KT' | 'LGU' | 'SKT_MVNO' | 'KT_MVNO' | 'LGU_MVNO') =>
+      apiClient.post('/api/users/me/age-verify/initiate', { carrier }).then((r) => r.data),
+
+    ageVerifyComplete: (verificationToken: string) =>
+      apiClient.post('/api/users/me/age-verify/complete', { verificationToken }).then((r) => r.data),
+
+    ageVerifyStatus: () =>
+      apiClient.get('/api/users/me/age-verify/status').then((r) => r.data),
   },
 };
 
