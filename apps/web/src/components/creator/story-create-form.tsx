@@ -25,8 +25,6 @@ const TABS: { key: StoryTab; label: string; required?: boolean }[] = [
 ];
 
 // ─────────────────────────────────────────────
-<<<<<<< HEAD
-=======
 // AI CHAT MODELS
 // ─────────────────────────────────────────────
 interface ChatModel {
@@ -429,7 +427,6 @@ function AgeVerificationModal({ onClose, onVerified }: { onClose: () => void; on
 }
 
 // ─────────────────────────────────────────────
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
 // IMAGE UPLOAD AREA
 // ─────────────────────────────────────────────
 function ImageUploadArea({
@@ -438,20 +435,14 @@ function ImageUploadArea({
   ratio,
   hint,
   size,
-<<<<<<< HEAD
-=======
   onPreviewChange,
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
 }: {
   label: string;
   required?: boolean;
   ratio: string;
   hint: string;
   size: string;
-<<<<<<< HEAD
-=======
   onPreviewChange?: (url: string | null) => void;
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
 }) {
   const [preview, setPreview] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -461,8 +452,6 @@ function ImageUploadArea({
     if (!file) return;
     const url = URL.createObjectURL(file);
     setPreview(url);
-<<<<<<< HEAD
-=======
     onPreviewChange?.(url);
   };
 
@@ -470,7 +459,6 @@ function ImageUploadArea({
     setPreview(null);
     if (inputRef.current) inputRef.current.value = '';
     onPreviewChange?.(null);
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
   };
 
   return (
@@ -518,11 +506,7 @@ function ImageUploadArea({
             {preview && (
               <button
                 type="button"
-<<<<<<< HEAD
-                onClick={() => { setPreview(null); if (inputRef.current) inputRef.current.value = ''; }}
-=======
                 onClick={handleDelete}
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -546,76 +530,6 @@ function ImageUploadArea({
 // ─────────────────────────────────────────────
 // RIGHT PANEL — 기존/업데이트 프로필 미리보기
 // ─────────────────────────────────────────────
-<<<<<<< HEAD
-function RightPreviewPanel({ name, description }: { name: string; description: string }) {
-  const MOCK_EXISTING = [
-    { title: '작품 이름', desc: '어떤 스토리인지 설명할 수 있는 간단한 소개를 입력해 주세요', author: '나도이런거만들거야', cover: null },
-    { title: '로판 악녀가 되다', desc: '깨어나보니 최악의 악녀에게 빙의되었다', author: '강형', cover: null, hasImage: true },
-  ];
-  const MOCK_UPDATED = [
-    { title: '', cover: null },
-    { title: '명부를 쥔 SSS급 헌터', cover: null, hasImage: true },
-  ];
-
-  return (
-    <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6">
-      {/* 기존 프로필 */}
-      <section className="mb-8">
-        <h3 className="text-gray-700 font-semibold text-sm mb-4">기존 프로필</h3>
-        <div className="grid grid-cols-2 gap-3">
-          {MOCK_EXISTING.map((item, i) => (
-            <div key={i} className="rounded-xl overflow-hidden border border-gray-100">
-              <div className={cn(
-                'aspect-square bg-gray-100 flex items-center justify-center',
-                item.hasImage && 'bg-gradient-to-br from-gray-700 via-purple-900 to-pink-800'
-              )}>
-                {item.hasImage ? (
-                  <div className="w-full h-full flex items-end p-3">
-                    <span className="text-white text-xs font-bold leading-tight">{item.title}</span>
-                  </div>
-                ) : (
-                  <div className="text-gray-300">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                )}
-              </div>
-              <div className="p-2.5">
-                <p className="text-gray-700 font-medium text-xs truncate mb-0.5">{item.title || '작품 이름'}</p>
-                {item.desc && <p className="text-gray-400 text-[10px] line-clamp-2 leading-relaxed">{item.desc}</p>}
-                {item.author && <p className="text-gray-400 text-[10px] mt-1">@ {item.author}</p>}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* 업데이트 이후 변경 프로필 */}
-      <section>
-        <h3 className="text-gray-700 font-semibold text-sm mb-4">업데이트 이후 변경 프로필</h3>
-        <div className="grid grid-cols-2 gap-3">
-          {MOCK_UPDATED.map((item, i) => (
-            <div key={i} className="rounded-xl overflow-hidden border border-gray-100">
-              <div className={cn(
-                'aspect-[2/3] bg-gray-100 flex items-center justify-center',
-                item.hasImage && 'bg-gradient-to-b from-gray-900 via-gray-800 to-black'
-              )}>
-                {item.hasImage ? (
-                  <div className="w-full h-full flex items-center justify-center p-3">
-                    <span className="text-white text-xs font-bold text-center leading-tight">{item.title}</span>
-                  </div>
-                ) : (
-                  <div className="text-gray-300">
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-=======
 function RightPreviewPanel({
   name,
   description,
@@ -715,7 +629,6 @@ function RightPreviewPanel({
               <p className="text-gray-700 font-medium text-xs truncate mb-0.5">명부를 쥔 SSS급 헌터</p>
             </div>
           </div>
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
         </div>
       </section>
     </div>
@@ -729,21 +642,14 @@ function ProfileForm({
   name, setName,
   description, setDescription,
   onNext,
-<<<<<<< HEAD
-=======
   onSquareImageChange,
   onVerticalImageChange,
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
 }: {
   name: string;
   setName: (v: string) => void;
   description: string;
   setDescription: (v: string) => void;
   onNext: () => void;
-<<<<<<< HEAD
-}) {
-  const [showAgeNotice, setShowAgeNotice] = useState(true);
-=======
   onSquareImageChange?: (url: string | null) => void;
   onVerticalImageChange?: (url: string | null) => void;
 }) {
@@ -763,7 +669,6 @@ function ProfileForm({
       setGeneratingName(false);
     }
   };
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
@@ -772,17 +677,11 @@ function ProfileForm({
         <span className="text-gray-700 text-sm">프로필을 랜덤으로 생성해 보세요</span>
         <button
           type="button"
-<<<<<<< HEAD
-          className="px-3 py-1.5 rounded-lg border border-brand text-brand text-xs font-semibold hover:bg-brand/5 transition-colors"
-        >
-          랜덤 생성
-=======
           onClick={handleRandomName}
           disabled={generatingName}
           className="px-3 py-1.5 rounded-lg border border-brand text-brand text-xs font-semibold hover:bg-brand/5 transition-colors disabled:opacity-50"
         >
           {generatingName ? '생성 중...' : '랜덤 생성'}
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
         </button>
       </div>
 
@@ -802,10 +701,7 @@ function ProfileForm({
             <div className="flex items-center gap-2 flex-shrink-0">
               <button
                 type="button"
-<<<<<<< HEAD
-=======
                 onClick={() => setShowAgeModal(true)}
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
                 className="px-3 py-1 rounded-lg bg-white text-gray-900 text-xs font-semibold hover:bg-gray-100 transition-colors"
               >
                 성인 인증
@@ -829,10 +725,7 @@ function ProfileForm({
         ratio="1:1"
         hint="이미지를 필수로 등록해주세요."
         size="5MB 이하 (1,080 x 1,080px)"
-<<<<<<< HEAD
-=======
         onPreviewChange={onSquareImageChange}
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
       />
 
       {/* Vertical image */}
@@ -841,10 +734,7 @@ function ProfileForm({
         ratio="2:3"
         hint="필수는 아니지만 미리 등록하면 더 예쁘게 노출돼요."
         size="5MB 이하 (1,080 x 1,620px)"
-<<<<<<< HEAD
-=======
         onPreviewChange={onVerticalImageChange}
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
       />
 
       {/* Update notice */}
@@ -914,14 +804,11 @@ function ProfileForm({
       >
         <ChevronUp className="w-5 h-5" />
       </button>
-<<<<<<< HEAD
-=======
 
       {/* Age Verification Modal */}
       <AnimatePresence>
         {showAgeModal && <AgeVerificationModal onClose={() => setShowAgeModal(false)} />}
       </AnimatePresence>
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
     </div>
   );
 }
@@ -938,46 +825,29 @@ interface StartSetting {
   suggestedReplies: string[];
 }
 
-<<<<<<< HEAD
-function StartSettingsTab() {
-=======
 function StartSettingsTab({ storyName, systemPrompt, onPlayGuideChange, onPrologueChange, onSuggestedRepliesChange }: { storyName: string; systemPrompt: string; onPlayGuideChange?: (v: string) => void; onPrologueChange?: (v: string) => void; onSuggestedRepliesChange?: (v: string[]) => void }) {
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
   const [settings, setSettings] = useState<StartSetting[]>([
     { id: '1', name: '기본 설정', prologue: '', situation: '', playGuide: '', suggestedReplies: [] },
   ]);
   const [activeSettingId, setActiveSettingId] = useState('1');
   const [advancedOpen, setAdvancedOpen] = useState(true);
-<<<<<<< HEAD
-=======
   const [showInfoCard, setShowInfoCard] = useState(true);
   const [generatingPrologue, setGeneratingPrologue] = useState(false);
 
   const isDefaultSetting = activeSettingId === settings[0].id;
   const isExtraSetting = !isDefaultSetting;
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
 
   const activeSetting = settings.find(s => s.id === activeSettingId) ?? settings[0];
 
   const update = (field: keyof StartSetting, value: string | string[]) => {
     setSettings(prev => prev.map(s => s.id === activeSettingId ? { ...s, [field]: value } : s));
-<<<<<<< HEAD
-=======
     if (field === 'playGuide' && typeof value === 'string') onPlayGuideChange?.(value);
     if (field === 'prologue' && typeof value === 'string') onPrologueChange?.(value);
     if (field === 'suggestedReplies' && Array.isArray(value)) onSuggestedRepliesChange?.(value);
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
   };
 
   const addSetting = () => {
     const newId = String(Date.now());
-<<<<<<< HEAD
-    setSettings(prev => [...prev, {
-      id: newId, name: `설정 ${prev.length + 1}`,
-      prologue: '', situation: '', playGuide: '', suggestedReplies: [],
-    }]);
-    setActiveSettingId(newId);
-=======
     const extraCount = settings.length; // 추가 설정 번호
     setSettings(prev => [...prev, {
       id: newId, name: `추가 설정 ${extraCount}`,
@@ -1002,7 +872,6 @@ function StartSettingsTab({ storyName, systemPrompt, onPlayGuideChange, onProlog
     } finally {
       setGeneratingPrologue(false);
     }
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
   };
 
   const addReply = () => {
@@ -1024,17 +893,10 @@ function StartSettingsTab({ storyName, systemPrompt, onPlayGuideChange, onProlog
     <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
       {/* Setting pills */}
       <div className="flex items-center gap-2 mb-6 flex-wrap">
-<<<<<<< HEAD
-        {settings.map((s) => (
-          <button
-            key={s.id}
-            onClick={() => setActiveSettingId(s.id)}
-=======
         {settings.map((s, i) => (
           <button
             key={s.id}
             onClick={() => { setActiveSettingId(s.id); if (i > 0) setShowInfoCard(true); }}
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
             className={cn(
               'px-3 py-1.5 rounded-full text-sm font-semibold transition-all',
               s.id === activeSettingId
@@ -1042,11 +904,7 @@ function StartSettingsTab({ storyName, systemPrompt, onPlayGuideChange, onProlog
                 : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
             )}
           >
-<<<<<<< HEAD
-            {s.id === settings[0].id ? `기본 ${s.name}` : s.name}
-=======
             {i === 0 ? `기본 ${s.name}` : s.name}
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
           </button>
         ))}
         {settings.length < 5 && (
@@ -1060,8 +918,6 @@ function StartSettingsTab({ storyName, systemPrompt, onPlayGuideChange, onProlog
         )}
       </div>
 
-<<<<<<< HEAD
-=======
       {/* 추가 설정 인포카드 (기본 설정이 아닌 경우에만 표시) */}
       <AnimatePresence>
         {isExtraSetting && showInfoCard && (
@@ -1113,7 +969,6 @@ function StartSettingsTab({ storyName, systemPrompt, onPlayGuideChange, onProlog
         )}
       </AnimatePresence>
 
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
       {/* 프롤로그 */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-1">
@@ -1121,17 +976,12 @@ function StartSettingsTab({ storyName, systemPrompt, onPlayGuideChange, onProlog
             <span className="text-gray-900 font-semibold text-sm">프롤로그</span>
             <span className="text-brand font-bold text-sm">*</span>
           </div>
-<<<<<<< HEAD
-          <button className="px-3 py-1 rounded-lg border border-brand/40 text-brand text-xs font-semibold hover:bg-brand/5 transition-colors">
-            자동 생성
-=======
           <button
             onClick={handleGeneratePrologue}
             disabled={generatingPrologue}
             className="px-3 py-1 rounded-lg border border-brand/40 text-brand text-xs font-semibold hover:bg-brand/5 transition-colors disabled:opacity-50"
           >
             {generatingPrologue ? '생성 중...' : '자동 생성'}
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
           </button>
         </div>
         <p className="text-gray-400 text-xs mb-2">스토리의 프롤로그를 작성해 주세요</p>
@@ -2275,10 +2125,7 @@ const MODEL_OPTIONS = [
 
 function RegisterTab({ name, coverUrl }: { name: string; coverUrl?: string }) {
   const [showAgeNotice, setShowAgeNotice] = useState(true);
-<<<<<<< HEAD
-=======
   const [showAgeModal, setShowAgeModal] = useState(false);
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
   const [detailDesc, setDetailDesc] = useState('');
   const [genre, setGenre] = useState('');
   const [target, setTarget] = useState('');
@@ -2311,14 +2158,10 @@ function RegisterTab({ name, coverUrl }: { name: string; coverUrl?: string }) {
         <div className="flex items-center justify-between gap-3 px-4 py-3 mb-6 bg-gray-900 text-white rounded-xl">
           <p className="text-sm">민감한 스토리의 경우 제작 시 성인 인증이 필요해요.</p>
           <div className="flex items-center gap-2 flex-shrink-0">
-<<<<<<< HEAD
-            <button className="px-3 py-1 rounded-lg bg-white text-gray-900 text-xs font-semibold hover:bg-gray-100 transition-colors">
-=======
             <button
               onClick={() => setShowAgeModal(true)}
               className="px-3 py-1 rounded-lg bg-white text-gray-900 text-xs font-semibold hover:bg-gray-100 transition-colors"
             >
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
               성인 인증
             </button>
             <button onClick={() => setShowAgeNotice(false)} className="text-white/60 hover:text-white">
@@ -2592,14 +2435,11 @@ function RegisterTab({ name, coverUrl }: { name: string; coverUrl?: string }) {
           </div>
         </div>
       </div>
-<<<<<<< HEAD
-=======
 
       {/* Age Verification Modal */}
       <AnimatePresence>
         {showAgeModal && <AgeVerificationModal onClose={() => setShowAgeModal(false)} />}
       </AnimatePresence>
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
     </div>
   );
 }
@@ -2718,11 +2558,6 @@ function PlaceholderTab({ label }: { label: string }) {
 // ─────────────────────────────────────────────
 // STORY SETTINGS TAB (simplified example)
 // ─────────────────────────────────────────────
-<<<<<<< HEAD
-function StorySettingsTab() {
-  const [systemPrompt, setSystemPrompt] = useState('');
-  const [examples, setExamples] = useState([{ user: '', assistant: '' }]);
-=======
 function StorySettingsTab({
   storyName, storyDescription, onSystemPromptChange,
 }: {
@@ -2772,7 +2607,6 @@ function StorySettingsTab({
       setGeneratingExamples(false);
     }
   };
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
@@ -2786,19 +2620,13 @@ function StorySettingsTab({
         <div className="relative">
           <textarea
             value={systemPrompt}
-<<<<<<< HEAD
-            onChange={(e) => setSystemPrompt(e.target.value.slice(0, 3000))}
-=======
             onChange={(e) => handleUpdatePrompt(e.target.value.slice(0, 3000))}
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
             placeholder="스토리 설정을 입력해 주세요"
             rows={8}
             className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-900 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 transition-colors resize-none"
           />
           <span className="absolute right-4 bottom-3 text-gray-300 text-xs">{systemPrompt.length} / 3000</span>
         </div>
-<<<<<<< HEAD
-=======
         <div className="flex justify-end mt-2">
           <button
             type="button"
@@ -2809,7 +2637,6 @@ function StorySettingsTab({
             {generatingPrompt ? '생성 중...' : '자동 생성'}
           </button>
         </div>
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
       </div>
 
       {/* Advanced settings toggle */}
@@ -2829,10 +2656,6 @@ function StorySettingsTab({
             <p className="text-gray-400 text-xs">전개 예시를 입력해서 스토리의 완성도를 높여보세요.<br />예시는 3개까지 등록할 수 있어요.</p>
           </div>
           <div className="flex gap-2">
-<<<<<<< HEAD
-            <button type="button" className="px-3 py-1.5 rounded-lg border border-brand/40 text-brand text-xs font-medium hover:bg-brand/5 transition-colors">
-              전체 자동 생성
-=======
             <button
               type="button"
               onClick={handleGenerateExamples}
@@ -2840,7 +2663,6 @@ function StorySettingsTab({
               className="px-3 py-1.5 rounded-lg border border-brand/40 text-brand text-xs font-medium hover:bg-brand/5 transition-colors disabled:opacity-50"
             >
               {generatingExamples ? '생성 중...' : '전체 자동 생성'}
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
             </button>
             {examples.length < 3 && (
               <button
@@ -2906,16 +2728,14 @@ function StorySettingsTab({
 }
 
 // ─────────────────────────────────────────────
-<<<<<<< HEAD
-=======
 // CRACKER CHARGE MODAL
 // ─────────────────────────────────────────────
 const CRACKER_PACKAGES = [
-  { id: 'cracker_200',   label: '200 크래커',  price: 2000,  crackers: 200,   bonus: 0,    popular: false },
-  { id: 'cracker_500',   label: '500 크래커',  price: 4900,  crackers: 500,   bonus: 50,   popular: false },
-  { id: 'cracker_1000',  label: '1,000 크래커', price: 9600, crackers: 1000,  bonus: 100,  popular: false },
-  { id: 'cracker_3000',  label: '3,000 크래커', price: 28000, crackers: 3000, bonus: 500,  popular: true  },
-  { id: 'cracker_5000',  label: '5,000 크래커', price: 46000, crackers: 5000, bonus: 1000, popular: false },
+  { id: 'cracker_200',   label: '200 크래커',    price: 2000,  crackers: 200,   bonus: 0,    popular: false },
+  { id: 'cracker_500',   label: '500 크래커',    price: 4900,  crackers: 500,   bonus: 50,   popular: false },
+  { id: 'cracker_1000',  label: '1,000 크래커',  price: 9600,  crackers: 1000,  bonus: 100,  popular: false },
+  { id: 'cracker_3000',  label: '3,000 크래커',  price: 28000, crackers: 3000,  bonus: 500,  popular: true  },
+  { id: 'cracker_5000',  label: '5,000 크래커',  price: 46000, crackers: 5000,  bonus: 1000, popular: false },
   { id: 'cracker_10000', label: '10,000 크래커', price: 90000, crackers: 10000, bonus: 3000, popular: false },
 ];
 
@@ -2942,7 +2762,6 @@ function CrackerChargeModal({ onClose }: { onClose: () => void }) {
     try {
       const { api } = await import('../../lib/api');
       const { data } = await api.payments.initiateTosse(selected);
-      // data: { orderId, orderName, amount, clientKey, successUrl, failUrl }
       await loadTossScript();
       const toss = (window as any).TossPayments(data.clientKey);
       await toss.requestPayment('카드', {
@@ -2951,17 +2770,14 @@ function CrackerChargeModal({ onClose }: { onClose: () => void }) {
         orderName: data.orderName,
         successUrl: data.successUrl,
         failUrl: data.failUrl,
-        customerName: undefined,
       });
     } catch (e: unknown) {
-      // User cancelled (code PAY_PROCESS_CANCELED) - silent
       const err = e as { code?: string; message?: string };
       if (err?.code === 'PAY_PROCESS_CANCELED' || err?.code === 'USER_CANCEL') {
         setLoading(false);
         return;
       }
-      const msg = err?.message ?? '결제 초기화에 실패했습니다.';
-      setError(msg);
+      setError(err?.message ?? '결제 초기화에 실패했습니다.');
     } finally {
       setLoading(false);
     }
@@ -2969,10 +2785,7 @@ function CrackerChargeModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-
-      {/* Modal */}
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -2983,58 +2796,41 @@ function CrackerChargeModal({ onClose }: { onClose: () => void }) {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div className="flex items-center gap-2">
-            <span className="text-xl">◆</span>
+            <span className="text-lg">◆</span>
             <h2 className="text-gray-900 font-bold text-base">크래커 충전하기</h2>
           </div>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-400 transition-colors"
-          >
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-400 transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Package list */}
-        <div className="px-6 py-4 space-y-2.5 max-h-[60vh] overflow-y-auto">
+        <div className="px-6 py-4 space-y-2.5 max-h-[55vh] overflow-y-auto">
           {CRACKER_PACKAGES.map(p => (
             <button
               key={p.id}
               onClick={() => setSelected(p.id)}
               className={cn(
                 'w-full flex items-center justify-between px-4 py-3.5 rounded-xl border-2 transition-all text-left',
-                selected === p.id
-                  ? 'border-brand bg-red-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
+                selected === p.id ? 'border-brand bg-red-50' : 'border-gray-200 bg-white hover:border-gray-300'
               )}
             >
               <div className="flex items-center gap-3">
-                {/* Radio */}
-                <div className={cn(
-                  'w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0',
-                  selected === p.id ? 'border-brand' : 'border-gray-300'
-                )}>
+                <div className={cn('w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0', selected === p.id ? 'border-brand' : 'border-gray-300')}>
                   {selected === p.id && <div className="w-2 h-2 rounded-full bg-brand" />}
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-gray-900 font-semibold text-sm">
-                      ◆ {p.crackers.toLocaleString()}
-                    </span>
+                    <span className="text-gray-900 font-semibold text-sm">◆ {p.crackers.toLocaleString()}</span>
                     {p.bonus > 0 && (
-                      <span className="px-1.5 py-0.5 bg-orange-100 text-orange-600 text-[10px] font-bold rounded">
-                        +{p.bonus.toLocaleString()} 보너스
-                      </span>
+                      <span className="px-1.5 py-0.5 bg-orange-100 text-orange-600 text-[10px] font-bold rounded">+{p.bonus.toLocaleString()} 보너스</span>
                     )}
                     {p.popular && (
-                      <span className="px-1.5 py-0.5 bg-brand text-white text-[10px] font-bold rounded">
-                        추천
-                      </span>
+                      <span className="px-1.5 py-0.5 bg-brand text-white text-[10px] font-bold rounded">추천</span>
                     )}
                   </div>
                   {p.bonus > 0 && (
-                    <p className="text-gray-400 text-xs mt-0.5">
-                      총 {(p.crackers + p.bonus).toLocaleString()}개 지급
-                    </p>
+                    <p className="text-gray-400 text-xs mt-0.5">총 {(p.crackers + p.bonus).toLocaleString()}개 지급</p>
                   )}
                 </div>
               </div>
@@ -3043,7 +2839,6 @@ function CrackerChargeModal({ onClose }: { onClose: () => void }) {
           ))}
         </div>
 
-        {/* Error */}
         {error && (
           <div className="mx-6 mb-2 px-4 py-2.5 bg-red-50 border border-red-200 rounded-xl">
             <p className="text-red-600 text-xs">{error}</p>
@@ -3051,9 +2846,9 @@ function CrackerChargeModal({ onClose }: { onClose: () => void }) {
         )}
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-100 space-y-2.5">
+        <div className="px-6 py-4 border-t border-gray-100 space-y-3">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-500">선택한 패키지</span>
+            <span className="text-gray-500">선택 패키지</span>
             <span className="font-semibold text-gray-900">
               ◆ {pkg.crackers.toLocaleString()}
               {pkg.bonus > 0 && <span className="text-orange-500"> +{pkg.bonus.toLocaleString()}</span>}
@@ -3063,13 +2858,11 @@ function CrackerChargeModal({ onClose }: { onClose: () => void }) {
             <span className="text-gray-500">결제 금액</span>
             <span className="font-bold text-gray-900 text-base">{pkg.price.toLocaleString()}원</span>
           </div>
-
-          {/* Toss Pay button */}
           <button
             onClick={handleTossPay}
             disabled={loading}
-            className="w-full py-3.5 rounded-xl font-bold text-sm transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            style={{ backgroundColor: '#3182F6', color: 'white' }}
+            className="w-full py-3.5 rounded-xl font-bold text-sm text-white transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            style={{ backgroundColor: '#3182F6' }}
           >
             {loading ? (
               <>
@@ -3079,20 +2872,9 @@ function CrackerChargeModal({ onClose }: { onClose: () => void }) {
                 </svg>
                 처리 중...
               </>
-            ) : (
-              <>
-                <svg width="20" height="20" viewBox="0 0 40 40" fill="none">
-                  <rect width="40" height="40" rx="8" fill="white" fillOpacity="0.2"/>
-                  <text x="20" y="27" textAnchor="middle" fill="white" fontSize="16" fontWeight="bold">T</text>
-                </svg>
-                토스페이로 결제하기
-              </>
-            )}
+            ) : '토스페이로 결제하기'}
           </button>
-
-          <p className="text-gray-400 text-[11px] text-center">
-            결제는 토스페이먼츠를 통해 안전하게 처리됩니다
-          </p>
+          <p className="text-gray-400 text-[11px] text-center">결제는 토스페이먼츠를 통해 안전하게 처리됩니다</p>
         </div>
       </motion.div>
     </div>
@@ -3100,7 +2882,6 @@ function CrackerChargeModal({ onClose }: { onClose: () => void }) {
 }
 
 // ─────────────────────────────────────────────
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
 // MAIN STORY CREATE FORM
 // ─────────────────────────────────────────────
 export function StoryCreateForm() {
@@ -3109,11 +2890,6 @@ export function StoryCreateForm() {
   const [activeTab, setActiveTab] = useState<StoryTab>('profile');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-<<<<<<< HEAD
-  const [stats, setStats] = useState<StatItem[]>([]);
-  // Shared start-settings list for media/keywords/ending tabs
-  const [startSettingsList] = useState([{ id: '1', name: '기본 설정' }]);
-=======
   const [squareImage, setSquareImage] = useState<string | null>(null);
   const [verticalImage, setVerticalImage] = useState<string | null>(null);
   const [playGuide, setPlayGuide] = useState('');
@@ -3127,7 +2903,6 @@ export function StoryCreateForm() {
   // AI model selector
   const [selectedModel, setSelectedModel] = useState<ChatModel>(CHAT_MODELS[2]); // default: 슈퍼챗 2.0
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) router.push('/login?redirect=/creator/story/new');
@@ -3147,13 +2922,12 @@ export function StoryCreateForm() {
 
   return (
     <div className="h-screen flex flex-col bg-white overflow-hidden">
-<<<<<<< HEAD
-=======
       {/* 크래커 충전 모달 */}
-      {crackerModalOpen && (
-        <CrackerChargeModal onClose={() => setCrackerModalOpen(false)} />
-      )}
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
+      <AnimatePresence>
+        {crackerModalOpen && (
+          <CrackerChargeModal onClose={() => setCrackerModalOpen(false)} />
+        )}
+      </AnimatePresence>
       {/* ── TOP BAR ── */}
       <div className="flex-shrink-0 flex items-center justify-between px-6 py-3 border-b border-gray-100 bg-white z-20">
         {/* Left: back + title */}
@@ -3233,12 +3007,6 @@ export function StoryCreateForm() {
                   description={description}
                   setDescription={setDescription}
                   onNext={handleNext}
-<<<<<<< HEAD
-                />
-              )}
-              {activeTab === 'story-settings' && <StorySettingsTab />}
-              {activeTab === 'start-settings' && <StartSettingsTab />}
-=======
                   onSquareImageChange={setSquareImage}
                   onVerticalImageChange={setVerticalImage}
                 />
@@ -3259,7 +3027,6 @@ export function StoryCreateForm() {
                   onSuggestedRepliesChange={setSuggestedReplies}
                 />
               )}
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
               {activeTab === 'stat-settings' && <StatSettingsTab stats={stats} setStats={setStats} />}
               {activeTab === 'media' && <MediaTab startSettings={startSettingsList} />}
               {activeTab === 'keywords' && <KeywordsTab startSettings={startSettingsList} />}
@@ -3295,25 +3062,17 @@ export function StoryCreateForm() {
 
         {/* Right preview panel */}
         <div className="flex flex-col h-full overflow-hidden" style={{ width: '42%' }}>
-<<<<<<< HEAD
-          {activeTab === 'profile' || activeTab === 'story-settings' ? (
-=======
           {activeTab === 'profile' ? (
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
             <>
               <div className="flex-shrink-0 text-center py-3 border-b border-gray-100">
                 <p className="text-gray-400 text-xs">이 대화는 AI로 생성된 가상의 이야기입니다</p>
               </div>
-<<<<<<< HEAD
-              <RightPreviewPanel name={name} description={description} />
-=======
               <RightPreviewPanel
                 name={name}
                 description={description}
                 squareImage={squareImage}
                 verticalImage={verticalImage}
               />
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
             </>
           ) : activeTab === 'ending' ? (
             /* Ending tab: EPILOGUE preview */
@@ -3351,13 +3110,6 @@ export function StoryCreateForm() {
                   채팅 미리보기
                 </button>
                 <div className="flex items-center gap-2">
-<<<<<<< HEAD
-                  <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
-                    <span>🍇</span>
-                    슈퍼챗 2.0
-                    <ChevronDown className="w-3 h-3 text-gray-400" />
-                  </button>
-=======
                   {/* Model selector */}
                   <div className="relative">
                     <button
@@ -3433,7 +3185,6 @@ export function StoryCreateForm() {
                     </AnimatePresence>
                   </div>
 
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
                   <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
                     <MessageSquare className="w-3.5 h-3.5" />
                     채팅 내역
@@ -3478,15 +3229,6 @@ export function StoryCreateForm() {
 
               {/* Chat area */}
               <div className="flex-1 overflow-y-auto p-4">
-<<<<<<< HEAD
-                <div className="flex items-start gap-3 mb-4">
-                  <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-gray-400 text-xs mb-1.5">스토리 이름</p>
-                    <div className="h-10 w-52 bg-blue-50 rounded-2xl rounded-tl-sm" />
-                  </div>
-                </div>
-=======
                 {/* AI 메시지 버블 */}
                 <div className="flex items-start gap-2.5 mb-4">
                   {/* 프로필 이미지 */}
@@ -3504,7 +3246,7 @@ export function StoryCreateForm() {
                       </svg>
                       {name.trim() || '스토리 이름'}
                     </p>
-                    {/* 말풍선 - 프롤로그 내용 or placeholder */}
+                    {/* 말풍선 — 프롤로그 내용 or placeholder */}
                     {prologue.trim() ? (
                       <div className="bg-blue-50 rounded-2xl rounded-tl-sm px-3.5 py-2.5 max-w-[220px]">
                         <p className="text-gray-700 text-xs leading-relaxed whitespace-pre-wrap">{prologue}</p>
@@ -3540,7 +3282,6 @@ export function StoryCreateForm() {
                     </div>
                   </div>
                 )}
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
               </div>
 
               {/* Chat input */}
@@ -3548,11 +3289,7 @@ export function StoryCreateForm() {
                 <div className="flex items-center gap-2 px-4 py-3 rounded-2xl border border-gray-200 bg-gray-50">
                   <input
                     type="text"
-<<<<<<< HEAD
-                    placeholder="[이름, 캐릭터 설정 및 정보, 첫 메시지]를 입력해주세요"
-=======
                     placeholder="[첫 메시지]를 입력해주세요"
->>>>>>> bc6dcd7 (feat: 프롤로그 채팅 미리보기 + 추천답변 칩 + 크래커 충전 모달 + Toss Pay 연동)
                     className="flex-1 bg-transparent text-xs text-gray-400 outline-none placeholder:text-gray-300"
                     readOnly
                   />

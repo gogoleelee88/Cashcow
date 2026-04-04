@@ -131,6 +131,18 @@ export const api = {
 
     my: (params?: Record<string, unknown>) =>
       apiClient.get('/api/stories/my', { params }).then((r) => r.data),
+
+    generateRandomName: () =>
+      apiClient.post('/api/stories/generate/name').then((r) => r.data?.data ?? r.data),
+
+    generatePrologue: (data: { name: string; systemPrompt: string; settingName: string }) =>
+      apiClient.post('/api/stories/generate/prologue', data).then((r) => r.data?.data ?? r.data),
+
+    generateStorySettings: (data: { name: string; description: string }) =>
+      apiClient.post('/api/stories/generate/story-settings', data).then((r) => r.data?.data ?? r.data),
+
+    generateExamples: (data: { name: string; systemPrompt: string; settingName: string }) =>
+      apiClient.post('/api/stories/generate/examples', data).then((r) => r.data?.data ?? r.data),
   },
 
   characters: {
