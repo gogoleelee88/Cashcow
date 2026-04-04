@@ -115,7 +115,7 @@ const CHAT_MODELS: ChatModel[] = [
 // ─────────────────────────────────────────────
 // AGE VERIFICATION MODAL
 // ─────────────────────────────────────────────
-type AgeVerifyStep = 'warning' | 'carrier';
+type AgeVerifyStep = 'warning' | 'carrier' | 'waiting';
 type Carrier = 'SKT' | 'KT' | 'LGU' | 'SKT_MVNO' | 'KT_MVNO' | 'LGU_MVNO';
 
 const CARRIERS: { value: Carrier; label: string }[] = [
@@ -127,25 +127,110 @@ const CARRIERS: { value: Carrier; label: string }[] = [
   { value: 'LGU_MVNO', label: 'LG U+ 알뜰폰' },
 ];
 
-function AgeVerificationModal({ onClose }: { onClose: () => void }) {
+function AgeVerificationModal({ onClose, onVerified }: { onClose: () => void; onVerified?: () => void }) {
   const [step, setStep] = useState<AgeVerifyStep>('warning');
   const [loading, setLoading] = useState(false);
   const [selectedCarrier, setSelectedCarrier] = useState<Carrier | null>(null);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [verifyDone, setVerifyDone] = useState(false);
+  // sandbox 모드에서 인증 대기 중 여부
+  const [awaitingVerify, setAwaitingVerify] = useState(false);
+  const [sandboxToken, setSandboxToken] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const handleProceed = () => setStep('carrier');
+  // 컴포넌트 언마운트 시 폴링 정리
+  useEffect(() => {
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, []);
+
+  // 인증 완료 여부 폴링 (1초 간격, 최대 10분)
+  const startPolling = () => {
+    let attempts = 0;
+    const MAX = 600;
+    pollRef.current = setInterval(async () => {
+      attempts++;
+      try {
+        const { api } = await import('../../lib/api');
+        const res = await api.users.ageVerifyStatus();
+        if (res.isVerified) {
+          clearInterval(pollRef.current!);
+          setVerifyDone(true);
+          setAwaitingVerify(false);
+          onVerified?.();
+        }
+      } catch { /* ignore */ }
+      if (attempts >= MAX) {
+        clearInterval(pollRef.current!);
+        setAwaitingVerify(false);
+        setErrorMsg('인증 시간이 초과되었습니다. 다시 시도해 주세요.');
+      }
+    }, 1000);
+  };
 
   const handleCarrierSelect = async (carrier: Carrier) => {
     setSelectedCarrier(carrier);
     setLoading(true);
+    setErrorMsg('');
     try {
       const { api } = await import('../../lib/api');
       const result = await api.users.ageVerifyInitiate(carrier);
-      // Open PASS deep link in new tab/window
-      if (result.passDeepLink) {
-        window.open(result.passDeepLink, '_blank');
+
+      if (result.mode === 'nice' && result.encData) {
+        // ── 실제 NICE 팝업 실행 ──────────────────────────────────
+        // NICE 체크플러스는 form POST + 팝업 방식
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = result.checkUrl;
+        form.target = 'nice_popup';
+        const addInput = (name: string, value: string) => {
+          const input = document.createElement('input');
+          input.type = 'hidden'; input.name = name; input.value = value;
+          form.appendChild(input);
+        };
+        addInput('m', 'checkplusService');
+        addInput('token_version_id', result.tokenVersionId);
+        addInput('enc_data', result.encData);
+        addInput('integrity_value', result.integrityValue);
+        document.body.appendChild(form);
+
+        // 팝업 오픈 후 폼 제출
+        window.open('', 'nice_popup', 'width=500,height=550,scrollbars=yes,resizable=no');
+        form.submit();
+        document.body.removeChild(form);
+
+        setAwaitingVerify(true);
+        setStep('waiting');
+        startPolling();
+      } else if (result.mode === 'sandbox') {
+        // ── 샌드박스 모드 (개발/테스트 환경) ────────────────────
+        setSandboxToken(result.sandboxToken);
+        setStep('waiting');
+        setAwaitingVerify(true);
+      } else {
+        setErrorMsg('인증 서버 응답이 올바르지 않습니다.');
       }
-    } catch {
-      // silent fail
+    } catch (err: any) {
+      const msg = err?.response?.data?.error ?? '인증 요청에 실패했습니다. 잠시 후 다시 시도해 주세요.';
+      setErrorMsg(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 샌드박스 전용: "인증 완료" 버튼
+  const handleSandboxComplete = async () => {
+    if (!sandboxToken) return;
+    setLoading(true);
+    setErrorMsg('');
+    try {
+      const { api } = await import('../../lib/api');
+      await api.users.ageVerifySandboxComplete(sandboxToken);
+      if (pollRef.current) clearInterval(pollRef.current);
+      setVerifyDone(true);
+      setAwaitingVerify(false);
+      onVerified?.();
+    } catch (err: any) {
+      setErrorMsg(err?.response?.data?.error ?? '인증 처리에 실패했습니다.');
     } finally {
       setLoading(false);
     }
@@ -157,7 +242,7 @@ function AgeVerificationModal({ onClose }: { onClose: () => void }) {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => { if (e.target === e.currentTarget && !awaitingVerify) onClose(); }}
     >
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 8 }}
@@ -166,23 +251,94 @@ function AgeVerificationModal({ onClose }: { onClose: () => void }) {
         transition={{ duration: 0.2 }}
         className="w-full max-w-sm bg-white rounded-2xl overflow-hidden shadow-2xl"
       >
-        {step === 'warning' ? (
-          /* ── Step 1: 19세 경고 ── */
+        {/* ── 인증 완료 ─────────────────────────────────── */}
+        {verifyDone ? (
           <div className="p-6 text-center">
-            {/* Close */}
+            <div className="flex justify-center mb-5">
+              <div className="w-20 h-20 rounded-full bg-green-500 flex items-center justify-center">
+                <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+            </div>
+            <h2 className="text-gray-900 font-bold text-lg mb-2">성인인증 완료</h2>
+            <p className="text-gray-500 text-sm mb-6">성인인증이 성공적으로 완료되었습니다.</p>
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full py-3 rounded-xl bg-gray-900 text-white font-semibold text-sm hover:bg-gray-800 transition-colors"
+            >
+              확인
+            </button>
+          </div>
+
+        /* ── NICE 팝업 대기 / 샌드박스 ──────────────────── */
+        ) : step === 'waiting' ? (
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-5">
+              <button type="button" onClick={() => { if (pollRef.current) clearInterval(pollRef.current); setStep('carrier'); setAwaitingVerify(false); }} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <button type="button" onClick={() => { if (!awaitingVerify || sandboxToken) { if (pollRef.current) clearInterval(pollRef.current); onClose(); } }} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex flex-col items-center py-4">
+              {/* 스피너 */}
+              <div className="w-14 h-14 rounded-full border-4 border-gray-100 border-t-brand animate-spin mb-5" />
+              <h3 className="text-gray-900 font-bold text-base mb-2">인증 진행 중</h3>
+              {sandboxToken ? (
+                <p className="text-gray-400 text-sm text-center mb-6">
+                  <span className="inline-block px-2 py-0.5 bg-yellow-50 text-yellow-600 rounded text-xs font-medium mb-2">개발 샌드박스 모드</span><br />
+                  실제 서비스에서는 PASS 앱 또는 SMS 인증이 진행됩니다.
+                </p>
+              ) : (
+                <p className="text-gray-400 text-sm text-center mb-6">
+                  팝업창에서 PASS 본인인증을 완료해 주세요.<br />
+                  팝업이 보이지 않으면 브라우저의 팝업 차단을 해제해 주세요.
+                </p>
+              )}
+
+              {errorMsg && (
+                <p className="text-red-500 text-xs text-center mb-4">{errorMsg}</p>
+              )}
+
+              {/* 샌드박스 전용 완료 버튼 */}
+              {sandboxToken && (
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={handleSandboxComplete}
+                  className="w-full py-3 rounded-xl bg-gray-900 text-white font-semibold text-sm hover:bg-gray-800 transition-colors disabled:opacity-50 mb-3"
+                >
+                  {loading ? '처리 중...' : '[샌드박스] 인증 완료 처리'}
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => { if (pollRef.current) clearInterval(pollRef.current); setStep('carrier'); setAwaitingVerify(false); setSandboxToken(null); setErrorMsg(''); }}
+                className="text-gray-400 text-sm underline underline-offset-2"
+              >
+                통신사 다시 선택
+              </button>
+            </div>
+          </div>
+
+        /* ── Step 1: 19세 경고 ───────────────────────────── */
+        ) : step === 'warning' ? (
+          <div className="p-6 text-center">
             <div className="flex justify-end mb-2">
               <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
-
-            {/* 19 badge */}
             <div className="flex justify-center mb-5">
               <div className="w-20 h-20 rounded-full bg-brand flex items-center justify-center">
                 <span className="text-white font-black text-3xl leading-none">19</span>
               </div>
             </div>
-
             <h2 className="text-gray-900 font-bold text-lg mb-3">청소년 유해매체물</h2>
             <p className="text-gray-500 text-sm leading-relaxed mb-1">
               이 서비스는 청소년 유해매체물로서 정보통신망 이용 촉진 및 정보 보호 등에 관한 법률 및 청소년 보호법의 규정에 의해
@@ -191,28 +347,19 @@ function AgeVerificationModal({ onClose }: { onClose: () => void }) {
             <p className="text-gray-500 text-sm leading-relaxed mb-6">
               성인인증을 통해 성인 여부를 확인합니다.
             </p>
-
             <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-50 transition-colors"
-              >
+              <button type="button" onClick={onClose} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-50 transition-colors">
                 취소
               </button>
-              <button
-                type="button"
-                onClick={handleProceed}
-                className="flex-1 py-3 rounded-xl bg-gray-900 text-white font-semibold text-sm hover:bg-gray-800 transition-colors"
-              >
+              <button type="button" onClick={() => setStep('carrier')} className="flex-1 py-3 rounded-xl bg-gray-900 text-white font-semibold text-sm hover:bg-gray-800 transition-colors">
                 성인인증
               </button>
             </div>
           </div>
+
+        /* ── Step 2: 통신사 선택 ─────────────────────────── */
         ) : (
-          /* ── Step 2: PASS 통신사 선택 ── */
           <div className="p-6">
-            {/* Header */}
             <div className="flex items-center justify-between mb-5">
               <button type="button" onClick={() => setStep('warning')} className="text-gray-400 hover:text-gray-600 transition-colors">
                 <ArrowLeft className="w-5 h-5" />
@@ -222,7 +369,6 @@ function AgeVerificationModal({ onClose }: { onClose: () => void }) {
               </button>
             </div>
 
-            {/* PASS logo */}
             <div className="flex flex-col items-center mb-6">
               <div className="w-14 h-14 rounded-2xl bg-brand flex items-center justify-center mb-3">
                 <span className="text-white font-black text-xl tracking-tight">PASS</span>
@@ -233,7 +379,10 @@ function AgeVerificationModal({ onClose }: { onClose: () => void }) {
             <h3 className="text-gray-900 font-bold text-base text-center mb-1">이용 중인 통신사를 선택해 주세요</h3>
             <p className="text-gray-400 text-xs text-center mb-5">본인 명의의 통신사를 선택하세요</p>
 
-            {/* Carrier grid */}
+            {errorMsg && (
+              <p className="text-red-500 text-xs text-center mb-3">{errorMsg}</p>
+            )}
+
             <div className="grid grid-cols-3 gap-2.5 mb-4">
               {CARRIERS.map((c) => (
                 <button
@@ -243,25 +392,25 @@ function AgeVerificationModal({ onClose }: { onClose: () => void }) {
                   onClick={() => handleCarrierSelect(c.value)}
                   className={cn(
                     'py-3 rounded-xl border text-sm font-semibold transition-all',
-                    selectedCarrier === c.value
-                      ? 'border-brand bg-brand/5 text-brand'
+                    selectedCarrier === c.value && loading
+                      ? 'border-brand bg-brand/5 text-brand opacity-70'
                       : 'border-gray-200 text-gray-700 hover:border-brand/40 hover:text-brand hover:bg-brand/5',
-                    loading && 'opacity-50 cursor-not-allowed'
+                    loading && selectedCarrier !== c.value && 'opacity-40 cursor-not-allowed'
                   )}
                 >
-                  {c.label}
+                  {loading && selectedCarrier === c.value ? (
+                    <span className="inline-block w-4 h-4 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+                  ) : c.label}
                 </button>
               ))}
             </div>
 
-            {/* MVNO link */}
             <div className="text-center mb-5">
               <button type="button" className="text-brand text-xs underline underline-offset-2">
                 알뜰폰 사업자 확인
               </button>
             </div>
 
-            {/* Security notice */}
             <div className="flex items-start gap-2 px-3 py-3 bg-gray-50 rounded-xl">
               <svg className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
@@ -286,12 +435,14 @@ function ImageUploadArea({
   ratio,
   hint,
   size,
+  onPreviewChange,
 }: {
   label: string;
   required?: boolean;
   ratio: string;
   hint: string;
   size: string;
+  onPreviewChange?: (url: string | null) => void;
 }) {
   const [preview, setPreview] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -301,6 +452,13 @@ function ImageUploadArea({
     if (!file) return;
     const url = URL.createObjectURL(file);
     setPreview(url);
+    onPreviewChange?.(url);
+  };
+
+  const handleDelete = () => {
+    setPreview(null);
+    if (inputRef.current) inputRef.current.value = '';
+    onPreviewChange?.(null);
   };
 
   return (
@@ -348,7 +506,7 @@ function ImageUploadArea({
             {preview && (
               <button
                 type="button"
-                onClick={() => { setPreview(null); if (inputRef.current) inputRef.current.value = ''; }}
+                onClick={handleDelete}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -372,74 +530,105 @@ function ImageUploadArea({
 // ─────────────────────────────────────────────
 // RIGHT PANEL — 기존/업데이트 프로필 미리보기
 // ─────────────────────────────────────────────
-function RightPreviewPanel({ name, description }: { name: string; description: string }) {
-  const MOCK_EXISTING = [
-    { title: '작품 이름', desc: '어떤 스토리인지 설명할 수 있는 간단한 소개를 입력해 주세요', author: '나도이런거만들거야', cover: null },
-    { title: '로판 악녀가 되다', desc: '깨어나보니 최악의 악녀에게 빙의되었다', author: '강형', cover: null, hasImage: true },
-  ];
-  const MOCK_UPDATED = [
-    { title: '', cover: null },
-    { title: '명부를 쥔 SSS급 헌터', cover: null, hasImage: true },
-  ];
+function RightPreviewPanel({
+  name,
+  description,
+  squareImage,
+  verticalImage,
+}: {
+  name: string;
+  description: string;
+  squareImage?: string | null;
+  verticalImage?: string | null;
+}) {
+  const placeholderIcon = (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+    </svg>
+  );
+
+  const displayName = name.trim() || '작품 이름';
+  const displayDesc = description.trim() || '어떤 스토리인지 설명할 수 있는 간단한 소개를 입력해 주세요';
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6">
-      {/* 기존 프로필 */}
+      {/* 기존 프로필 — 정방형(1:1) */}
       <section className="mb-8">
         <h3 className="text-gray-700 font-semibold text-sm mb-4">기존 프로필</h3>
         <div className="grid grid-cols-2 gap-3">
-          {MOCK_EXISTING.map((item, i) => (
-            <div key={i} className="rounded-xl overflow-hidden border border-gray-100">
-              <div className={cn(
-                'aspect-square bg-gray-100 flex items-center justify-center',
-                item.hasImage && 'bg-gradient-to-br from-gray-700 via-purple-900 to-pink-800'
-              )}>
-                {item.hasImage ? (
-                  <div className="w-full h-full flex items-end p-3">
-                    <span className="text-white text-xs font-bold leading-tight">{item.title}</span>
-                  </div>
-                ) : (
-                  <div className="text-gray-300">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                )}
-              </div>
-              <div className="p-2.5">
-                <p className="text-gray-700 font-medium text-xs truncate mb-0.5">{item.title || '작품 이름'}</p>
-                {item.desc && <p className="text-gray-400 text-[10px] line-clamp-2 leading-relaxed">{item.desc}</p>}
-                {item.author && <p className="text-gray-400 text-[10px] mt-1">@ {item.author}</p>}
-              </div>
+          {/* 내 작품 카드 — 실시간 미리보기 */}
+          <div className="rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+            <div className="aspect-square bg-gray-100 flex items-center justify-center overflow-hidden relative">
+              {squareImage ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={squareImage} alt="정방형 미리보기" className="w-full h-full object-cover" />
+              ) : (
+                <div className="text-gray-300">{placeholderIcon}</div>
+              )}
             </div>
-          ))}
+            <div className="p-2.5">
+              <p className="text-gray-700 font-medium text-xs truncate mb-0.5">{displayName}</p>
+              <p className="text-gray-400 text-[10px] line-clamp-2 leading-relaxed">{displayDesc}</p>
+            </div>
+          </div>
+          {/* 기존 예시 카드 */}
+          <div className="rounded-xl overflow-hidden border border-gray-100">
+            <div className="aspect-square bg-gradient-to-br from-gray-700 via-purple-900 to-pink-800 flex items-end p-3">
+              <span className="text-white text-xs font-bold leading-tight">로판 악녀가 되다</span>
+            </div>
+            <div className="p-2.5">
+              <p className="text-gray-700 font-medium text-xs truncate mb-0.5">로판 악녀가 되다</p>
+              <p className="text-gray-400 text-[10px] line-clamp-2 leading-relaxed">깨어나보니 최악의 악녀에게 빙의되었다</p>
+              <p className="text-gray-400 text-[10px] mt-1">@ 강형</p>
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* 업데이트 이후 변경 프로필 */}
+      {/* 업데이트 이후 변경 프로필 — 세로형(2:3) */}
       <section>
         <h3 className="text-gray-700 font-semibold text-sm mb-4">업데이트 이후 변경 프로필</h3>
         <div className="grid grid-cols-2 gap-3">
-          {MOCK_UPDATED.map((item, i) => (
-            <div key={i} className="rounded-xl overflow-hidden border border-gray-100">
+          {/* 내 작품 카드 — 실시간 미리보기 */}
+          <div className="rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+            <div className="aspect-[2/3] bg-gray-100 flex items-center justify-center overflow-hidden relative">
+              {verticalImage ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={verticalImage} alt="세로형 미리보기" className="w-full h-full object-cover" />
+              ) : squareImage ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={squareImage} alt="정방형 대체" className="w-full h-full object-cover" />
+              ) : (
+                <div className="text-gray-300">{placeholderIcon}</div>
+              )}
+              {/* 이름 오버레이 — 항상 표시 (이미지 있을 때는 그라데이션, 없을 때는 투명) */}
               <div className={cn(
-                'aspect-[2/3] bg-gray-100 flex items-center justify-center',
-                item.hasImage && 'bg-gradient-to-b from-gray-900 via-gray-800 to-black'
+                'absolute inset-0 flex items-end p-3',
+                (verticalImage || squareImage) && 'bg-gradient-to-t from-black/60 via-transparent to-transparent'
               )}>
-                {item.hasImage ? (
-                  <div className="w-full h-full flex items-center justify-center p-3">
-                    <span className="text-white text-xs font-bold text-center leading-tight">{item.title}</span>
-                  </div>
-                ) : (
-                  <div className="text-gray-300">
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                )}
+                <span className={cn(
+                  'text-xs font-bold leading-tight line-clamp-2',
+                  (verticalImage || squareImage) ? 'text-white' : 'text-gray-500'
+                )}>
+                  {displayName}
+                </span>
               </div>
             </div>
-          ))}
+            {/* 세로형도 이름/소개 텍스트 표시 */}
+            <div className="p-2.5">
+              <p className="text-gray-700 font-medium text-xs truncate mb-0.5">{displayName}</p>
+              <p className="text-gray-400 text-[10px] line-clamp-2 leading-relaxed">{displayDesc}</p>
+            </div>
+          </div>
+          {/* 기존 예시 카드 */}
+          <div className="rounded-xl overflow-hidden border border-gray-100">
+            <div className="aspect-[2/3] bg-gradient-to-b from-gray-900 via-gray-800 to-black flex items-center justify-center p-3">
+              <span className="text-white text-xs font-bold text-center leading-tight">명부를 쥔 SSS급 헌터</span>
+            </div>
+            <div className="p-2.5">
+              <p className="text-gray-700 font-medium text-xs truncate mb-0.5">명부를 쥔 SSS급 헌터</p>
+            </div>
+          </div>
         </div>
       </section>
     </div>
@@ -453,12 +642,16 @@ function ProfileForm({
   name, setName,
   description, setDescription,
   onNext,
+  onSquareImageChange,
+  onVerticalImageChange,
 }: {
   name: string;
   setName: (v: string) => void;
   description: string;
   setDescription: (v: string) => void;
   onNext: () => void;
+  onSquareImageChange?: (url: string | null) => void;
+  onVerticalImageChange?: (url: string | null) => void;
 }) {
   const [showAgeNotice, setShowAgeNotice] = useState(true);
   const [showAgeModal, setShowAgeModal] = useState(false);
@@ -532,6 +725,7 @@ function ProfileForm({
         ratio="1:1"
         hint="이미지를 필수로 등록해주세요."
         size="5MB 이하 (1,080 x 1,080px)"
+        onPreviewChange={onSquareImageChange}
       />
 
       {/* Vertical image */}
@@ -540,6 +734,7 @@ function ProfileForm({
         ratio="2:3"
         hint="필수는 아니지만 미리 등록하면 더 예쁘게 노출돼요."
         size="5MB 이하 (1,080 x 1,620px)"
+        onPreviewChange={onVerticalImageChange}
       />
 
       {/* Update notice */}
@@ -630,7 +825,7 @@ interface StartSetting {
   suggestedReplies: string[];
 }
 
-function StartSettingsTab({ storyName, systemPrompt }: { storyName: string; systemPrompt: string }) {
+function StartSettingsTab({ storyName, systemPrompt, onPlayGuideChange, onPrologueChange, onSuggestedRepliesChange }: { storyName: string; systemPrompt: string; onPlayGuideChange?: (v: string) => void; onPrologueChange?: (v: string) => void; onSuggestedRepliesChange?: (v: string[]) => void }) {
   const [settings, setSettings] = useState<StartSetting[]>([
     { id: '1', name: '기본 설정', prologue: '', situation: '', playGuide: '', suggestedReplies: [] },
   ]);
@@ -646,6 +841,9 @@ function StartSettingsTab({ storyName, systemPrompt }: { storyName: string; syst
 
   const update = (field: keyof StartSetting, value: string | string[]) => {
     setSettings(prev => prev.map(s => s.id === activeSettingId ? { ...s, [field]: value } : s));
+    if (field === 'playGuide' && typeof value === 'string') onPlayGuideChange?.(value);
+    if (field === 'prologue' && typeof value === 'string') onPrologueChange?.(value);
+    if (field === 'suggestedReplies' && Array.isArray(value)) onSuggestedRepliesChange?.(value);
   };
 
   const addSetting = () => {
@@ -2530,6 +2728,160 @@ function StorySettingsTab({
 }
 
 // ─────────────────────────────────────────────
+// CRACKER CHARGE MODAL
+// ─────────────────────────────────────────────
+const CRACKER_PACKAGES = [
+  { id: 'cracker_200',   label: '200 크래커',    price: 2000,  crackers: 200,   bonus: 0,    popular: false },
+  { id: 'cracker_500',   label: '500 크래커',    price: 4900,  crackers: 500,   bonus: 50,   popular: false },
+  { id: 'cracker_1000',  label: '1,000 크래커',  price: 9600,  crackers: 1000,  bonus: 100,  popular: false },
+  { id: 'cracker_3000',  label: '3,000 크래커',  price: 28000, crackers: 3000,  bonus: 500,  popular: true  },
+  { id: 'cracker_5000',  label: '5,000 크래커',  price: 46000, crackers: 5000,  bonus: 1000, popular: false },
+  { id: 'cracker_10000', label: '10,000 크래커', price: 90000, crackers: 10000, bonus: 3000, popular: false },
+];
+
+function CrackerChargeModal({ onClose }: { onClose: () => void }) {
+  const [selected, setSelected] = useState(CRACKER_PACKAGES[3].id);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const pkg = CRACKER_PACKAGES.find(p => p.id === selected) ?? CRACKER_PACKAGES[3];
+
+  const loadTossScript = (): Promise<void> =>
+    new Promise((resolve, reject) => {
+      if ((window as any).TossPayments) { resolve(); return; }
+      const script = document.createElement('script');
+      script.src = 'https://js.tosspayments.com/v1/payment';
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Toss 결제 스크립트 로드 실패'));
+      document.head.appendChild(script);
+    });
+
+  const handleTossPay = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const { api } = await import('../../lib/api');
+      const { data } = await api.payments.initiateTosse(selected);
+      await loadTossScript();
+      const toss = (window as any).TossPayments(data.clientKey);
+      await toss.requestPayment('카드', {
+        amount: data.amount,
+        orderId: data.orderId,
+        orderName: data.orderName,
+        successUrl: data.successUrl,
+        failUrl: data.failUrl,
+      });
+    } catch (e: unknown) {
+      const err = e as { code?: string; message?: string };
+      if (err?.code === 'PAY_PROCESS_CANCELED' || err?.code === 'USER_CANCEL') {
+        setLoading(false);
+        return;
+      }
+      setError(err?.message ?? '결제 초기화에 실패했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 8 }}
+        transition={{ duration: 0.15 }}
+        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">◆</span>
+            <h2 className="text-gray-900 font-bold text-base">크래커 충전하기</h2>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-400 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Package list */}
+        <div className="px-6 py-4 space-y-2.5 max-h-[55vh] overflow-y-auto">
+          {CRACKER_PACKAGES.map(p => (
+            <button
+              key={p.id}
+              onClick={() => setSelected(p.id)}
+              className={cn(
+                'w-full flex items-center justify-between px-4 py-3.5 rounded-xl border-2 transition-all text-left',
+                selected === p.id ? 'border-brand bg-red-50' : 'border-gray-200 bg-white hover:border-gray-300'
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <div className={cn('w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0', selected === p.id ? 'border-brand' : 'border-gray-300')}>
+                  {selected === p.id && <div className="w-2 h-2 rounded-full bg-brand" />}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-900 font-semibold text-sm">◆ {p.crackers.toLocaleString()}</span>
+                    {p.bonus > 0 && (
+                      <span className="px-1.5 py-0.5 bg-orange-100 text-orange-600 text-[10px] font-bold rounded">+{p.bonus.toLocaleString()} 보너스</span>
+                    )}
+                    {p.popular && (
+                      <span className="px-1.5 py-0.5 bg-brand text-white text-[10px] font-bold rounded">추천</span>
+                    )}
+                  </div>
+                  {p.bonus > 0 && (
+                    <p className="text-gray-400 text-xs mt-0.5">총 {(p.crackers + p.bonus).toLocaleString()}개 지급</p>
+                  )}
+                </div>
+              </div>
+              <span className="text-gray-900 font-bold text-sm">{p.price.toLocaleString()}원</span>
+            </button>
+          ))}
+        </div>
+
+        {error && (
+          <div className="mx-6 mb-2 px-4 py-2.5 bg-red-50 border border-red-200 rounded-xl">
+            <p className="text-red-600 text-xs">{error}</p>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-100 space-y-3">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-500">선택 패키지</span>
+            <span className="font-semibold text-gray-900">
+              ◆ {pkg.crackers.toLocaleString()}
+              {pkg.bonus > 0 && <span className="text-orange-500"> +{pkg.bonus.toLocaleString()}</span>}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-500">결제 금액</span>
+            <span className="font-bold text-gray-900 text-base">{pkg.price.toLocaleString()}원</span>
+          </div>
+          <button
+            onClick={handleTossPay}
+            disabled={loading}
+            className="w-full py-3.5 rounded-xl font-bold text-sm text-white transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            style={{ backgroundColor: '#3182F6' }}
+          >
+            {loading ? (
+              <>
+                <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                </svg>
+                처리 중...
+              </>
+            ) : '토스페이로 결제하기'}
+          </button>
+          <p className="text-gray-400 text-[11px] text-center">결제는 토스페이먼츠를 통해 안전하게 처리됩니다</p>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
 // MAIN STORY CREATE FORM
 // ─────────────────────────────────────────────
 export function StoryCreateForm() {
@@ -2538,6 +2890,12 @@ export function StoryCreateForm() {
   const [activeTab, setActiveTab] = useState<StoryTab>('profile');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [squareImage, setSquareImage] = useState<string | null>(null);
+  const [verticalImage, setVerticalImage] = useState<string | null>(null);
+  const [playGuide, setPlayGuide] = useState('');
+  const [prologue, setPrologue] = useState('');
+  const [suggestedReplies, setSuggestedReplies] = useState<string[]>([]);
+  const [crackerModalOpen, setCrackerModalOpen] = useState(false);
   const [stats, setStats] = useState<StatItem[]>([]);
   const [systemPrompt, setSystemPrompt] = useState('');
   // Shared start-settings list for media/keywords/ending tabs
@@ -2564,6 +2922,12 @@ export function StoryCreateForm() {
 
   return (
     <div className="h-screen flex flex-col bg-white overflow-hidden">
+      {/* 크래커 충전 모달 */}
+      <AnimatePresence>
+        {crackerModalOpen && (
+          <CrackerChargeModal onClose={() => setCrackerModalOpen(false)} />
+        )}
+      </AnimatePresence>
       {/* ── TOP BAR ── */}
       <div className="flex-shrink-0 flex items-center justify-between px-6 py-3 border-b border-gray-100 bg-white z-20">
         {/* Left: back + title */}
@@ -2643,6 +3007,8 @@ export function StoryCreateForm() {
                   description={description}
                   setDescription={setDescription}
                   onNext={handleNext}
+                  onSquareImageChange={setSquareImage}
+                  onVerticalImageChange={setVerticalImage}
                 />
               )}
               {activeTab === 'story-settings' && (
@@ -2653,7 +3019,13 @@ export function StoryCreateForm() {
                 />
               )}
               {activeTab === 'start-settings' && (
-                <StartSettingsTab storyName={name} systemPrompt={systemPrompt} />
+                <StartSettingsTab
+                  storyName={name}
+                  systemPrompt={systemPrompt}
+                  onPlayGuideChange={setPlayGuide}
+                  onPrologueChange={setPrologue}
+                  onSuggestedRepliesChange={setSuggestedReplies}
+                />
               )}
               {activeTab === 'stat-settings' && <StatSettingsTab stats={stats} setStats={setStats} />}
               {activeTab === 'media' && <MediaTab startSettings={startSettingsList} />}
@@ -2690,12 +3062,17 @@ export function StoryCreateForm() {
 
         {/* Right preview panel */}
         <div className="flex flex-col h-full overflow-hidden" style={{ width: '42%' }}>
-          {activeTab === 'profile' || activeTab === 'story-settings' ? (
+          {activeTab === 'profile' ? (
             <>
               <div className="flex-shrink-0 text-center py-3 border-b border-gray-100">
                 <p className="text-gray-400 text-xs">이 대화는 AI로 생성된 가상의 이야기입니다</p>
               </div>
-              <RightPreviewPanel name={name} description={description} />
+              <RightPreviewPanel
+                name={name}
+                description={description}
+                squareImage={squareImage}
+                verticalImage={verticalImage}
+              />
             </>
           ) : activeTab === 'ending' ? (
             /* Ending tab: EPILOGUE preview */
@@ -2852,13 +3229,59 @@ export function StoryCreateForm() {
 
               {/* Chat area */}
               <div className="flex-1 overflow-y-auto p-4">
-                <div className="flex items-start gap-3 mb-4">
-                  <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-gray-400 text-xs mb-1.5">스토리 이름</p>
-                    <div className="h-10 w-52 bg-blue-50 rounded-2xl rounded-tl-sm" />
+                {/* AI 메시지 버블 */}
+                <div className="flex items-start gap-2.5 mb-4">
+                  {/* 프로필 이미지 */}
+                  <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 mt-0.5 overflow-hidden">
+                    {squareImage && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={squareImage} alt="profile" className="w-full h-full object-cover" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    {/* 스토리 이름 */}
+                    <p className="text-gray-500 text-xs mb-1.5 flex items-center gap-1">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                      </svg>
+                      {name.trim() || '스토리 이름'}
+                    </p>
+                    {/* 말풍선 — 프롤로그 내용 or placeholder */}
+                    {prologue.trim() ? (
+                      <div className="bg-blue-50 rounded-2xl rounded-tl-sm px-3.5 py-2.5 max-w-[220px]">
+                        <p className="text-gray-700 text-xs leading-relaxed whitespace-pre-wrap">{prologue}</p>
+                      </div>
+                    ) : (
+                      <div className="h-10 w-48 bg-blue-50 rounded-2xl rounded-tl-sm" />
+                    )}
                   </div>
                 </div>
+
+                {/* 플레이 가이드 — 시작 설정 탭에서만 표시 */}
+                {activeTab === 'start-settings' && playGuide.trim() && (
+                  <div className="mt-4 mx-1">
+                    <p className="text-brand text-xs font-semibold mb-1.5">플레이 가이드</p>
+                    <p className="text-gray-500 text-xs leading-relaxed whitespace-pre-wrap">{playGuide}</p>
+                  </div>
+                )}
+
+                {/* 추천 답변 칩 — 시작 설정 탭에서만 표시 */}
+                {activeTab === 'start-settings' && suggestedReplies.filter(r => r.trim()).length > 0 && (
+                  <div className="mt-4 mx-1">
+                    <p className="text-gray-400 text-[11px] mb-2">이렇게 답변할 수 있어요</p>
+                    <div className="flex flex-wrap gap-2">
+                      {suggestedReplies.filter(r => r.trim()).map((reply, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => setCrackerModalOpen(true)}
+                          className="px-3 py-1.5 rounded-full border border-gray-300 text-gray-600 text-xs hover:bg-gray-50 hover:border-gray-400 transition-colors text-left"
+                        >
+                          {reply}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Chat input */}
@@ -2866,7 +3289,7 @@ export function StoryCreateForm() {
                 <div className="flex items-center gap-2 px-4 py-3 rounded-2xl border border-gray-200 bg-gray-50">
                   <input
                     type="text"
-                    placeholder="[이름, 캐릭터 설정 및 정보, 첫 메시지]를 입력해주세요"
+                    placeholder="[첫 메시지]를 입력해주세요"
                     className="flex-1 bg-transparent text-xs text-gray-400 outline-none placeholder:text-gray-300"
                     readOnly
                   />
