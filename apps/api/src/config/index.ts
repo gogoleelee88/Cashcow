@@ -56,6 +56,12 @@ const envSchema = z.object({
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
 
+  // NICE 체크플러스 본인인증 (https://www.niceapi.co.kr)
+  NICE_CLIENT_ID: z.string().optional(),
+  NICE_CLIENT_SECRET: z.string().optional(),
+  NICE_PRODUCT_ID: z.string().default('2101979031'),
+  NICE_RETURN_URL: z.string().optional(),
+
   // Monitoring
   SENTRY_DSN: z.string().optional(),
   SLACK_WEBHOOK_URL: z.string().optional(),

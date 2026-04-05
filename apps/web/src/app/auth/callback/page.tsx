@@ -23,6 +23,9 @@ export default function AuthCallbackPage() {
       return;
     }
 
+    // Set tokens first so the request interceptor picks them up
+    useAuthStore.getState().setTokens(accessToken, refreshToken);
+
     // Fetch user info with the new token
     api.auth.me().then((res) => {
       if (res.success) {

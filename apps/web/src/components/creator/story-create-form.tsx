@@ -825,7 +825,7 @@ interface StartSetting {
   suggestedReplies: string[];
 }
 
-function StartSettingsTab({ storyName, systemPrompt, onPlayGuideChange, onPrologueChange, onSuggestedRepliesChange }: { storyName: string; systemPrompt: string; onPlayGuideChange?: (v: string) => void; onPrologueChange?: (v: string) => void; onSuggestedRepliesChange?: (v: string[]) => void }) {
+function StartSettingsTab({ storyName, systemPrompt, onPlayGuideChange }: { storyName: string; systemPrompt: string; onPlayGuideChange?: (v: string) => void }) {
   const [settings, setSettings] = useState<StartSetting[]>([
     { id: '1', name: '기본 설정', prologue: '', situation: '', playGuide: '', suggestedReplies: [] },
   ]);
@@ -842,8 +842,6 @@ function StartSettingsTab({ storyName, systemPrompt, onPlayGuideChange, onProlog
   const update = (field: keyof StartSetting, value: string | string[]) => {
     setSettings(prev => prev.map(s => s.id === activeSettingId ? { ...s, [field]: value } : s));
     if (field === 'playGuide' && typeof value === 'string') onPlayGuideChange?.(value);
-    if (field === 'prologue' && typeof value === 'string') onPrologueChange?.(value);
-    if (field === 'suggestedReplies' && Array.isArray(value)) onSuggestedRepliesChange?.(value);
   };
 
   const addSetting = () => {
@@ -2893,9 +2891,6 @@ export function StoryCreateForm() {
   const [squareImage, setSquareImage] = useState<string | null>(null);
   const [verticalImage, setVerticalImage] = useState<string | null>(null);
   const [playGuide, setPlayGuide] = useState('');
-  const [prologue, setPrologue] = useState('');
-  const [suggestedReplies, setSuggestedReplies] = useState<string[]>([]);
-  const [crackerModalOpen, setCrackerModalOpen] = useState(false);
   const [stats, setStats] = useState<StatItem[]>([]);
   const [systemPrompt, setSystemPrompt] = useState('');
   // Shared start-settings list for media/keywords/ending tabs
@@ -3019,13 +3014,7 @@ export function StoryCreateForm() {
                 />
               )}
               {activeTab === 'start-settings' && (
-                <StartSettingsTab
-                  storyName={name}
-                  systemPrompt={systemPrompt}
-                  onPlayGuideChange={setPlayGuide}
-                  onPrologueChange={setPrologue}
-                  onSuggestedRepliesChange={setSuggestedReplies}
-                />
+                <StartSettingsTab storyName={name} systemPrompt={systemPrompt} onPlayGuideChange={setPlayGuide} />
               )}
               {activeTab === 'stat-settings' && <StatSettingsTab stats={stats} setStats={setStats} />}
               {activeTab === 'media' && <MediaTab startSettings={startSettingsList} />}
@@ -3246,14 +3235,8 @@ export function StoryCreateForm() {
                       </svg>
                       {name.trim() || '스토리 이름'}
                     </p>
-                    {/* 말풍선 — 프롤로그 내용 or placeholder */}
-                    {prologue.trim() ? (
-                      <div className="bg-blue-50 rounded-2xl rounded-tl-sm px-3.5 py-2.5 max-w-[220px]">
-                        <p className="text-gray-700 text-xs leading-relaxed whitespace-pre-wrap">{prologue}</p>
-                      </div>
-                    ) : (
-                      <div className="h-10 w-48 bg-blue-50 rounded-2xl rounded-tl-sm" />
-                    )}
+                    {/* 말풍선 placeholder */}
+                    <div className="h-10 w-48 bg-blue-50 rounded-2xl rounded-tl-sm" />
                   </div>
                 </div>
 
@@ -3262,24 +3245,6 @@ export function StoryCreateForm() {
                   <div className="mt-4 mx-1">
                     <p className="text-brand text-xs font-semibold mb-1.5">플레이 가이드</p>
                     <p className="text-gray-500 text-xs leading-relaxed whitespace-pre-wrap">{playGuide}</p>
-                  </div>
-                )}
-
-                {/* 추천 답변 칩 — 시작 설정 탭에서만 표시 */}
-                {activeTab === 'start-settings' && suggestedReplies.filter(r => r.trim()).length > 0 && (
-                  <div className="mt-4 mx-1">
-                    <p className="text-gray-400 text-[11px] mb-2">이렇게 답변할 수 있어요</p>
-                    <div className="flex flex-wrap gap-2">
-                      {suggestedReplies.filter(r => r.trim()).map((reply, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => setCrackerModalOpen(true)}
-                          className="px-3 py-1.5 rounded-full border border-gray-300 text-gray-600 text-xs hover:bg-gray-50 hover:border-gray-400 transition-colors text-left"
-                        >
-                          {reply}
-                        </button>
-                      ))}
-                    </div>
                   </div>
                 )}
               </div>
