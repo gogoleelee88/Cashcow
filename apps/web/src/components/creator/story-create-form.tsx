@@ -2726,6 +2726,160 @@ function StorySettingsTab({
 }
 
 // ─────────────────────────────────────────────
+// CRACKER CHARGE MODAL
+// ─────────────────────────────────────────────
+const CRACKER_PACKAGES = [
+  { id: 'cracker_200',   label: '200 크래커',    price: 2000,  crackers: 200,   bonus: 0,    popular: false },
+  { id: 'cracker_500',   label: '500 크래커',    price: 4900,  crackers: 500,   bonus: 50,   popular: false },
+  { id: 'cracker_1000',  label: '1,000 크래커',  price: 9600,  crackers: 1000,  bonus: 100,  popular: false },
+  { id: 'cracker_3000',  label: '3,000 크래커',  price: 28000, crackers: 3000,  bonus: 500,  popular: true  },
+  { id: 'cracker_5000',  label: '5,000 크래커',  price: 46000, crackers: 5000,  bonus: 1000, popular: false },
+  { id: 'cracker_10000', label: '10,000 크래커', price: 90000, crackers: 10000, bonus: 3000, popular: false },
+];
+
+function CrackerChargeModal({ onClose }: { onClose: () => void }) {
+  const [selected, setSelected] = useState(CRACKER_PACKAGES[3].id);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const pkg = CRACKER_PACKAGES.find(p => p.id === selected) ?? CRACKER_PACKAGES[3];
+
+  const loadTossScript = (): Promise<void> =>
+    new Promise((resolve, reject) => {
+      if ((window as any).TossPayments) { resolve(); return; }
+      const script = document.createElement('script');
+      script.src = 'https://js.tosspayments.com/v1/payment';
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Toss 결제 스크립트 로드 실패'));
+      document.head.appendChild(script);
+    });
+
+  const handleTossPay = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const { api } = await import('../../lib/api');
+      const { data } = await api.payments.initiateTosse(selected);
+      await loadTossScript();
+      const toss = (window as any).TossPayments(data.clientKey);
+      await toss.requestPayment('카드', {
+        amount: data.amount,
+        orderId: data.orderId,
+        orderName: data.orderName,
+        successUrl: data.successUrl,
+        failUrl: data.failUrl,
+      });
+    } catch (e: unknown) {
+      const err = e as { code?: string; message?: string };
+      if (err?.code === 'PAY_PROCESS_CANCELED' || err?.code === 'USER_CANCEL') {
+        setLoading(false);
+        return;
+      }
+      setError(err?.message ?? '결제 초기화에 실패했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 8 }}
+        transition={{ duration: 0.15 }}
+        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">◆</span>
+            <h2 className="text-gray-900 font-bold text-base">크래커 충전하기</h2>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-400 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Package list */}
+        <div className="px-6 py-4 space-y-2.5 max-h-[55vh] overflow-y-auto">
+          {CRACKER_PACKAGES.map(p => (
+            <button
+              key={p.id}
+              onClick={() => setSelected(p.id)}
+              className={cn(
+                'w-full flex items-center justify-between px-4 py-3.5 rounded-xl border-2 transition-all text-left',
+                selected === p.id ? 'border-brand bg-red-50' : 'border-gray-200 bg-white hover:border-gray-300'
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <div className={cn('w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0', selected === p.id ? 'border-brand' : 'border-gray-300')}>
+                  {selected === p.id && <div className="w-2 h-2 rounded-full bg-brand" />}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-900 font-semibold text-sm">◆ {p.crackers.toLocaleString()}</span>
+                    {p.bonus > 0 && (
+                      <span className="px-1.5 py-0.5 bg-orange-100 text-orange-600 text-[10px] font-bold rounded">+{p.bonus.toLocaleString()} 보너스</span>
+                    )}
+                    {p.popular && (
+                      <span className="px-1.5 py-0.5 bg-brand text-white text-[10px] font-bold rounded">추천</span>
+                    )}
+                  </div>
+                  {p.bonus > 0 && (
+                    <p className="text-gray-400 text-xs mt-0.5">총 {(p.crackers + p.bonus).toLocaleString()}개 지급</p>
+                  )}
+                </div>
+              </div>
+              <span className="text-gray-900 font-bold text-sm">{p.price.toLocaleString()}원</span>
+            </button>
+          ))}
+        </div>
+
+        {error && (
+          <div className="mx-6 mb-2 px-4 py-2.5 bg-red-50 border border-red-200 rounded-xl">
+            <p className="text-red-600 text-xs">{error}</p>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-100 space-y-3">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-500">선택 패키지</span>
+            <span className="font-semibold text-gray-900">
+              ◆ {pkg.crackers.toLocaleString()}
+              {pkg.bonus > 0 && <span className="text-orange-500"> +{pkg.bonus.toLocaleString()}</span>}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-500">결제 금액</span>
+            <span className="font-bold text-gray-900 text-base">{pkg.price.toLocaleString()}원</span>
+          </div>
+          <button
+            onClick={handleTossPay}
+            disabled={loading}
+            className="w-full py-3.5 rounded-xl font-bold text-sm text-white transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            style={{ backgroundColor: '#3182F6' }}
+          >
+            {loading ? (
+              <>
+                <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                </svg>
+                처리 중...
+              </>
+            ) : '토스페이로 결제하기'}
+          </button>
+          <p className="text-gray-400 text-[11px] text-center">결제는 토스페이먼츠를 통해 안전하게 처리됩니다</p>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
 // MAIN STORY CREATE FORM
 // ─────────────────────────────────────────────
 export function StoryCreateForm() {
@@ -2763,6 +2917,12 @@ export function StoryCreateForm() {
 
   return (
     <div className="h-screen flex flex-col bg-white overflow-hidden">
+      {/* 크래커 충전 모달 */}
+      <AnimatePresence>
+        {crackerModalOpen && (
+          <CrackerChargeModal onClose={() => setCrackerModalOpen(false)} />
+        )}
+      </AnimatePresence>
       {/* ── TOP BAR ── */}
       <div className="flex-shrink-0 flex items-center justify-between px-6 py-3 border-b border-gray-100 bg-white z-20">
         {/* Left: back + title */}
