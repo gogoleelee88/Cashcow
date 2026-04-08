@@ -172,7 +172,7 @@ export const api = {
       apiClient.get('/api/stories/my', { params }).then((r) => r.data),
 
     generateRandomName: () =>
-      apiClient.post('/api/stories/generate/name').then((r) => r.data?.data ?? r.data),
+      apiClient.post('/api/stories/generate/random-name').then((r) => r.data?.data ?? r.data),
 
     generatePrologue: (data: { name?: string; description?: string; systemPrompt?: string; settingName?: string }) =>
       apiClient.post('/api/stories/generate/prologue', data).then((r) => r.data?.data ?? r.data),

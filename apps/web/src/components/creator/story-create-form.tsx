@@ -3111,6 +3111,7 @@ function StorySettingsTab({
   const [generatingExamples, setGeneratingExamples] = useState(false);
   const [showProfileTooltip, setShowProfileTooltip] = useState(false);
   const [showExamplesMaxTooltip, setShowExamplesMaxTooltip] = useState(false);
+  const [examplesError, setExamplesError] = useState(false);
 
   const isProfileComplete = storyName.trim().length > 0 && storyDescription.trim().length > 0;
 
@@ -3159,29 +3160,41 @@ function StorySettingsTab({
 
   const handleGenerateExamples = async () => {
     setGeneratingExamples(true);
+    setExamplesError(false);
     try {
       const { api } = await import('../../lib/api');
-      const slotCount = Math.max(examples.length, 1);
-      const { examples: generated } = await api.stories.generateExamples({
+      const result = await api.stories.generateExamples({
         name: storyName,
         description: storyDescription,
         systemPrompt,
       });
-      if (Array.isArray(generated) && generated.length > 0) {
-        // 현재 슬롯 수만큼만 채우되, 부족하면 빈 슬롯 유지
-        setExamples(prev =>
-          prev.map((slot, i) => {
+
+      // 응답 구조 방어적 처리: { examples: [...] } 또는 [...] 모두 허용
+      const generated: { user: string; assistant: string }[] =
+        Array.isArray(result) ? result :
+        Array.isArray(result?.examples) ? result.examples :
+        [];
+
+      if (generated.length > 0) {
+        setExamples(prev => {
+          // 기존 슬롯이 없으면 생성된 수만큼 슬롯 만들기
+          const base = prev.length > 0 ? prev : generated.map(() => ({ user: '', assistant: '' }));
+          return base.map((slot, i) => {
             const gen = generated[i];
             if (!gen) return slot;
             return {
               user: (gen.user || '').slice(0, 500),
               assistant: (gen.assistant || '').slice(0, 500),
             };
-          })
-        );
+          });
+        });
+      } else {
+        setExamplesError(true);
+        setTimeout(() => setExamplesError(false), 3000);
       }
     } catch {
-      // silent fail
+      setExamplesError(true);
+      setTimeout(() => setExamplesError(false), 3000);
     } finally {
       setGeneratingExamples(false);
     }
@@ -3198,9 +3211,9 @@ function StorySettingsTab({
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
-      {/* ── 예시 3개 초과 상단 토스트 ── */}
+      {/* ── 상단 토스트 (예시 최대 / 생성 오류) ── */}
       <AnimatePresence>
-        {showExamplesMaxTooltip && (
+        {(showExamplesMaxTooltip || examplesError) && (
           <motion.div
             initial={{ opacity: 0, y: -12 }}
             animate={{ opacity: 1, y: 0 }}
@@ -3209,7 +3222,7 @@ function StorySettingsTab({
             className="fixed top-16 left-1/2 -translate-x-1/2 z-50 pointer-events-none"
           >
             <div className="bg-gray-900 text-white text-sm font-medium px-5 py-2.5 rounded-xl shadow-xl whitespace-nowrap">
-              예시는 3개까지 등록할 수 있어요
+              {examplesError ? '생성에 실패했어요. 스토리 정보를 먼저 입력해 주세요.' : '예시는 3개까지 등록할 수 있어요'}
             </div>
           </motion.div>
         )}
