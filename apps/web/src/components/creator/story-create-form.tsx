@@ -3741,6 +3741,8 @@ export function StoryCreateForm() {
   const [crackerModalOpen, setCrackerModalOpen] = useState(false);
 
   const getChatValidation = (): ChatValidation => {
+    if (!squareImage)
+      return { type: 'required', placeholder: '[프로필 이미지]를 등록해주세요', errorMessage: '프로필 이미지를 먼저 등록해주세요' };
     if (!name.trim())
       return { type: 'required', placeholder: '[이름]을 입력해주세요', errorMessage: '이름을 입력해주세요' };
     if (/[\u3131-\u314e\u314f-\u3163]/.test(name) || /[\p{Emoji_Presentation}\p{Extended_Pictographic}]/u.test(name))

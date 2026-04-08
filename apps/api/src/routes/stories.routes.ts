@@ -861,6 +861,7 @@ export const storyRoutes: FastifyPluginAsync = async (fastify) => {
       // 유효성 검사
       const systemPrompt = decrypt(story.systemPromptEncrypted, story.systemPromptIv);
       const errors: string[] = [];
+      if (!story.coverUrl)               errors.push('프로필 이미지를 등록해주세요.');
       if (!story.title?.trim())          errors.push('제목을 입력해주세요.');
       if (!story.description?.trim())    errors.push('소개를 입력해주세요.');
       if (!story.greeting?.trim())       errors.push('인사말(프롤로그)을 입력해주세요.');
