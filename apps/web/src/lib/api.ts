@@ -174,17 +174,14 @@ export const api = {
     generateRandomName: () =>
       apiClient.post('/api/stories/generate/name').then((r) => r.data?.data ?? r.data),
 
-    generatePrologue: (data: { name: string; systemPrompt: string; settingName: string }) =>
+    generatePrologue: (data: { name?: string; description?: string; systemPrompt?: string; settingName?: string }) =>
       apiClient.post('/api/stories/generate/prologue', data).then((r) => r.data?.data ?? r.data),
 
     generateStorySettings: (data: { name: string; description: string }) =>
       apiClient.post('/api/stories/generate/story-settings', data).then((r) => r.data?.data ?? r.data),
 
-    generateExamples: (data: { name: string; systemPrompt: string; settingName: string }) =>
+    generateExamples: (data: { name: string; description?: string; systemPrompt: string; settingName?: string }) =>
       apiClient.post('/api/stories/generate/examples', data).then((r) => r.data?.data ?? r.data),
-
-    generatePrologue: (data: { name?: string; description?: string; systemPrompt?: string; settingName?: string }) =>
-      apiClient.post('/api/stories/generate/prologue', data).then((r) => r.data),
 
     // Start settings
     listStartSettings: (storyId: string) =>

@@ -1054,6 +1054,18 @@ function StartSettingsTab({ storyName, systemPrompt, initialSettings, initialAct
   const [advancedOpen, setAdvancedOpen] = useState(true);
   const [showInfoCard, setShowInfoCard] = useState(true);
   const [generatingPrologue, setGeneratingPrologue] = useState(false);
+  const [showPrologueTooltip, setShowPrologueTooltip] = useState(false);
+
+  const isPrologueProfileComplete = storyName.trim().length > 0;
+
+  const handleAutoGeneratePrologue = () => {
+    if (!isPrologueProfileComplete) {
+      setShowPrologueTooltip(true);
+      setTimeout(() => setShowPrologueTooltip(false), 3000);
+      return;
+    }
+    handleGeneratePrologue();
+  };
 
   const isDefaultSetting = activeSettingId === settings[0].id;
   const isExtraSetting = !isDefaultSetting;
@@ -1202,13 +1214,23 @@ function StartSettingsTab({ storyName, systemPrompt, initialSettings, initialAct
             <span className="text-gray-900 font-semibold text-sm">프롤로그</span>
             <span className="text-brand font-bold text-sm">*</span>
           </div>
-          <button
-            onClick={handleGeneratePrologue}
-            disabled={generatingPrologue}
-            className="px-3 py-1 rounded-lg border border-brand/40 text-brand text-xs font-semibold hover:bg-brand/5 transition-colors disabled:opacity-50"
-          >
-            {generatingPrologue ? '생성 중...' : '자동 생성'}
-          </button>
+          <div className="relative">
+            {showPrologueTooltip && (
+              <div className="absolute bottom-full right-0 mb-2 z-50 whitespace-nowrap">
+                <div className="bg-gray-900 text-white text-xs font-medium px-4 py-2.5 rounded-xl shadow-lg text-center leading-relaxed">
+                  1단계 프로필 필수 정보를 채워야<br />자동 생성을 할 수 있어요
+                </div>
+                <div className="absolute right-4 top-full w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-gray-900" />
+              </div>
+            )}
+            <button
+              onClick={handleAutoGeneratePrologue}
+              disabled={generatingPrologue}
+              className="px-3 py-1 rounded-lg border border-brand/40 text-brand text-xs font-semibold hover:bg-brand/5 transition-colors disabled:opacity-50"
+            >
+              {generatingPrologue ? '생성 중...' : '자동 생성'}
+            </button>
+          </div>
         </div>
         <p className="text-gray-400 text-xs mb-2">스토리의 프롤로그를 작성해 주세요</p>
         <div className="relative">
@@ -3396,6 +3418,18 @@ function StorySettingsTab({
   const [examples, setExamples] = useState([{ user: '', assistant: '' }]);
   const [generatingPrompt, setGeneratingPrompt] = useState(false);
   const [generatingExamples, setGeneratingExamples] = useState(false);
+  const [showProfileTooltip, setShowProfileTooltip] = useState(false);
+
+  const isProfileComplete = storyName.trim().length > 0 && storyDescription.trim().length > 0;
+
+  const handleAutoGeneratePrompt = () => {
+    if (!isProfileComplete) {
+      setShowProfileTooltip(true);
+      setTimeout(() => setShowProfileTooltip(false), 3000);
+      return;
+    }
+    handleGeneratePrompt();
+  };
 
   const isCustom = selectedTemplate === 'custom';
   const activeTemplate = PROMPT_TEMPLATES.find(t => t.id === selectedTemplate)!;
@@ -3552,14 +3586,24 @@ function StorySettingsTab({
               <span className="absolute right-4 bottom-3 text-gray-300 text-xs">{systemPrompt.length} / 3000</span>
             </div>
             <div className="flex justify-end mt-2">
-              <button
-                type="button"
-                onClick={handleGeneratePrompt}
-                disabled={generatingPrompt}
-                className="px-3 py-1.5 rounded-lg border border-brand/40 text-brand text-xs font-semibold hover:bg-brand/5 transition-colors disabled:opacity-50"
-              >
-                {generatingPrompt ? '생성 중...' : '자동 생성'}
-              </button>
+              <div className="relative">
+                {showProfileTooltip && (
+                  <div className="absolute bottom-full right-0 mb-2 z-50 whitespace-nowrap">
+                    <div className="bg-gray-900 text-white text-xs font-medium px-4 py-2.5 rounded-xl shadow-lg text-center leading-relaxed">
+                      1단계 프로필 필수 정보를 채워야<br />자동 생성을 할 수 있어요
+                    </div>
+                    <div className="absolute right-4 top-full w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-gray-900" />
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={handleAutoGeneratePrompt}
+                  disabled={generatingPrompt}
+                  className="px-3 py-1.5 rounded-lg border border-brand/40 text-brand text-xs font-semibold hover:bg-brand/5 transition-colors disabled:opacity-50"
+                >
+                  {generatingPrompt ? '생성 중...' : '자동 생성'}
+                </button>
+              </div>
             </div>
           </div>
 
