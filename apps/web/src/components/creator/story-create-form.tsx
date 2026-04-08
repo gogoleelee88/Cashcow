@@ -3416,42 +3416,56 @@ function StorySettingsTab({
             </div>
 
             {examples.map((ex, i) => (
-              <div key={i} className="mb-4 rounded-xl border border-gray-200 overflow-hidden">
+              <div key={i} className="mb-4 rounded-xl border border-gray-200 overflow-hidden bg-white">
+                {/* 예시 헤더 */}
                 <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-100">
-                  <span className="text-gray-700 font-semibold text-sm">예시 {i + 1}</span>
+                  <span className="text-gray-700 font-semibold text-sm">예시 {examples.length - i}</span>
                   <button
                     type="button"
                     onClick={() => setExamples(p => p.filter((_, j) => j !== i))}
-                    className="text-gray-400 hover:text-gray-600 text-sm transition-colors"
+                    className="text-gray-400 hover:text-red-400 text-sm transition-colors"
                   >
                     삭제
                   </button>
                 </div>
-                <div className="p-3 space-y-3">
-                  <div>
-                    <div className="flex items-center gap-2 mb-2 text-gray-500 text-xs">
-                      <div className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center text-[10px]">👤</div>
-                      나도이런거만들거야
+
+                <div className="divide-y divide-gray-100">
+                  {/* 사용자 입력 */}
+                  <div className="px-4 py-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
+                        <svg className="w-3.5 h-3.5 text-gray-500" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/>
+                        </svg>
+                      </div>
+                      <span className="text-gray-500 text-xs font-medium">나도이런거만들거야</span>
                     </div>
                     <textarea
                       value={ex.user}
                       onChange={(e) => setExamples(p => p.map((item, j) => j === i ? { ...item, user: e.target.value.slice(0, 500) } : item))}
-                      placeholder="입력 예시"
+                      placeholder="사용자가 입력할 예시 대화를 작성해주세요"
                       rows={3}
-                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
+                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none transition-colors"
                     />
                     <p className="text-gray-300 text-xs text-right mt-1">{ex.user.length} / 500</p>
                   </div>
-                  <div className="flex items-center justify-center">
-                    <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-base">🤖</div>
-                  </div>
-                  <div>
+
+                  {/* AI 응답 */}
+                  <div className="px-4 py-3 bg-gray-50/50">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-6 h-6 rounded-full bg-brand/10 flex items-center justify-center flex-shrink-0">
+                        <svg className="w-3.5 h-3.5 text-brand" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2h-2" />
+                        </svg>
+                      </div>
+                      <span className="text-brand text-xs font-medium">{storyName || '캐릭터'}</span>
+                    </div>
                     <textarea
                       value={ex.assistant}
                       onChange={(e) => setExamples(p => p.map((item, j) => j === i ? { ...item, assistant: e.target.value.slice(0, 500) } : item))}
-                      placeholder="출력 예시"
-                      rows={3}
-                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
+                      placeholder={`*지문* "대사" 형식으로 작성해주세요\n예) *미소를 지으며* "안녕! 오늘 어떤 일이 있었어?"`}
+                      rows={4}
+                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-brand/40 resize-none transition-colors bg-white"
                     />
                     <p className="text-gray-300 text-xs text-right mt-1">{ex.assistant.length} / 500</p>
                   </div>
