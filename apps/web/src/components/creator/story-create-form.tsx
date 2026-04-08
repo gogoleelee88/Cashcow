@@ -3110,6 +3110,7 @@ function StorySettingsTab({
   const [generatingPrompt, setGeneratingPrompt] = useState(false);
   const [generatingExamples, setGeneratingExamples] = useState(false);
   const [showProfileTooltip, setShowProfileTooltip] = useState(false);
+  const [showExamplesMaxTooltip, setShowExamplesMaxTooltip] = useState(false);
 
   const isProfileComplete = storyName.trim().length > 0 && storyDescription.trim().length > 0;
 
@@ -3160,14 +3161,24 @@ function StorySettingsTab({
     setGeneratingExamples(true);
     try {
       const { api } = await import('../../lib/api');
+      const slotCount = Math.max(examples.length, 1);
       const { examples: generated } = await api.stories.generateExamples({
-        name: storyName, description: storyDescription, systemPrompt,
+        name: storyName,
+        description: storyDescription,
+        systemPrompt,
       });
       if (Array.isArray(generated) && generated.length > 0) {
-        setExamples(generated.slice(0, 3).map((e: { user: string; assistant: string }) => ({
-          user: (e.user || '').slice(0, 500),
-          assistant: (e.assistant || '').slice(0, 500),
-        })));
+        // 현재 슬롯 수만큼만 채우되, 부족하면 빈 슬롯 유지
+        setExamples(prev =>
+          prev.map((slot, i) => {
+            const gen = generated[i];
+            if (!gen) return slot;
+            return {
+              user: (gen.user || '').slice(0, 500),
+              assistant: (gen.assistant || '').slice(0, 500),
+            };
+          })
+        );
       }
     } catch {
       // silent fail
@@ -3176,8 +3187,34 @@ function StorySettingsTab({
     }
   };
 
+  const handleAddExample = () => {
+    if (examples.length >= 3) {
+      setShowExamplesMaxTooltip(true);
+      setTimeout(() => setShowExamplesMaxTooltip(false), 3000);
+      return;
+    }
+    setExamples(p => [...p, { user: '', assistant: '' }]);
+  };
+
   return (
     <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
+      {/* ── 예시 3개 초과 상단 토스트 ── */}
+      <AnimatePresence>
+        {showExamplesMaxTooltip && (
+          <motion.div
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.2 }}
+            className="fixed top-16 left-1/2 -translate-x-1/2 z-50 pointer-events-none"
+          >
+            <div className="bg-gray-900 text-white text-sm font-medium px-5 py-2.5 rounded-xl shadow-xl whitespace-nowrap">
+              예시는 3개까지 등록할 수 있어요
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ── 프롬프트 템플릿 선택기 ── */}
       <div className="mb-8">
         <div className="flex items-center gap-1 mb-1">
@@ -3307,6 +3344,38 @@ function StorySettingsTab({
             <ChevronUp className="w-4 h-4 rotate-180" />
           </button>
 
+          {/* ── 전개 예시 로딩 모달 ── */}
+          <AnimatePresence>
+            {generatingExamples && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
+              >
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 8 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 8 }}
+                  transition={{ duration: 0.18 }}
+                  className="bg-white rounded-2xl shadow-2xl w-[480px] overflow-hidden"
+                >
+                  <div className="px-6 pt-5 pb-1">
+                    <h3 className="text-gray-900 font-bold text-base">자동 생성</h3>
+                    <div className="mt-2 h-0.5 w-8 bg-brand rounded-full" />
+                  </div>
+                  <div className="flex flex-col items-center justify-center py-12 gap-4">
+                    <svg className="w-9 h-9 animate-spin text-gray-800" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                      <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    <p className="text-gray-700 font-medium text-sm">AI가 초안을 열심히 작성하고 있어요</p>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* ── 전개 예시 ── */}
           <div className="mb-4">
             <div className="flex items-start justify-between mb-2">
@@ -3321,17 +3390,15 @@ function StorySettingsTab({
                   disabled={generatingExamples}
                   className="px-3 py-1.5 rounded-lg border border-brand/40 text-brand text-xs font-medium hover:bg-brand/5 transition-colors disabled:opacity-50"
                 >
-                  {generatingExamples ? '생성 중...' : '전체 자동 생성'}
+                  전체 자동 생성
                 </button>
-                {examples.length < 3 && (
-                  <button
-                    type="button"
-                    onClick={() => setExamples(p => [...p, { user: '', assistant: '' }])}
-                    className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
-                  >
-                    예시 추가
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={handleAddExample}
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
+                >
+                  예시 추가
+                </button>
               </div>
             </div>
 
