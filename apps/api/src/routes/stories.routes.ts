@@ -8,7 +8,8 @@ import { searchRateLimit, uploadRateLimit } from '../plugins/rate-limit.plugin';
 import { logger } from '../lib/logger';
 import { generatePresignedUploadUrl, deleteS3Object } from '../services/s3.service';
 // StoryCategory, CharacterVisibility, AgeRating types used as strings (Prisma client not yet generated)
-import Anthropic from '@anthropic-ai/sdk';
+// import Anthropic from '@anthropic-ai/sdk'; // Anthropic 비활성화 - OpenAI로 전환
+import OpenAI from 'openai';
 
 const CACHE_TTL_LIST = 120;
 const CACHE_TTL_DETAIL = 300;
@@ -30,7 +31,8 @@ const createStorySchema = z.object({
 });
 
 export const storyRoutes: FastifyPluginAsync = async (fastify) => {
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  // const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }); // 비활성화
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
   // ─────────────────────────────────────────────
   // LIST STORIES
@@ -1135,10 +1137,10 @@ export const storyRoutes: FastifyPluginAsync = async (fastify) => {
         'X-Accel-Buffering': 'no',
       });
 
-      const messages = [
+      const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [
         ...recentMessages.reverse().map((m: any) => ({
-          role: m.role === 'USER' ? 'user' : 'assistant' as const,
-          content: m.content,
+          role: (m.role === 'USER' ? 'user' : 'assistant') as 'user' | 'assistant',
+          content: m.content as string,
         })),
         { role: 'user' as const, content: content.trim() },
       ];
@@ -1148,23 +1150,27 @@ export const storyRoutes: FastifyPluginAsync = async (fastify) => {
       let outputTokens = 0;
 
       try {
-        const stream = anthropic.messages.stream({
-          model: 'claude-haiku-4-5',
+        // OpenAI 스트리밍 (Anthropic에서 전환)
+        const stream = await openai.chat.completions.create({
+          model: process.env.OPENAI_HAIKU_MODEL || 'gpt-4o-mini',
           max_tokens: 1024,
-          system: systemPrompt,
-          messages,
+          stream: true,
+          stream_options: { include_usage: true },
+          messages: [
+            { role: 'system', content: systemPrompt },
+            ...messages,
+          ],
         });
 
-        for await (const event of stream) {
-          if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-            fullResponse += event.delta.text;
-            reply.raw.write(`event: delta\ndata: ${JSON.stringify({ text: event.delta.text })}\n\n`);
+        for await (const chunk of stream) {
+          const text = chunk.choices[0]?.delta?.content || '';
+          if (text) {
+            fullResponse += text;
+            reply.raw.write(`event: delta\ndata: ${JSON.stringify({ text })}\n\n`);
           }
-          if (event.type === 'message_delta' && event.usage) {
-            outputTokens = event.usage.output_tokens;
-          }
-          if (event.type === 'message_start' && event.message.usage) {
-            inputTokens = event.message.usage.input_tokens;
+          if (chunk.usage) {
+            inputTokens = chunk.usage.prompt_tokens;
+            outputTokens = chunk.usage.completion_tokens;
           }
         }
 
@@ -1234,15 +1240,15 @@ export const storyRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: [requireAuth],
     handler: async (request, reply) => {
       try {
-        const msg = await anthropic.messages.create({
-          model: 'claude-haiku-4-5-20251001',
+        const msg = await openai.chat.completions.create({
+          model: process.env.OPENAI_HAIKU_MODEL || 'gpt-4o-mini',
           max_tokens: 100,
           messages: [{
             role: 'user',
             content: '한국 판타지/로맨스 스토리에 어울리는 창의적인 스토리 제목이나 주인공 이름을 한 개만 생성해줘. 이름만 답변해. 특수문자 없이 2~10자.',
           }],
         });
-        const name = (msg.content[0] as { text: string }).text.trim().slice(0, 30);
+        const name = (msg.choices[0].message.content ?? '').trim().slice(0, 30);
         return reply.send({ name });
       } catch (err) {
         logger.error(err, 'random name generation failed');
@@ -1276,8 +1282,8 @@ ${existingContent}
 스토리 제목: ${name || '미정'}
 한줄소개: ${description || '미정'}`;
 
-        const msg = await anthropic.messages.create({
-          model: 'claude-sonnet-4-6',
+        const msg = await openai.chat.completions.create({
+          model: process.env.OPENAI_SONNET_MODEL || 'gpt-4o',
           max_tokens: 1500,
           messages: [{
             role: 'user',
@@ -1291,7 +1297,7 @@ ${existingContent}
 - 시스템 프롬프트만 답변, 설명 없이`,
           }],
         });
-        const systemPrompt = (msg.content[0] as { text: string }).text.trim();
+        const systemPrompt = (msg.choices[0].message.content ?? '').trim();
         return reply.send({ systemPrompt });
       } catch (err) {
         logger.error(err, 'story settings generation failed');
@@ -1310,8 +1316,8 @@ ${existingContent}
         name?: string; description?: string; systemPrompt?: string;
       };
       try {
-        const msg = await anthropic.messages.create({
-          model: 'claude-sonnet-4-6',
+        const msg = await openai.chat.completions.create({
+          model: process.env.OPENAI_SONNET_MODEL || 'gpt-4o',
           max_tokens: 2000,
           messages: [{
             role: 'user',
@@ -1339,7 +1345,7 @@ ${systemPrompt ? `세계관/캐릭터 설정:\n${systemPrompt.slice(0, 600)}` : 
 ]`,
           }],
         });
-        const text = (msg.content[0] as { text: string }).text.trim();
+        const text = (msg.choices[0].message.content ?? '').trim();
         const jsonMatch = text.match(/\[[\s\S]*\]/);
         const examples = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
         return reply.send({ examples });
@@ -1360,8 +1366,8 @@ ${systemPrompt ? `세계관/캐릭터 설정:\n${systemPrompt.slice(0, 600)}` : 
         name?: string; description?: string; systemPrompt?: string; settingName?: string;
       };
       try {
-        const msg = await anthropic.messages.create({
-          model: 'claude-sonnet-4-6',
+        const msg = await openai.chat.completions.create({
+          model: process.env.OPENAI_SONNET_MODEL || 'gpt-4o',
           max_tokens: 1000,
           messages: [{
             role: 'user',
@@ -1377,7 +1383,7 @@ ${systemPrompt ? `세계관: ${systemPrompt.slice(0, 400)}` : ''}
 - 프롤로그 텍스트만 답변`,
           }],
         });
-        const prologue = (msg.content[0] as { text: string }).text.trim();
+        const prologue = (msg.choices[0].message.content ?? '').trim();
         return reply.send({ prologue });
       } catch (err) {
         logger.error(err, 'prologue generation failed');
@@ -1407,8 +1413,8 @@ ${systemPrompt ? `세계관: ${systemPrompt.slice(0, 400)}` : ''}
       }
 
       try {
-        const msg = await anthropic.messages.create({
-          model: 'claude-sonnet-4-6',
+        const msg = await openai.chat.completions.create({
+          model: process.env.OPENAI_SONNET_MODEL || 'gpt-4o',
           max_tokens: 600,
           messages: [{
             role: 'user',
@@ -1432,7 +1438,7 @@ ${statUnit ? `스탯 단위: ${statUnit}` : ''}
           }],
         });
 
-        const description = (msg.content[0] as { text: string }).text.trim().slice(0, 500);
+        const description = (msg.choices[0].message.content ?? '').trim().slice(0, 500);
         return reply.send({ description });
       } catch (err) {
         logger.error(err, 'stat description generation failed');
@@ -1779,16 +1785,15 @@ ${statUnit ? `스탯 단위: ${statUnit}` : ''}
       const { storyName, prompt, endingName } = request.body as {
         storyName: string; prompt: string; endingName: string;
       };
-      const stream = await anthropic.messages.create({
-        model: 'claude-haiku-4-5-20251001',
+      const msg = await openai.chat.completions.create({
+        model: process.env.OPENAI_HAIKU_MODEL || 'gpt-4o-mini',
         max_tokens: 600,
-        stream: false,
         messages: [{
           role: 'user',
           content: `스토리 "${storyName}"의 엔딩 "${endingName}"에 대한 에필로그를 300자 이내로 작성해줘.\n조건: ${prompt}\n감동적이고 자연스럽게 마무리되도록 써줘.`,
         }],
       });
-      const text = (stream.content[0] as { type: string; text: string }).text ?? '';
+      const text = (msg.choices[0].message.content ?? '');
       return reply.send({ epilogue: text.slice(0, 1000) });
     },
   });

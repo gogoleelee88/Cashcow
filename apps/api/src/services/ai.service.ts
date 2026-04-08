@@ -1,4 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
+// import Anthropic from '@anthropic-ai/sdk'; // Anthropic 비활성화 - OpenAI로 전환
+import OpenAI from 'openai';
 import { config } from '../config';
 import { prisma } from '../lib/prisma';
 import { decrypt } from '../lib/encryption';
@@ -6,15 +7,15 @@ import { logger } from '../lib/logger';
 import { aiRequestTotal, aiRequestDuration, aiTokensUsed, creditsConsumedTotal } from '../lib/metrics';
 import type { Message as PrismaMessage } from '@prisma/client';
 
-const anthropic = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
+const openai = new OpenAI({ apiKey: config.OPENAI_API_KEY });
 
 // ─────────────────────────────────────────────
 // CONTEXT WINDOW MANAGEMENT
 // Keeps token count within model limits
 // ─────────────────────────────────────────────
 const MODEL_CONTEXT_LIMITS: Record<string, number> = {
-  'claude-haiku-4-5-20251001': 200_000,
-  'claude-sonnet-4-6': 200_000,
+  'gpt-4o-mini': 128_000,
+  'gpt-4o': 128_000,
 };
 
 const MAX_CONTEXT_TOKENS = 16_000; // We keep 16K for history to leave room for output
@@ -75,8 +76,8 @@ export async function compressConversationMemory(
     .map((m) => `${m.role === 'USER' ? '사용자' : 'AI'}: ${m.content}`)
     .join('\n');
 
-  const response = await anthropic.messages.create({
-    model: config.ANTHROPIC_HAIKU_MODEL,
+  const response = await openai.chat.completions.create({
+    model: config.OPENAI_HAIKU_MODEL,
     max_tokens: 512,
     messages: [
       {
@@ -86,7 +87,7 @@ export async function compressConversationMemory(
     ],
   });
 
-  const summary = response.content[0].type === 'text' ? response.content[0].text : '';
+  const summary = response.choices[0].message.content ?? '';
   logger.info({ conversationId, originalMessages: toSummarize.length }, 'Memory compressed');
   return summary;
 }
@@ -199,40 +200,41 @@ export async function streamChatResponse(options: StreamOptions): Promise<void> 
     // Add current user message
     formattedHistory.push({ role: 'user', content: userMessage });
 
-    // Select model
+    // Select model (OpenAI)
     const model =
-      character.model === 'claude-sonnet-4' ? config.ANTHROPIC_SONNET_MODEL : config.ANTHROPIC_HAIKU_MODEL;
+      character.model === 'claude-sonnet-4' ? config.OPENAI_SONNET_MODEL : config.OPENAI_HAIKU_MODEL;
 
     let fullText = '';
     let inputTokens = 0;
     let outputTokens = 0;
 
-    const stream = await anthropic.messages.stream(
+    const stream = await openai.chat.completions.create(
       {
         model,
         max_tokens: character.maxTokens,
         temperature: character.temperature,
-        system: fullSystem,
-        messages: formattedHistory,
+        stream: true,
+        stream_options: { include_usage: true },
+        messages: [
+          { role: 'system', content: fullSystem },
+          ...formattedHistory,
+        ],
       },
       { signal }
     );
 
-    for await (const event of stream) {
+    for await (const chunk of stream) {
       if (signal?.aborted) break;
 
-      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-        const text = event.delta.text;
+      const text = chunk.choices[0]?.delta?.content || '';
+      if (text) {
         fullText += text;
         onChunk(text);
       }
 
-      if (event.type === 'message_delta' && event.usage) {
-        outputTokens = event.usage.output_tokens;
-      }
-
-      if (event.type === 'message_start' && event.message.usage) {
-        inputTokens = event.message.usage.input_tokens;
+      if (chunk.usage) {
+        inputTokens = chunk.usage.prompt_tokens;
+        outputTokens = chunk.usage.completion_tokens;
       }
     }
 
@@ -261,10 +263,11 @@ export function calculateCreditCost(
   outputTokens: number,
   model: string
 ): number {
+  // OpenAI pricing (credits per token)
   const rates: Record<string, { input: number; output: number }> = {
-    [config.ANTHROPIC_HAIKU_MODEL]: { input: 0.000025, output: 0.000125 },  // per token in credits
-    [config.ANTHROPIC_SONNET_MODEL]: { input: 0.0003, output: 0.0015 },
+    [config.OPENAI_HAIKU_MODEL]: { input: 0.000015, output: 0.00006 },   // gpt-4o-mini
+    [config.OPENAI_SONNET_MODEL]: { input: 0.00025, output: 0.001 },      // gpt-4o
   };
-  const rate = rates[model] || rates[config.ANTHROPIC_HAIKU_MODEL];
+  const rate = rates[model] || rates[config.OPENAI_HAIKU_MODEL];
   return Math.max(1, Math.ceil(inputTokens * rate.input + outputTokens * rate.output));
 }
