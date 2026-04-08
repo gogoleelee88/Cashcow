@@ -183,6 +183,9 @@ export const api = {
     generateExamples: (data: { name: string; description?: string; systemPrompt: string; settingName?: string }) =>
       apiClient.post('/api/stories/generate/examples', data).then((r) => r.data?.data ?? r.data),
 
+    generateStatDescription: (data: { storyName: string; storyDescription: string; systemPrompt?: string; statName: string; statUnit?: string }) =>
+      apiClient.post('/api/stories/generate/stat-description', data).then((r) => r.data),
+
     // Start settings
     listStartSettings: (storyId: string) =>
       apiClient.get(`/api/stories/${storyId}/start-settings`).then((r) => r.data),

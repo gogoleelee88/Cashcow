@@ -1198,86 +1198,6 @@ export const storyRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // ─────────────────────────────────────────────
-  // AI GENERATION ENDPOINTS
-  // ─────────────────────────────────────────────
-  fastify.post('/generate/name', {
-    preHandler: [requireAuth],
-    handler: async (_request, reply) => {
-      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-      const msg = await anthropic.messages.create({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 64,
-        messages: [{ role: 'user', content: '한국어로 매력적인 AI 스토리 캐릭터 이름 하나를 5글자 이내로 만들어줘. 이름만 출력해.' }],
-      });
-      const name = (msg.content[0] as { text: string }).text.trim();
-      return reply.send({ success: true, data: { name } });
-    },
-  });
-
-  fastify.post('/generate/prologue', {
-    preHandler: [requireAuth],
-    handler: async (request, reply) => {
-      const { name, systemPrompt, settingName } = request.body as { name: string; systemPrompt: string; settingName: string };
-      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-      const prompt = `당신은 인터랙티브 AI 스토리 작가입니다.
-스토리 이름: ${name || '미정'}
-설정 이름: ${settingName || '기본 설정'}
-캐릭터 설정: ${systemPrompt || '(없음)'}
-
-위 정보를 바탕으로 사용자가 처음 채팅을 시작할 때 AI 캐릭터가 보내는 프롤로그 메시지를 200자 이내 한국어로 작성해줘.
-자연스럽고 몰입감 있게, 캐릭터의 성격이 드러나도록. 메시지만 출력해.`;
-      const msg = await anthropic.messages.create({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 300,
-        messages: [{ role: 'user', content: prompt }],
-      });
-      const prologue = (msg.content[0] as { text: string }).text.trim();
-      return reply.send({ success: true, data: { prologue } });
-    },
-  });
-
-  fastify.post('/generate/story-settings', {
-    preHandler: [requireAuth],
-    handler: async (request, reply) => {
-      const { name, description } = request.body as { name: string; description: string };
-      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-      const prompt = `당신은 인터랙티브 AI 스토리 시스템 프롬프트 작성 전문가입니다.
-스토리 이름: ${name || '미정'}
-한줄 소개: ${description || '(없음)'}
-
-위 정보를 바탕으로 AI 캐릭터의 시스템 프롬프트(역할, 성격, 말투, 세계관 등)를 500자 이내 한국어로 작성해줘. 프롬프트만 출력해.`;
-      const msg = await anthropic.messages.create({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 600,
-        messages: [{ role: 'user', content: prompt }],
-      });
-      const generatedSystemPrompt = (msg.content[0] as { text: string }).text.trim();
-      return reply.send({ success: true, data: { systemPrompt: generatedSystemPrompt } });
-    },
-  });
-
-  fastify.post('/generate/examples', {
-    preHandler: [requireAuth],
-    handler: async (request, reply) => {
-      const { name, systemPrompt, settingName } = request.body as { name: string; systemPrompt: string; settingName: string };
-      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-      const prompt = `스토리: ${name || '미정'} / 설정: ${settingName || '기본'} / 시스템: ${systemPrompt?.slice(0, 200) || '(없음)'}
-대화 예시 3쌍을 JSON 배열로 출력해줘. 형식: [{"user":"...","assistant":"..."}] JSON만 출력해.`;
-      const msg = await anthropic.messages.create({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 600,
-        messages: [{ role: 'user', content: prompt }],
-      });
-      let examples: unknown[] = [];
-      try {
-        const raw = (msg.content[0] as { text: string }).text.trim();
-        examples = JSON.parse(raw.match(/\[[\s\S]*\]/)?.[0] ?? '[]');
-      } catch { examples = []; }
-      return reply.send({ success: true, data: { examples } });
-    },
-  });
-
-  // ─────────────────────────────────────────────
   // MY STORIES
   // ─────────────────────────────────────────────
   fastify.get('/my', {
@@ -1449,6 +1369,61 @@ ${systemPrompt ? `세계관: ${systemPrompt.slice(0, 400)}` : ''}
         return reply.send({ prologue });
       } catch (err) {
         logger.error(err, 'prologue generation failed');
+        return reply.status(500).send({ error: '생성 중 오류가 발생했습니다.' });
+      }
+    },
+  });
+
+  // ─────────────────────────────────────────────
+  // AI GENERATION: STAT DESCRIPTION
+  // ─────────────────────────────────────────────
+  fastify.post('/generate/stat-description', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { storyName, storyDescription, systemPrompt, statName, statUnit } = request.body as {
+        storyName?: string;
+        storyDescription?: string;
+        systemPrompt?: string;
+        statName?: string;
+        statUnit?: string;
+      };
+
+      if (!storyName?.trim() || !storyDescription?.trim() || !statName?.trim()) {
+        return reply.status(400).send({
+          error: '스토리 이름, 스토리 설정 및 정보, 스탯 이름이 필요합니다.',
+        });
+      }
+
+      try {
+        const msg = await anthropic.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 600,
+          messages: [{
+            role: 'user',
+            content: `당신은 인터랙티브 AI 스토리 시스템의 스탯 설계 전문가입니다.
+
+스토리 제목: ${storyName}
+스토리 설정: ${storyDescription.slice(0, 600)}
+${systemPrompt ? `세계관 상세: ${systemPrompt.slice(0, 400)}` : ''}
+스탯 이름: ${statName}
+${statUnit ? `스탯 단위: ${statUnit}` : ''}
+
+위 스토리에서 "${statName}" 스탯에 대한 AI 행동 지침 설명을 작성해줘.
+
+작성 규칙:
+- {user}는 사용자, {char}는 주인공 캐릭터를 지칭
+- 스탯이 증가/감소하는 구체적인 조건을 3~5줄로 작성
+- 형식 예시: "{user}가 [행동]하면 증가한다.", "{char}가 [상태]이면 감소한다."
+- 스토리 세계관과 분위기에 맞게 작성
+- 설명문만 출력, 제목이나 부연설명 없이
+- 500자 이내`,
+          }],
+        });
+
+        const description = (msg.content[0] as { text: string }).text.trim().slice(0, 500);
+        return reply.send({ description });
+      } catch (err) {
+        logger.error(err, 'stat description generation failed');
         return reply.status(500).send({ error: '생성 중 오류가 발생했습니다.' });
       }
     },
