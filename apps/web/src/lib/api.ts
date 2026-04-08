@@ -602,3 +602,86 @@ export function streamStoryMessage(
 
   doStream();
 }
+
+// ─────────────────────────────────────────────
+// PREVIEW CHAT STREAM (창작 폼 내 테스트 채팅)
+// ─────────────────────────────────────────────
+export function streamPreviewChat(
+  data: {
+    systemPrompt: string;
+    history: Array<{ role: 'user' | 'assistant'; content: string }>;
+    userMessage: string;
+    characterName?: string;
+  },
+  accessToken: string,
+  callbacks: {
+    onDelta: (text: string) => void;
+    onDone: () => void;
+    onError: (message: string) => void;
+    signal?: AbortSignal;
+  }
+): void {
+  async function doStream(): Promise<void> {
+    if (callbacks.signal?.aborted) return;
+
+    let response: Response;
+    try {
+      response = await fetch(`${BASE_URL}/api/stories/preview-chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+          Accept: 'text/event-stream',
+        },
+        body: JSON.stringify(data),
+        signal: callbacks.signal,
+      });
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
+      callbacks.onError('네트워크 연결이 끊어졌습니다.');
+      return;
+    }
+
+    if (!response.ok) {
+      const errBody = await response.json().catch(() => ({ error: '오류가 발생했습니다.' }));
+      callbacks.onError(typeof errBody.error === 'string' ? errBody.error : '오류가 발생했습니다.');
+      return;
+    }
+
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    if (!reader) { callbacks.onError('스트리밍을 지원하지 않는 환경입니다.'); return; }
+
+    let buffer = '';
+    let lastEvent = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('event: ')) { lastEvent = line.slice(7).trim(); continue; }
+          if (line.startsWith('data: ')) {
+            try {
+              const parsed = JSON.parse(line.slice(6));
+              const eventType = lastEvent || 'delta';
+              lastEvent = '';
+              if (eventType === 'delta' && parsed.text) { callbacks.onDelta(parsed.text); }
+              else if (eventType === 'done') { callbacks.onDone(); }
+              else if (eventType === 'error') { callbacks.onError(parsed.message || '오류가 발생했습니다.'); }
+            } catch {}
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
+  doStream();
+}

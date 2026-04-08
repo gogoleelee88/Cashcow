@@ -1779,6 +1779,68 @@ ${statUnit ? `스탯 단위: ${statUnit}` : ''}
     },
   });
 
+  // ─────────────────────────────────────────────
+  // AI PREVIEW CHAT (창작 폼 내 실시간 테스트용)
+  // 드래프트 스토리의 systemPrompt로 실제 AI 대화 스트리밍
+  // ─────────────────────────────────────────────
+  fastify.post('/preview-chat', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { systemPrompt, history, userMessage, characterName } = request.body as {
+        systemPrompt: string;
+        history: Array<{ role: 'user' | 'assistant'; content: string }>;
+        userMessage: string;
+        characterName?: string;
+      };
+
+      if (!userMessage?.trim()) {
+        return reply.status(400).send({ error: '메시지를 입력해주세요.' });
+      }
+
+      reply.raw.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      });
+
+      try {
+        const baseSystem = systemPrompt?.trim()
+          ? systemPrompt
+          : `당신은 ${characterName || 'AI 캐릭터'}입니다. 캐릭터에 맞게 자연스럽게 대화해주세요.`;
+
+        const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [
+          ...((history ?? []).slice(-10) as Array<{ role: 'user' | 'assistant'; content: string }>),
+          { role: 'user', content: userMessage.trim() },
+        ];
+
+        const stream = await openai.chat.completions.create({
+          model: process.env.OPENAI_HAIKU_MODEL || 'gpt-4o-mini',
+          max_tokens: 512,
+          stream: true,
+          messages: [
+            { role: 'system', content: baseSystem },
+            ...messages,
+          ],
+        });
+
+        for await (const chunk of stream) {
+          const text = chunk.choices[0]?.delta?.content || '';
+          if (text) {
+            reply.raw.write(`event: delta\ndata: ${JSON.stringify({ text })}\n\n`);
+          }
+        }
+
+        reply.raw.write(`event: done\ndata: ${JSON.stringify({})}\n\n`);
+        reply.raw.end();
+      } catch (err) {
+        logger.error(err, 'preview chat failed');
+        reply.raw.write(`event: error\ndata: ${JSON.stringify({ message: 'AI 응답 오류가 발생했습니다.' })}\n\n`);
+        reply.raw.end();
+      }
+    },
+  });
+
   // POST /api/stories/generate/epilogue  (AI 자동생성)
   fastify.post('/generate/epilogue', {
     preHandler: [requireAuth],

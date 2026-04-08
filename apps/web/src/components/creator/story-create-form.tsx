@@ -3487,35 +3487,42 @@ type ChatValidation =
   | { type: 'optional'; message: string }
   | null;
 
-function ChatInputBar({ validation, sentMessage, setSentMessage, onLockedClick, onOptionalSend }: {
+function ChatInputBar({ validation, inputValue, setInputValue, onSend, onLockedClick, disabled }: {
   validation: ChatValidation;
-  sentMessage: string | null;
-  setSentMessage: (v: string | null) => void;
+  inputValue: string;
+  setInputValue: (v: string) => void;
+  onSend: (text: string) => void;
   onLockedClick?: (errorMessage: string) => void;
-  onOptionalSend?: (message: string, confirmMsg: string) => void;
+  disabled?: boolean;
 }) {
   const isLocked = validation?.type === 'required';
   const inputPlaceholder = isLocked
     ? (validation as { type: 'required'; placeholder: string }).placeholder
-    : '[첫 메시지]를 입력해주세요';
+    : '메시지를 입력하세요';
 
   const handleSend = () => {
     if (isLocked) {
       onLockedClick?.((validation as { type: 'required'; errorMessage: string }).errorMessage);
       return;
     }
-    if (!sentMessage?.trim()) return;
-    if (validation?.type === 'optional') {
-      onOptionalSend?.(sentMessage.trim(), validation.message);
-    } else {
-      setSentMessage(sentMessage.trim());
+    if (!inputValue.trim() || disabled) return;
+    onSend(inputValue.trim());
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
     }
   };
 
   return (
     <div className="flex-shrink-0 px-4 py-3 border-t border-gray-100">
       <div
-        className={cn('flex items-center gap-2 px-4 py-3 rounded-2xl border bg-gray-50', isLocked ? 'border-gray-200 cursor-not-allowed' : 'border-gray-200')}
+        className={cn(
+          'flex items-center gap-2 px-4 py-3 rounded-2xl border bg-gray-50 transition-colors',
+          isLocked ? 'border-gray-200 cursor-not-allowed' : 'border-gray-200 focus-within:border-gray-400'
+        )}
         onClick={() => { if (isLocked) onLockedClick?.((validation as { type: 'required'; errorMessage: string }).errorMessage); }}
       >
         {isLocked && (
@@ -3525,19 +3532,32 @@ function ChatInputBar({ validation, sentMessage, setSentMessage, onLockedClick, 
         )}
         <input
           type="text"
-          value={isLocked ? '' : (sentMessage ?? '')}
-          onChange={e => { if (!isLocked) setSentMessage(e.target.value || null); }}
+          value={isLocked ? '' : inputValue}
+          onChange={e => { if (!isLocked) setInputValue(e.target.value); }}
+          onKeyDown={handleKeyDown}
           readOnly={isLocked}
+          disabled={disabled}
           placeholder={inputPlaceholder}
-          className={cn('flex-1 bg-transparent text-xs outline-none placeholder:text-gray-300', isLocked ? 'cursor-not-allowed text-gray-300 pointer-events-none' : 'text-gray-700')}
+          className={cn(
+            'flex-1 bg-transparent text-xs outline-none placeholder:text-gray-300',
+            isLocked || disabled ? 'cursor-not-allowed text-gray-300 pointer-events-none' : 'text-gray-700'
+          )}
         />
         <button
           onClick={e => { e.stopPropagation(); handleSend(); }}
-          className="w-7 h-7 rounded-full bg-gray-800 flex items-center justify-center flex-shrink-0 disabled:opacity-40"
+          disabled={isLocked || disabled || !inputValue.trim()}
+          className="w-7 h-7 rounded-full bg-gray-800 flex items-center justify-center flex-shrink-0 disabled:opacity-30 transition-opacity"
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-            <path d="M5 12h14m-7-7l7 7-7 7" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
+          {disabled ? (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="animate-spin">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="white" strokeWidth="3"/>
+              <path className="opacity-75" fill="white" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+              <path d="M5 12h14m-7-7l7 7-7 7" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          )}
         </button>
       </div>
     </div>
@@ -3731,8 +3751,11 @@ export function StoryCreateForm() {
   const suggestedReplies = activeStartSetting?.suggestedReplies ?? [];
 
   // 채팅 미리보기 전용 로컬 상태 (저장 불필요)
-  const [sentMessage, setSentMessage] = useState<string | null>(null);
-  const [confirmDialog, setConfirmDialog] = useState<{ show: boolean; message: string; pendingReply: string | null }>({ show: false, message: '', pendingReply: null });
+  type PreviewMsg = { role: 'user' | 'assistant'; content: string; streaming?: boolean };
+  const [previewMessages, setPreviewMessages] = useState<PreviewMsg[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [isPreviewStreaming, setIsPreviewStreaming] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{ show: boolean; message: string; pendingText: string }>({ show: false, message: '', pendingText: '' });
   const [errorDialog, setErrorDialog] = useState<{ show: boolean; message: string }>({ show: false, message: '' });
   // AI model selector
   const [selectedModel, setSelectedModel] = useState<ChatModel>(CHAT_MODELS[2]);
@@ -3756,11 +3779,63 @@ export function StoryCreateForm() {
     return null;
   };
 
+  // 추천 답변 클릭 → 입력창에 채우기만 (즉시 전송 X)
   const handleReplyClick = (reply: string) => {
     const v = getChatValidation();
-    if (!v) { setSentMessage(reply); return; }
-    if (v.type === 'required') { setErrorDialog({ show: true, message: v.errorMessage }); return; }
-    if (v.type === 'optional') setConfirmDialog({ show: true, message: v.message, pendingReply: reply });
+    if (v?.type === 'required') { setErrorDialog({ show: true, message: v.errorMessage }); return; }
+    setChatInput(reply);
+  };
+
+  // 실제 메시지 전송 → AI 스트리밍 응답
+  const handlePreviewSend = (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed || isPreviewStreaming) return;
+
+    const v = getChatValidation();
+    if (v?.type === 'required') { setErrorDialog({ show: true, message: v.errorMessage }); return; }
+    if (v?.type === 'optional') {
+      setConfirmDialog({ show: true, message: v.message, pendingText: trimmed });
+      return;
+    }
+    doPreviewSend(trimmed);
+  };
+
+  const doPreviewSend = (text: string) => {
+    setChatInput('');
+    setPreviewMessages(prev => [...prev, { role: 'user', content: text }]);
+    setIsPreviewStreaming(true);
+    // streaming placeholder
+    setPreviewMessages(prev => [...prev, { role: 'assistant', content: '', streaming: true }]);
+
+    const { useAuthStore } = require('../../stores/auth.store') as typeof import('../../stores/auth.store');
+    const token = useAuthStore.getState().accessToken ?? '';
+
+    const { streamPreviewChat } = require('../../lib/api') as typeof import('../../lib/api');
+
+    const history = previewMessages.filter(m => !m.streaming).map(m => ({ role: m.role, content: m.content }));
+
+    streamPreviewChat(
+      { systemPrompt, history, userMessage: text, characterName: name.trim() || undefined },
+      token,
+      {
+        onDelta: (chunk) => {
+          setPreviewMessages(prev =>
+            prev.map(m => m.streaming ? { ...m, content: m.content + chunk } : m)
+          );
+        },
+        onDone: () => {
+          setPreviewMessages(prev =>
+            prev.map(m => m.streaming ? { ...m, streaming: false } : m)
+          );
+          setIsPreviewStreaming(false);
+        },
+        onError: (msg) => {
+          setPreviewMessages(prev => prev.filter(m => !m.streaming));
+          setIsPreviewStreaming(false);
+          setErrorDialog({ show: true, message: msg });
+        },
+      }
+    );
   };
 
   // Shared start-settings list for media/keywords/ending tabs
@@ -4226,8 +4301,8 @@ export function StoryCreateForm() {
                   </div>
                 )}
 
-                {/* 추천 답변 버튼 */}
-                {suggestedReplies.filter(r => r.trim()).length > 0 && !sentMessage && (
+                {/* 추천 답변 버튼 — 대화 시작 전에만 표시 */}
+                {suggestedReplies.filter(r => r.trim()).length > 0 && previewMessages.length === 0 && (
                   <div className="mt-6">
                     <p className="text-gray-400 text-xs text-right mb-2 flex items-center justify-end gap-1">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-3 3z"/></svg>
@@ -4247,23 +4322,44 @@ export function StoryCreateForm() {
                   </div>
                 )}
 
-                {/* 사용자가 선택한 메시지 */}
-                {sentMessage && (
-                  <div className="mt-6 flex justify-end">
-                    <div className="max-w-[75%] px-4 py-3 bg-gray-800 text-white rounded-2xl rounded-tr-sm text-sm leading-relaxed whitespace-pre-wrap">
-                      {sentMessage}
+                {/* 대화 메시지 내역 */}
+                {previewMessages.map((msg, idx) => (
+                  <div key={idx} className={cn('mt-4', msg.role === 'user' ? 'flex justify-end' : 'flex items-start gap-2.5')}>
+                    {msg.role === 'assistant' && (
+                      <div className="w-7 h-7 rounded-full bg-gray-200 flex-shrink-0 mt-0.5 overflow-hidden">
+                        {squareImage && <img src={squareImage} alt="profile" className="w-full h-full object-cover" />}
+                      </div>
+                    )}
+                    <div className={cn('max-w-[75%]', msg.role === 'user' ? '' : 'min-w-0')}>
+                      {msg.role === 'user' ? (
+                        <div className="px-4 py-3 bg-gray-800 text-white rounded-2xl rounded-tr-sm text-sm leading-relaxed whitespace-pre-wrap">
+                          {msg.content}
+                        </div>
+                      ) : (
+                        <div className="px-4 py-3 bg-blue-50 rounded-2xl rounded-tl-sm text-gray-800 text-sm leading-relaxed whitespace-pre-wrap">
+                          {msg.content || (msg.streaming && (
+                            <span className="flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                            </span>
+                          ))}
+                          {msg.streaming && msg.content && <span className="inline-block w-0.5 h-3.5 bg-gray-500 ml-0.5 animate-pulse align-middle" />}
+                        </div>
+                      )}
                     </div>
                   </div>
-                )}
+                ))}
               </div>
 
               {/* Chat input */}
               <ChatInputBar
                 validation={getChatValidation()}
-                sentMessage={sentMessage}
-                setSentMessage={setSentMessage}
+                inputValue={chatInput}
+                setInputValue={setChatInput}
+                onSend={handlePreviewSend}
                 onLockedClick={(msg) => setErrorDialog({ show: true, message: msg })}
-                onOptionalSend={(msg, confirmMsg) => setConfirmDialog({ show: true, message: confirmMsg, pendingReply: msg })}
+                disabled={isPreviewStreaming}
               />
             </div>
           )}
@@ -4291,25 +4387,26 @@ export function StoryCreateForm() {
         </div>
       )}
 
-      {/* 임시 채팅방 생성 확인 다이얼로그 (선택 항목 미입력) */}
+      {/* 테스트 채팅 확인 다이얼로그 (선택 항목 미입력) */}
       {confirmDialog.show && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-2xl shadow-xl w-80 mx-4 overflow-hidden">
             <div className="px-6 pt-8 pb-6 text-center">
-              <h3 className="text-gray-900 font-bold text-base mb-3">임시 채팅방을 생성할까요?</h3>
+              <h3 className="text-gray-900 font-bold text-base mb-3">이대로 테스트할까요?</h3>
               <p className="text-gray-500 text-sm leading-relaxed whitespace-pre-line">{confirmDialog.message}</p>
             </div>
             <div className="px-4 pb-4 flex gap-2">
               <button
-                onClick={() => setConfirmDialog({ show: false, message: '', pendingReply: null })}
+                onClick={() => setConfirmDialog({ show: false, message: '', pendingText: '' })}
                 className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors"
               >
                 취소
               </button>
               <button
                 onClick={() => {
-                  if (confirmDialog.pendingReply) setSentMessage(confirmDialog.pendingReply);
-                  setConfirmDialog({ show: false, message: '', pendingReply: null });
+                  const text = confirmDialog.pendingText;
+                  setConfirmDialog({ show: false, message: '', pendingText: '' });
+                  if (text) doPreviewSend(text);
                 }}
                 className="flex-1 py-3 rounded-xl bg-gray-900 text-white text-sm font-bold hover:bg-gray-800 transition-colors"
               >
