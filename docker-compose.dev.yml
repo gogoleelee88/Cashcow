@@ -1,0 +1,68 @@
+# =====================================================
+# CharacterVerse - Development Environment
+# =====================================================
+# Lightweight setup for local development
+# Only runs infrastructure services (DB + Redis)
+# API and Web run locally via npm for hot-reload
+
+services:
+  # ── PostgreSQL (Development) ──────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: cv_postgres_dev
+    environment:
+      POSTGRES_DB: characterverse
+      POSTGRES_USER: characterverse
+      POSTGRES_PASSWORD: password123
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./infra/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - '5433:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U characterverse -d characterverse']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    command: >
+      postgres
+        -c max_connections=100
+        -c shared_buffers=128MB
+        -c log_min_duration_statement=200
+    networks:
+      - cv_dev_network
+
+  # ── Redis (Development) ────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: cv_redis_dev
+    command: >
+      redis-server
+        --requirepass redis123
+        --maxmemory 256mb
+        --maxmemory-policy allkeys-lru
+        --appendonly yes
+    volumes:
+      - redis_dev_data:/data
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD:-dev_redis_password}', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - cv_dev_network
+
+volumes:
+  postgres_dev_data:
+  redis_dev_data:
+
+networks:
+  cv_dev_network:
+    name: cv_dev_network
+    driver: bridge

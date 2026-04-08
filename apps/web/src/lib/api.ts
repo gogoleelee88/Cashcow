@@ -114,8 +114,47 @@ export const api = {
     get: (id: string) =>
       apiClient.get(`/api/stories/${id}`).then((r) => r.data),
 
-    create: (data: unknown) =>
-      apiClient.post('/api/stories', data).then((r) => r.data),
+    // 스토리 draft 생성 (폼 진입 즉시)
+    create: (data?: { title?: string; description?: string; systemPrompt?: string; greeting?: string }) =>
+      apiClient.post('/api/stories', data ?? {}).then((r) => r.data),
+
+    // 프로필 탭 자동저장
+    update: (id: string, data: { title?: string; description?: string; greeting?: string; language?: string }) =>
+      apiClient.patch(`/api/stories/${id}`, data).then((r) => r.data),
+
+    // 스토리 삭제
+    delete: (id: string) =>
+      apiClient.delete(`/api/stories/${id}`).then((r) => r.data),
+
+    // 커버 이미지
+    getCoverUploadUrl: (id: string, data: { contentType: string; variant: 'square' | 'vertical' }) =>
+      apiClient.post(`/api/stories/${id}/cover/upload-url`, data).then((r) => r.data),
+
+    confirmCoverUpload: (id: string, data: { variant: 'square' | 'vertical'; url: string; key: string }) =>
+      apiClient.patch(`/api/stories/${id}/cover`, data).then((r) => r.data),
+
+    deleteCover: (id: string, variant: 'square' | 'vertical') =>
+      apiClient.delete(`/api/stories/${id}/cover`, { data: { variant } }).then((r) => r.data),
+
+    // 시스템 프롬프트 저장
+    updateSystemPrompt: (id: string, systemPrompt: string) =>
+      apiClient.patch(`/api/stories/${id}/system-prompt`, { systemPrompt }).then((r) => r.data),
+
+    // 대화 예시
+    listExamples: (storyId: string) =>
+      apiClient.get(`/api/stories/${storyId}/examples`).then((r) => r.data),
+
+    createExample: (storyId: string, data: { userMessage: string; assistantMessage: string; order?: number }) =>
+      apiClient.post(`/api/stories/${storyId}/examples`, data).then((r) => r.data),
+
+    updateExample: (storyId: string, exId: string, data: { userMessage?: string; assistantMessage?: string }) =>
+      apiClient.put(`/api/stories/${storyId}/examples/${exId}`, data).then((r) => r.data),
+
+    deleteExample: (storyId: string, exId: string) =>
+      apiClient.delete(`/api/stories/${storyId}/examples/${exId}`).then((r) => r.data),
+
+    reorderExamples: (storyId: string, orderedIds: string[]) =>
+      apiClient.patch(`/api/stories/${storyId}/examples/reorder`, { orderedIds }).then((r) => r.data),
 
     like: (id: string) =>
       apiClient.post(`/api/stories/${id}/like`).then((r) => r.data),
@@ -143,6 +182,109 @@ export const api = {
 
     generateExamples: (data: { name: string; systemPrompt: string; settingName: string }) =>
       apiClient.post('/api/stories/generate/examples', data).then((r) => r.data?.data ?? r.data),
+
+    generatePrologue: (data: { name?: string; description?: string; systemPrompt?: string; settingName?: string }) =>
+      apiClient.post('/api/stories/generate/prologue', data).then((r) => r.data),
+
+    // Start settings
+    listStartSettings: (storyId: string) =>
+      apiClient.get(`/api/stories/${storyId}/start-settings`).then((r) => r.data),
+
+    createStartSetting: (storyId: string, data: unknown) =>
+      apiClient.post(`/api/stories/${storyId}/start-settings`, data).then((r) => r.data),
+
+    updateStartSetting: (storyId: string, settingId: string, data: unknown) =>
+      apiClient.put(`/api/stories/${storyId}/start-settings/${settingId}`, data).then((r) => r.data),
+
+    deleteStartSetting: (storyId: string, settingId: string) =>
+      apiClient.delete(`/api/stories/${storyId}/start-settings/${settingId}`).then((r) => r.data),
+
+    // Stats
+    listStats: (storyId: string, settingId: string) =>
+      apiClient.get(`/api/stories/${storyId}/start-settings/${settingId}/stats`).then((r) => r.data),
+
+    createStat: (storyId: string, settingId: string, data: unknown) =>
+      apiClient.post(`/api/stories/${storyId}/start-settings/${settingId}/stats`, data).then((r) => r.data),
+
+    updateStat: (storyId: string, settingId: string, statId: string, data: unknown) =>
+      apiClient.put(`/api/stories/${storyId}/start-settings/${settingId}/stats/${statId}`, data).then((r) => r.data),
+
+    deleteStat: (storyId: string, settingId: string, statId: string) =>
+      apiClient.delete(`/api/stories/${storyId}/start-settings/${settingId}/stats/${statId}`).then((r) => r.data),
+
+    reorderStats: (storyId: string, settingId: string, orderedIds: string[]) =>
+      apiClient.patch(`/api/stories/${storyId}/start-settings/${settingId}/stats/reorder`, { orderedIds }).then((r) => r.data),
+
+    // Media
+    getMediaUploadUrl: (storyId: string, settingId: string, contentType: string) =>
+      apiClient.post(`/api/stories/${storyId}/start-settings/${settingId}/media/upload-url`, { contentType }).then((r) => r.data),
+
+    confirmMediaUpload: (storyId: string, settingId: string, data: { url: string; key: string; order?: number }) =>
+      apiClient.post(`/api/stories/${storyId}/start-settings/${settingId}/media`, data).then((r) => r.data),
+
+    deleteMedia: (storyId: string, settingId: string, mediaId: string) =>
+      apiClient.delete(`/api/stories/${storyId}/start-settings/${settingId}/media/${mediaId}`).then((r) => r.data),
+
+    reorderMedia: (storyId: string, settingId: string, orderedIds: string[]) =>
+      apiClient.patch(`/api/stories/${storyId}/start-settings/${settingId}/media/reorder`, { orderedIds }).then((r) => r.data),
+
+    // Endings
+    listEndings: (storyId: string, startSettingId?: string) =>
+      apiClient.get(`/api/stories/${storyId}/endings`, { params: startSettingId ? { startSettingId } : {} }).then((r) => r.data),
+
+    createEnding: (storyId: string, data: unknown) =>
+      apiClient.post(`/api/stories/${storyId}/endings`, data).then((r) => r.data),
+
+    updateEnding: (storyId: string, endingId: string, data: unknown) =>
+      apiClient.put(`/api/stories/${storyId}/endings/${endingId}`, data).then((r) => r.data),
+
+    deleteEnding: (storyId: string, endingId: string) =>
+      apiClient.delete(`/api/stories/${storyId}/endings/${endingId}`).then((r) => r.data),
+
+    generateEpilogue: (data: { storyName: string; prompt: string; endingName: string }) =>
+      apiClient.post('/api/stories/generate/epilogue', data).then((r) => r.data),
+
+    // Keyword notes
+    listKeywordNotes: (storyId: string, startSettingId?: string) =>
+      apiClient.get(`/api/stories/${storyId}/keyword-notes`, { params: startSettingId ? { startSettingId } : {} }).then((r) => r.data),
+
+    createKeywordNote: (storyId: string, data: { startSettingId: string; title: string; keywords: string[]; content: string; order?: number }) =>
+      apiClient.post(`/api/stories/${storyId}/keyword-notes`, data).then((r) => r.data),
+
+    updateKeywordNote: (storyId: string, noteId: string, data: Partial<{ startSettingId: string; title: string; keywords: string[]; content: string; order: number }>) =>
+      apiClient.put(`/api/stories/${storyId}/keyword-notes/${noteId}`, data).then((r) => r.data),
+
+    deleteKeywordNote: (storyId: string, noteId: string) =>
+      apiClient.delete(`/api/stories/${storyId}/keyword-notes/${noteId}`).then((r) => r.data),
+
+    // Media list
+    listMedia: (storyId: string, settingId: string) =>
+      apiClient.get(`/api/stories/${storyId}/start-settings/${settingId}/media`).then((r) => r.data),
+
+    // Story characters
+    listCharacters: (storyId: string) =>
+      apiClient.get(`/api/stories/${storyId}/characters`).then((r) => r.data),
+
+    addCharacter: (storyId: string, data: { characterId: string; role?: string }) =>
+      apiClient.post(`/api/stories/${storyId}/characters`, data).then((r) => r.data),
+
+    removeCharacter: (storyId: string, characterId: string) =>
+      apiClient.delete(`/api/stories/${storyId}/characters/${characterId}`).then((r) => r.data),
+
+    // Status change
+    updateStatus: (id: string, status: 'ONGOING' | 'COMPLETED' | 'HIATUS') =>
+      apiClient.patch(`/api/stories/${id}/status`, { status }).then((r) => r.data),
+
+    // Delete conversation
+    deleteConversation: (conversationId: string) =>
+      apiClient.delete(`/api/stories/conversations/${conversationId}`).then((r) => r.data),
+
+    // Publish
+    updatePublishSettings: (id: string, data: { category?: string; visibility?: string; ageRating?: string; chatModel?: string; tags?: string[] }) =>
+      apiClient.patch(`/api/stories/${id}/publish-settings`, data).then((r) => r.data),
+
+    publish: (id: string) =>
+      apiClient.post(`/api/stories/${id}/publish`).then((r) => r.data),
   },
 
   characters: {

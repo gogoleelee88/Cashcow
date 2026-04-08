@@ -1,12 +1,54 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, HelpCircle, Clock, History, X, Upload, Trash2, Wand2, ChevronUp, ChevronDown, AlertCircle, Megaphone, Plus, GripVertical, MessageSquare } from 'lucide-react';
+import { ArrowLeft, HelpCircle, Clock, History, X, Upload, Trash2, Wand2, ChevronUp, ChevronDown, AlertCircle, Megaphone, Plus, GripVertical, MessageSquare, ZoomIn, ZoomOut, Check, Loader2 } from 'lucide-react';
+import Cropper from 'react-easy-crop';
 import { cn } from '../../lib/utils';
 import { useAuthStore } from '../../stores/auth.store';
-import { useEffect } from 'react';
+import { useStoryDraftStore, type DraftKeywordNote } from '../../stores/story-draft.store';
+import { api } from '../../lib/api';
+
+// ── 자동저장 훅 ───────────────────────────────────────────────────────────
+function useAutoSave() {
+  const {
+    storyId, setStoryId, setSaveStatus,
+    name, description, systemPrompt,
+  } = useStoryDraftStore();
+
+  // 폼 진입 시 storyId 없으면 draft 생성
+  useEffect(() => {
+    if (storyId) return;
+    api.stories.create({}).then((res) => {
+      setStoryId(res.data.id);
+    }).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 프로필 기본 필드 debounce 자동저장
+  useEffect(() => {
+    if (!storyId || (!name && !description)) return;
+    setSaveStatus('saving');
+    const t = setTimeout(() => {
+      api.stories.update(storyId, { title: name, description })
+        .then(() => setSaveStatus('saved'))
+        .catch(() => setSaveStatus('error'));
+    }, 800);
+    return () => clearTimeout(t);
+  }, [storyId, name, description]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 시스템 프롬프트 debounce 자동저장
+  useEffect(() => {
+    if (!storyId || !systemPrompt) return;
+    setSaveStatus('saving');
+    const t = setTimeout(() => {
+      api.stories.updateSystemPrompt(storyId, systemPrompt)
+        .then(() => setSaveStatus('saved'))
+        .catch(() => setSaveStatus('error'));
+    }, 800);
+    return () => clearTimeout(t);
+  }, [storyId, systemPrompt]); // eslint-disable-line react-hooks/exhaustive-deps
+}
 
 // ─────────────────────────────────────────────
 // TABS
@@ -429,6 +471,138 @@ function AgeVerificationModal({ onClose, onVerified }: { onClose: () => void; on
 // ─────────────────────────────────────────────
 // IMAGE UPLOAD AREA
 // ─────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// IMAGE CROP UTILS
+// ─────────────────────────────────────────────
+interface CropArea { x: number; y: number; width: number; height: number }
+
+async function getCroppedImg(imageSrc: string, pixelCrop: CropArea): Promise<string> {
+  const image = new Image();
+  image.src = imageSrc;
+  await new Promise<void>((resolve) => { image.onload = () => resolve(); });
+
+  const canvas = document.createElement('canvas');
+  canvas.width = pixelCrop.width;
+  canvas.height = pixelCrop.height;
+  const ctx = canvas.getContext('2d')!;
+  ctx.drawImage(image, pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height, 0, 0, pixelCrop.width, pixelCrop.height);
+
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(URL.createObjectURL(blob!)), 'image/jpeg', 0.95);
+  });
+}
+
+// ─────────────────────────────────────────────
+// IMAGE CROP MODAL
+// ─────────────────────────────────────────────
+function ImageCropModal({
+  imageSrc,
+  aspect,
+  onConfirm,
+  onCancel,
+}: {
+  imageSrc: string;
+  aspect: number;
+  onConfirm: (croppedUrl: string) => void;
+  onCancel: () => void;
+}) {
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<CropArea | null>(null);
+  const [applying, setApplying] = useState(false);
+
+  const onCropComplete = useCallback((_: unknown, areaPixels: CropArea) => {
+    setCroppedAreaPixels(areaPixels);
+  }, []);
+
+  const handleConfirm = async () => {
+    if (!croppedAreaPixels) return;
+    setApplying(true);
+    const url = await getCroppedImg(imageSrc, croppedAreaPixels);
+    onConfirm(url);
+  };
+
+  const label = aspect === 1 ? '1:1 정방형' : '2:3 세로형';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+      <div className="bg-white rounded-2xl shadow-2xl w-[480px] mx-4 overflow-hidden flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
+          <div>
+            <h3 className="text-gray-900 font-bold text-sm">이미지 영역 설정</h3>
+            <p className="text-gray-400 text-xs mt-0.5">드래그하거나 핀치로 원하는 영역을 선택하세요 ({label})</p>
+          </div>
+          <button type="button" onClick={onCancel} className="text-gray-400 hover:text-gray-600 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Cropper area */}
+        <div className="relative flex-1 bg-gray-900" style={{ minHeight: 320 }}>
+          <Cropper
+            image={imageSrc}
+            crop={crop}
+            zoom={zoom}
+            aspect={aspect}
+            onCropChange={setCrop}
+            onZoomChange={setZoom}
+            onCropComplete={onCropComplete}
+            style={{
+              containerStyle: { borderRadius: 0 },
+              cropAreaStyle: { border: '2px solid #E63325' },
+            }}
+          />
+        </div>
+
+        {/* Zoom slider */}
+        <div className="flex-shrink-0 px-5 py-3 border-t border-gray-100 bg-gray-50">
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={() => setZoom(z => Math.max(1, z - 0.1))} className="text-gray-500 hover:text-gray-700 transition-colors">
+              <ZoomOut className="w-4 h-4" />
+            </button>
+            <input
+              type="range"
+              min={1}
+              max={3}
+              step={0.01}
+              value={zoom}
+              onChange={(e) => setZoom(Number(e.target.value))}
+              className="flex-1 accent-brand"
+            />
+            <button type="button" onClick={() => setZoom(z => Math.min(3, z + 0.1))} className="text-gray-500 hover:text-gray-700 transition-colors">
+              <ZoomIn className="w-4 h-4" />
+            </button>
+            <span className="text-gray-400 text-xs w-10 text-right">{Math.round(zoom * 100)}%</span>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex-shrink-0 flex gap-2 px-5 py-4 border-t border-gray-100">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors"
+          >
+            취소
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={applying}
+            className="flex-1 py-2.5 rounded-xl bg-gray-900 text-white text-sm font-bold hover:bg-gray-800 transition-colors disabled:opacity-50"
+          >
+            {applying ? '적용 중...' : '적용'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// IMAGE UPLOAD AREA
+// ─────────────────────────────────────────────
 function ImageUploadArea({
   label,
   required,
@@ -445,85 +619,124 @@ function ImageUploadArea({
   onPreviewChange?: (url: string | null) => void;
 }) {
   const [preview, setPreview] = useState<string | null>(null);
+  const [rawImageSrc, setRawImageSrc] = useState<string | null>(null);
+  const [showCropper, setShowCropper] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const aspect = ratio === '1:1' ? 1 : 2 / 3;
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const url = URL.createObjectURL(file);
-    setPreview(url);
-    onPreviewChange?.(url);
+    setRawImageSrc(url);
+    setShowCropper(true);
+    // reset input so same file can be re-selected
+    e.target.value = '';
+  };
+
+  const handleCropConfirm = (croppedUrl: string) => {
+    setPreview(croppedUrl);
+    onPreviewChange?.(croppedUrl);
+    setShowCropper(false);
+  };
+
+  const handleCropCancel = () => {
+    setShowCropper(false);
+    setRawImageSrc(null);
   };
 
   const handleDelete = () => {
     setPreview(null);
-    if (inputRef.current) inputRef.current.value = '';
+    setRawImageSrc(null);
     onPreviewChange?.(null);
   };
 
   return (
-    <div className="mb-8">
-      <div className="flex items-center gap-1 mb-2">
-        <span className="text-gray-900 font-semibold text-sm">{label}</span>
-        {required && <span className="text-brand text-sm font-bold">*</span>}
-      </div>
+    <>
+      {showCropper && rawImageSrc && (
+        <ImageCropModal
+          imageSrc={rawImageSrc}
+          aspect={aspect}
+          onConfirm={handleCropConfirm}
+          onCancel={handleCropCancel}
+        />
+      )}
 
-      <div className="flex items-start gap-4">
-        {/* Preview box */}
-        <div
-          className={cn(
-            'flex-shrink-0 rounded-xl overflow-hidden border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center cursor-pointer hover:border-gray-300 transition-colors',
-            ratio === '1:1' ? 'w-20 h-20' : 'w-20 h-[calc(20px*4/3)] min-h-[107px]'
-          )}
-          onClick={() => inputRef.current?.click()}
-        >
-          {preview ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={preview} alt="preview" className="w-full h-full object-cover" />
-          ) : (
-            <div className="flex flex-col items-center gap-1 text-gray-300">
-              {/* Mountain/image placeholder icon */}
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </div>
-          )}
-          <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+      <div className="mb-8">
+        <div className="flex items-center gap-1 mb-2">
+          <span className="text-gray-900 font-semibold text-sm">{label}</span>
+          {required && <span className="text-brand text-sm font-bold">*</span>}
         </div>
 
-        {/* Info + buttons */}
-        <div className="flex-1">
-          <p className="text-gray-500 text-xs leading-relaxed mb-3">{hint}<br />부적절한 이미지는 업로드가 제한됩니다.<br />{size}</p>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => inputRef.current?.click()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
-            >
-              <Upload className="w-3.5 h-3.5" />
-              업로드
-            </button>
-            {preview && (
+        <div className="flex items-start gap-4">
+          {/* Preview box */}
+          <div
+            className={cn(
+              'flex-shrink-0 rounded-xl overflow-hidden border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center cursor-pointer hover:border-gray-300 transition-colors',
+              ratio === '1:1' ? 'w-20 h-20' : 'w-20 h-[calc(20px*4/3)] min-h-[107px]'
+            )}
+            onClick={() => inputRef.current?.click()}
+          >
+            {preview ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={preview} alt="preview" className="w-full h-full object-cover" />
+            ) : (
+              <div className="flex flex-col items-center gap-1 text-gray-300">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+            )}
+            <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+          </div>
+
+          {/* Info + buttons */}
+          <div className="flex-1">
+            <p className="text-gray-500 text-xs leading-relaxed mb-3">{hint}<br />부적절한 이미지는 업로드가 제한됩니다.<br />{size}</p>
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={handleDelete}
+                onClick={() => inputRef.current?.click()}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
               >
-                <Trash2 className="w-3.5 h-3.5" />
-                삭제
+                <Upload className="w-3.5 h-3.5" />
+                업로드
               </button>
-            )}
-            <button
-              type="button"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
-            >
-              <Wand2 className="w-3.5 h-3.5" />
-              생성
-            </button>
+              {preview && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => { if (rawImageSrc) setShowCropper(true); else inputRef.current?.click(); }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/>
+                    </svg>
+                    재조정
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    삭제
+                  </button>
+                </>
+              )}
+              <button
+                type="button"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
+              >
+                <Wand2 className="w-3.5 h-3.5" />
+                생성
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -825,11 +1038,19 @@ interface StartSetting {
   suggestedReplies: string[];
 }
 
-function StartSettingsTab({ storyName, systemPrompt, onPlayGuideChange }: { storyName: string; systemPrompt: string; onPlayGuideChange?: (v: string) => void }) {
-  const [settings, setSettings] = useState<StartSetting[]>([
-    { id: '1', name: '기본 설정', prologue: '', situation: '', playGuide: '', suggestedReplies: [] },
-  ]);
-  const [activeSettingId, setActiveSettingId] = useState('1');
+function StartSettingsTab({ storyName, systemPrompt, initialSettings, initialActiveId, onSettingsChange, onPlayGuideChange, onPrologueChange, onSuggestedRepliesChange }: {
+  storyName: string; systemPrompt: string;
+  initialSettings?: StartSetting[];
+  initialActiveId?: string;
+  onSettingsChange?: (settings: StartSetting[], activeId: string) => void;
+  onPlayGuideChange?: (v: string) => void;
+  onPrologueChange?: (v: string) => void;
+  onSuggestedRepliesChange?: (v: string[]) => void;
+}) {
+  const [settings, setSettings] = useState<StartSetting[]>(
+    initialSettings ?? [{ id: '1', name: '기본 설정', prologue: '', situation: '', playGuide: '', suggestedReplies: [] }]
+  );
+  const [activeSettingId, setActiveSettingId] = useState(initialActiveId ?? '1');
   const [advancedOpen, setAdvancedOpen] = useState(true);
   const [showInfoCard, setShowInfoCard] = useState(true);
   const [generatingPrologue, setGeneratingPrologue] = useState(false);
@@ -840,19 +1061,26 @@ function StartSettingsTab({ storyName, systemPrompt, onPlayGuideChange }: { stor
   const activeSetting = settings.find(s => s.id === activeSettingId) ?? settings[0];
 
   const update = (field: keyof StartSetting, value: string | string[]) => {
-    setSettings(prev => prev.map(s => s.id === activeSettingId ? { ...s, [field]: value } : s));
+    setSettings(prev => {
+      const next = prev.map(s => s.id === activeSettingId ? { ...s, [field]: value } : s);
+      onSettingsChange?.(next, activeSettingId);
+      return next;
+    });
     if (field === 'playGuide' && typeof value === 'string') onPlayGuideChange?.(value);
+    if (field === 'prologue' && typeof value === 'string') onPrologueChange?.(value);
+    if (field === 'suggestedReplies' && Array.isArray(value)) onSuggestedRepliesChange?.(value);
   };
 
   const addSetting = () => {
     const newId = String(Date.now());
-    const extraCount = settings.length; // 추가 설정 번호
-    setSettings(prev => [...prev, {
-      id: newId, name: `추가 설정 ${extraCount}`,
-      prologue: '', situation: '', playGuide: '', suggestedReplies: [],
-    }]);
+    const extraCount = settings.length;
+    setSettings(prev => {
+      const next = [...prev, { id: newId, name: `추가 설정 ${extraCount}`, prologue: '', situation: '', playGuide: '', suggestedReplies: [] }];
+      onSettingsChange?.(next, newId);
+      return next;
+    });
     setActiveSettingId(newId);
-    setShowInfoCard(true); // 새 설정 선택 시 인포카드 표시
+    setShowInfoCard(true);
   };
 
   const handleGeneratePrologue = async () => {
@@ -1506,33 +1734,76 @@ interface MediaImage {
   settingId: string;
   url: string;
   name: string;
+  situation: string;
+  settingIds: string[];
+  hint: string;
+  collapsed: boolean;
 }
 
+// ── 크래커 결제 패키지 ──────────────────────────────────────────────────────
+const CRACKER_PACKAGES = [
+  { id: 'p1', amount: 2000,  bonus: 0,     price: 2000,  recommended: false },
+  { id: 'p2', amount: 4900,  bonus: 100,   price: 4900,  recommended: false },
+  { id: 'p3', amount: 9600,  bonus: 400,   price: 9600,  recommended: false },
+  { id: 'p4', amount: 28000, bonus: 2000,  price: 28000, recommended: true  },
+  { id: 'p5', amount: 46000, bonus: 4000,  price: 46000, recommended: false },
+  { id: 'p6', amount: 90000, bonus: 10000, price: 90000, recommended: false },
+];
+const PAYMENT_METHODS = [
+  { id: 'toss',    label: 'tosspay',    badge: '[혜택] 생애 첫 결제 1만 포인트 적립!' },
+  { id: 'card',    label: '신용/체크카드',   badge: null },
+  { id: 'account', label: '계좌 이체',      badge: null },
+  { id: 'phone',   label: '휴대폰 결제',    badge: null },
+  { id: 'culture', label: '문화상품권',     badge: null },
+];
+const IMAGE_STYLES = ['청초','순정','키치','로판','모에','액션','모던','와일드'];
+const IMAGE_RATIOS = ['2:3','1:1','4:3','3:4','16:9'];
+const IMAGE_GEN_COST = 190; // credits per generation
+
 function MediaTab({ startSettings }: { startSettings: { id: string; name: string }[] }) {
+  const router = useRouter();
   const [images, setImages] = useState<MediaImage[]>([]);
   const [activeFilter, setActiveFilter] = useState<string>('all');
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const replaceIdRef = useRef<string | null>(null);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    setImages(prev => [...prev, {
-      id: String(Date.now()),
-      settingId: activeFilter === 'all' ? (startSettings[0]?.id ?? '1') : activeFilter,
-      url,
-      name: file.name,
-    }]);
+  const addImage = (url: string, name: string) => {
+    const settingId = activeFilter === 'all' ? (startSettings[0]?.id ?? '1') : activeFilter;
+    if (replaceIdRef.current) {
+      setImages(prev => prev.map(img => img.id === replaceIdRef.current
+        ? { ...img, url, name } : img));
+      replaceIdRef.current = null;
+    } else {
+      setImages(prev => [...prev, {
+        id: String(Date.now()), settingId, url, name,
+        situation: '', settingIds: [settingId], hint: '', collapsed: false,
+      }]);
+    }
     setUploadModalOpen(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    addImage(URL.createObjectURL(file), file.name);
+  };
+
+  const updateImage = (id: string, field: keyof MediaImage, value: unknown) =>
+    setImages(prev => prev.map(img => img.id === id ? { ...img, [field]: value } : img));
+
   const filteredImages = activeFilter === 'all'
     ? images
-    : images.filter(img => img.settingId === activeFilter);
+    : images.filter(img => img.settingIds.includes(activeFilter));
 
-  const countFor = (id: string) => images.filter(img => img.settingId === id).length;
+  const countFor = (id: string) => images.filter(img => img.settingIds.includes(id)).length;
+
+  const imgCodeTag = (imgName: string) => `{{img::${imgName.replace(/\.[^.]+$/, '')}}}`;
+
+  const handleGenerate = () => {
+    router.push('/images');
+  };
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
@@ -1549,111 +1820,178 @@ function MediaTab({ startSettings }: { startSettings: { id: string; name: string
             상황에 어울리는 인물, 배경 등의 이미지를 등록해 보세요 (시작 설정별로 최대 50개)
           </p>
         </div>
-        <button className="flex-shrink-0 px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors">
+        <button
+          onClick={handleGenerate}
+          className="flex-shrink-0 px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors"
+        >
           이미지 생성
         </button>
       </div>
 
       {/* Filter pills */}
       <div className="flex items-center gap-2 mt-4 mb-5 flex-wrap">
-        <button
-          onClick={() => setActiveFilter('all')}
-          className={cn(
-            'px-3 py-1.5 rounded-full text-sm font-semibold transition-all',
-            activeFilter === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-          )}
-        >
+        <button onClick={() => setActiveFilter('all')}
+          className={cn('px-3 py-1.5 rounded-full text-sm font-semibold transition-all',
+            activeFilter === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')}>
           전체 {images.length}
         </button>
         {startSettings.map(s => (
-          <button
-            key={s.id}
-            onClick={() => setActiveFilter(s.id)}
-            className={cn(
-              'px-3 py-1.5 rounded-full text-sm font-semibold transition-all',
-              activeFilter === s.id ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-            )}
-          >
+          <button key={s.id} onClick={() => setActiveFilter(s.id)}
+            className={cn('px-3 py-1.5 rounded-full text-sm font-semibold transition-all',
+              activeFilter === s.id ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200')}>
             기본 {s.name} {countFor(s.id)}
           </button>
         ))}
       </div>
 
-      {/* Image grid */}
-      {filteredImages.length > 0 && (
-        <div className="grid grid-cols-3 gap-3 mb-4">
-          {filteredImages.map(img => (
-            <div key={img.id} className="relative group rounded-xl overflow-hidden aspect-video bg-gray-100">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
-              <button
-                onClick={() => setImages(prev => prev.filter(i => i.id !== img.id))}
-                className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/50 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          ))}
+      {/* Info banner */}
+      {images.length > 0 && (
+        <div className="mb-4 rounded-xl bg-gray-50 border border-gray-200 p-4 flex items-start gap-3">
+          <div className="flex-shrink-0 w-14 h-20 rounded-lg border border-gray-200 bg-white flex flex-col overflow-hidden text-[9px] p-1.5 leading-tight text-gray-400">
+            <span className="font-semibold text-gray-600 text-[10px]">첫 인사말</span>
+            <span className="mt-0.5 text-brand font-medium break-all">{`{{img::이미지 이름}}`}</span>
+            <span className="mt-0.5">안녕하세요. 반가워요!</span>
+          </div>
+          <div>
+            <p className="text-gray-700 font-semibold text-sm mb-1">상황 이미지를 채팅에 첨부해 보세요</p>
+            <p className="text-gray-400 text-xs leading-relaxed">
+              코드 복사 버튼을 통해 프롤로그와 전개 예시에 넣을 수 있어
+            </p>
+          </div>
         </div>
       )}
 
+      {/* Image cards */}
+      <div className="space-y-3 mb-4">
+        {filteredImages.map((img, i) => (
+          <div key={img.id} className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+            {/* Card header */}
+            <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100">
+              <span className="text-gray-300 cursor-grab text-xs">⋮⋮</span>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={img.url} alt={img.name} className="w-8 h-10 object-cover rounded-md flex-shrink-0" />
+              <span className="flex-1 text-gray-700 font-semibold text-sm">{i + 1}</span>
+              <button
+                onClick={() => { replaceIdRef.current = img.id; setUploadModalOpen(true); }}
+                className="px-2.5 py-1 rounded-lg bg-gray-800 text-white text-xs font-medium hover:bg-gray-700 transition-colors"
+              >이미지 변경</button>
+              <button
+                onClick={() => navigator.clipboard.writeText(imgCodeTag(img.name))}
+                className="px-2.5 py-1 rounded-lg bg-gray-800 text-white text-xs font-medium hover:bg-gray-700 transition-colors"
+              >코드 복사</button>
+              <button onClick={() => setImages(prev => prev.filter(im => im.id !== img.id))}
+                className="ml-1 text-gray-300 hover:text-red-400 transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+              <button onClick={() => updateImage(img.id, 'collapsed', !img.collapsed)}
+                className="text-gray-300 hover:text-gray-600 transition-colors">
+                <ChevronUp className={cn('w-4 h-4 transition-transform', img.collapsed && 'rotate-180')} />
+              </button>
+            </div>
+
+            {/* Card body */}
+            {!img.collapsed && (
+              <div className="px-4 py-3 space-y-3">
+                {/* 상황 */}
+                <div>
+                  <div className="flex items-center gap-1 mb-1">
+                    <span className="text-gray-700 font-semibold text-sm">상황</span>
+                    <span className="text-brand font-bold text-sm">*</span>
+                  </div>
+                  <p className="text-gray-400 text-xs mb-1.5">작성하신 상황이 되면 AI가 자동으로 이미지를 띄워드려요</p>
+                  <div className="relative">
+                    <textarea
+                      value={img.situation}
+                      onChange={e => updateImage(img.id, 'situation', e.target.value.slice(0, 50))}
+                      placeholder="예) 고양이 미뉴가 놀라는 상황"
+                      rows={2}
+                      className="w-full px-3 py-2 rounded-xl border border-gray-200 text-gray-900 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
+                    />
+                    <span className="absolute right-3 bottom-2 text-gray-300 text-xs">{img.situation.length} / 50</span>
+                  </div>
+                </div>
+
+                {/* 이미지 적용 대상 */}
+                <div>
+                  <div className="flex items-center gap-1 mb-1">
+                    <span className="text-gray-700 font-semibold text-sm">이미지 적용 대상</span>
+                    <span className="text-brand font-bold text-sm">*</span>
+                  </div>
+                  <p className="text-gray-400 text-xs mb-1.5">전체 또는 개별 적용이 가능합니다</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {startSettings.map(s => {
+                      const selected = img.settingIds.includes(s.id);
+                      return (
+                        <button key={s.id}
+                          onClick={() => updateImage(img.id, 'settingIds',
+                            selected
+                              ? img.settingIds.filter(id => id !== s.id)
+                              : [...img.settingIds, s.id]
+                          )}
+                          className={cn('px-3 py-1 rounded-full text-xs font-medium border transition-colors',
+                            selected ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'
+                          )}>
+                          {s.name} {selected && <span className="ml-1">×</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 이미지 힌트 */}
+                <div>
+                  <span className="text-gray-700 font-semibold text-sm">이미지 힌트</span>
+                  <p className="text-gray-400 text-xs mb-1.5 mt-0.5">유저에게 보여질 이미지 해금 힌트를 작성해주세요</p>
+                  <div className="relative">
+                    <input
+                      value={img.hint}
+                      onChange={e => updateImage(img.id, 'hint', e.target.value.slice(0, 20))}
+                      placeholder="예) 뭐... 뭐냥?!"
+                      className="w-full px-3 py-2 rounded-xl border border-gray-200 text-gray-900 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 text-xs">{img.hint.length} / 20</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
       {/* Add button */}
-      <button
-        onClick={() => setUploadModalOpen(true)}
-        className="w-full flex items-center justify-center gap-1.5 py-3 rounded-xl border border-dashed border-gray-300 text-gray-400 text-sm hover:bg-gray-50 hover:text-gray-600 transition-colors"
-      >
-        <Plus className="w-4 h-4" />
-        상황 이미지 추가
+      <button onClick={() => { replaceIdRef.current = null; setUploadModalOpen(true); }}
+        className="w-full flex items-center justify-center gap-1.5 py-3 rounded-xl border border-dashed border-gray-300 text-gray-400 text-sm hover:bg-gray-50 hover:text-gray-600 transition-colors">
+        <Plus className="w-4 h-4" />상황 이미지 추가
       </button>
 
       {/* Upload modal */}
       <AnimatePresence>
         {uploadModalOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
-            onClick={(e) => { if (e.target === e.currentTarget) setUploadModalOpen(false); }}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 8 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 8 }}
-              transition={{ duration: 0.15 }}
-              className="bg-white rounded-2xl shadow-xl w-[480px] p-6"
-            >
+            onClick={(e) => { if (e.target === e.currentTarget) setUploadModalOpen(false); }}>
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }} transition={{ duration: 0.15 }}
+              className="bg-white rounded-2xl shadow-xl w-[480px] p-6">
               <div className="flex items-center justify-between mb-5">
                 <h3 className="text-gray-900 font-bold text-base">이미지 업로드</h3>
-                <button
-                  onClick={() => setUploadModalOpen(false)}
-                  className="w-7 h-7 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-400 transition-colors"
-                >
+                <button onClick={() => setUploadModalOpen(false)}
+                  className="w-7 h-7 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-400 transition-colors">
                   <X className="w-4 h-4" />
                 </button>
               </div>
-
               <div className="grid grid-cols-2 gap-3 mb-4">
-                {/* 기기에서 가져오기 */}
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex flex-col items-start gap-2 p-4 rounded-xl border border-gray-200 hover:border-blue-300 hover:bg-blue-50/50 transition-all text-left"
-                >
+                <button onClick={() => fileInputRef.current?.click()}
+                  className="flex flex-col items-start gap-2 p-4 rounded-xl border border-gray-200 hover:border-blue-300 hover:bg-blue-50/50 transition-all text-left">
                   <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
                     <Upload className="w-4 h-4 text-blue-500" />
                   </div>
                   <div>
                     <p className="text-gray-900 font-semibold text-sm mb-1">기기에서 가져오기</p>
-                    <p className="text-gray-400 text-xs leading-relaxed">
-                      내 기기에 있는 이미지를 선택해요,<br />최대 5MB까지 업로드할 수 있어요.
-                    </p>
+                    <p className="text-gray-400 text-xs leading-relaxed">내 기기에 있는 이미지를 선택해요,<br />최대 5MB까지 업로드할 수 있어요.</p>
                   </div>
                 </button>
-
-                {/* 라이브러리에서 가져오기 */}
-                <button
-                  className="flex flex-col items-start gap-2 p-4 rounded-xl border border-gray-200 hover:border-amber-300 hover:bg-amber-50/50 transition-all text-left"
-                >
+                <button className="flex flex-col items-start gap-2 p-4 rounded-xl border border-gray-200 hover:border-amber-300 hover:bg-amber-50/50 transition-all text-left">
                   <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
                     <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
@@ -1661,17 +1999,12 @@ function MediaTab({ startSettings }: { startSettings: { id: string; name: string
                   </div>
                   <div>
                     <p className="text-gray-900 font-semibold text-sm mb-1">라이브러리에서 가져오기</p>
-                    <p className="text-gray-400 text-xs leading-relaxed">
-                      내 라이브러리에 저장된<br />생성 이미지를 업로드할 수 있어요.
-                    </p>
+                    <p className="text-gray-400 text-xs leading-relaxed">내 라이브러리에 저장된<br />생성 이미지를 업로드할 수 있어요.</p>
                   </div>
                 </button>
               </div>
-
-              <button
-                onClick={() => setUploadModalOpen(false)}
-                className="w-full py-3 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors"
-              >
+              <button onClick={() => setUploadModalOpen(false)}
+                className="w-full py-3 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors">
                 취소
               </button>
               <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
@@ -1679,33 +2012,291 @@ function MediaTab({ startSettings }: { startSettings: { id: string; name: string
           </motion.div>
         )}
       </AnimatePresence>
+
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// IMAGE GENERATION MODAL
+// ─────────────────────────────────────────────
+const IMAGE_STYLE_THUMBNAILS: Record<string, string> = {
+  '청초': 'https://placehold.co/80x80/E8F4F8/334155?text=청초',
+  '순정': 'https://placehold.co/80x80/FEF0F8/7C3AED?text=순정',
+  '키치': 'https://placehold.co/80x80/FFF7ED/EA580C?text=키치',
+  '로판': 'https://placehold.co/80x80/F0F4FF/1E40AF?text=로판',
+  '모에': 'https://placehold.co/80x80/FFF0F0/DC2626?text=모에',
+  '액션': 'https://placehold.co/80x80/1E293B/F8FAFC?text=액션',
+  '모던': 'https://placehold.co/80x80/F1F5F9/475569?text=모던',
+  '와일드': 'https://placehold.co/80x80/FEF9C3/78350F?text=와일드',
+};
+
+function ImageGenerationModal({ credits, onClose, onInsufficientCredits }: {
+  credits: number;
+  onClose: () => void;
+  onInsufficientCredits: () => void;
+}) {
+  const [prompt, setPrompt] = useState('');
+  const [selectedStyle, setSelectedStyle] = useState('청초');
+  const [ratio, setRatio] = useState('2:3');
+  const [count, setCount] = useState(2);
+  const [generating, setGenerating] = useState(false);
+
+  const cost = count * IMAGE_GEN_COST;
+
+  const handleGenerate = async () => {
+    if (credits < cost) { onInsufficientCredits(); return; }
+    setGenerating(true);
+    // 실제 생성 API 연동 자리 (현재 mock)
+    await new Promise(r => setTimeout(r, 1500));
+    setGenerating(false);
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <motion.div initial={{ opacity: 0, scale: 0.96, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 12 }} transition={{ duration: 0.2 }}
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div className="flex gap-4 text-sm font-semibold">
+            {['라이브러리','좋아요','신규 생성','이미지 변형'].map(tab => (
+              <button key={tab} className={cn('pb-0.5 transition-colors',
+                tab === '신규 생성' ? 'text-gray-900 border-b-2 border-gray-900' : 'text-gray-400 hover:text-gray-600')}>
+                {tab}
+              </button>
+            ))}
+          </div>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-400">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+          {/* Left: Prompt + Styles */}
+          <div className="flex-1 min-w-0 overflow-y-auto p-5 border-r border-gray-100">
+            {/* Prompt */}
+            <div className="relative mb-4">
+              <textarea
+                value={prompt}
+                onChange={e => setPrompt(e.target.value.slice(0, 1000))}
+                placeholder="만들고 싶은 이미지를 차례대로 설명해 보세요&#10;(성별, 포즈, 얼굴, 표정, 자세, 구도, 의상, 배경, 그 외)"
+                rows={4}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-900 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
+              />
+              <div className="flex items-center justify-between mt-1.5">
+                <span className="text-gray-300 text-xs">{prompt.length}/1000</span>
+                <button
+                  onClick={handleGenerate}
+                  disabled={generating}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors disabled:opacity-60"
+                >
+                  <span>🔑</span>
+                  {generating ? '생성 중...' : `이미지 생성 ${cost}`}
+                </button>
+              </div>
+            </div>
+
+            {/* Style selection */}
+            <div>
+              <div className="flex items-center gap-1.5 mb-3">
+                <span className="text-[10px] font-bold text-brand">✦</span>
+                <span className="text-gray-900 font-bold text-sm">이미지 스타일</span>
+              </div>
+              <p className="text-gray-400 text-xs mb-3">원하는 느낌의 스타일을 선택하세요</p>
+              <div className="grid grid-cols-4 gap-2">
+                {IMAGE_STYLES.map(style => (
+                  <button key={style} onClick={() => setSelectedStyle(style)}
+                    className={cn('relative rounded-xl overflow-hidden aspect-square border-2 transition-all',
+                      selectedStyle === style ? 'border-brand' : 'border-transparent')}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={IMAGE_STYLE_THUMBNAILS[style]} alt={style}
+                      className="w-full h-full object-cover" />
+                    {selectedStyle === style && (
+                      <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-brand flex items-center justify-center">
+                        <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                          <path d="M1 4l2.5 2.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </div>
+                    )}
+                    <div className="absolute bottom-0 left-0 right-0 py-1 bg-black/40 text-white text-xs text-center font-medium">
+                      {style}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Ratio + Count */}
+          <div className="w-44 flex-shrink-0 p-4 flex flex-col gap-5 overflow-y-auto">
+            {/* 이미지 비율 */}
+            <div>
+              <p className="text-gray-700 font-semibold text-sm mb-2">이미지 비율<span className="text-brand font-bold">*</span></p>
+              <div className="flex flex-col gap-1.5">
+                {IMAGE_RATIOS.map(r => (
+                  <button key={r} onClick={() => setRatio(r)}
+                    className={cn('w-full py-2 rounded-xl border text-sm font-medium transition-all',
+                      ratio === r ? 'border-brand text-brand bg-brand/5' : 'border-gray-200 text-gray-500 hover:border-gray-400')}>
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 이미지 개수 */}
+            <div>
+              <p className="text-gray-700 font-semibold text-sm mb-1">이미지 개수<span className="text-brand font-bold">*</span></p>
+              <p className="text-gray-400 text-xs mb-2">이미지 개수 설정에 맞게 크래커가 소비돼요</p>
+              <div className="grid grid-cols-2 gap-1.5">
+                {[1,2,3,4].map(n => (
+                  <button key={n} onClick={() => setCount(n)}
+                    className={cn('py-2 rounded-xl border text-sm font-medium transition-all',
+                      count === n ? 'border-brand text-brand bg-brand/5' : 'border-gray-200 text-gray-500 hover:border-gray-400')}>
+                    {n}개
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 현재 크래커 */}
+            <div className="rounded-xl bg-gray-50 border border-gray-200 p-3">
+              <p className="text-xs text-gray-400 mb-0.5">보유 크래커</p>
+              <p className="text-sm font-bold text-gray-800">{credits.toLocaleString()}개</p>
+              <p className="text-xs text-brand mt-1">필요: {cost.toLocaleString()}개</p>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// CRACKER PAYMENT MODAL
+// ─────────────────────────────────────────────
+function CrackerPaymentModal({ onClose }: { onClose: () => void }) {
+  const [selectedPkg, setSelectedPkg] = useState('p4');
+  const [selectedMethod, setSelectedMethod] = useState('toss');
+
+  const pkg = CRACKER_PACKAGES.find(p => p.id === selectedPkg)!;
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <motion.div initial={{ opacity: 0, scale: 0.96, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 12 }} transition={{ duration: 0.2 }}
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
+          <h3 className="text-gray-900 font-bold text-base">크래커 충전하기</h3>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-400">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="px-5 py-4">
+          {/* Banner */}
+          <button className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 mb-5 hover:bg-amber-100 transition-colors">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">🎫</span>
+              <span className="text-amber-700 font-semibold text-sm">더 많은 크래커 혜택, 자동 구매 바로가기!</span>
+            </div>
+            <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+
+          {/* 상품구성 */}
+          <p className="text-gray-900 font-bold text-sm mb-3">상품구성</p>
+          <div className="space-y-2 mb-5">
+            {CRACKER_PACKAGES.map(p => (
+              <button key={p.id} onClick={() => setSelectedPkg(p.id)}
+                className={cn('w-full flex items-center justify-between px-4 py-3.5 rounded-xl border transition-all',
+                  selectedPkg === p.id ? 'border-brand bg-brand/5' : 'border-gray-200 hover:border-gray-300')}>
+                <div className="flex items-center gap-3">
+                  <div className={cn('w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0',
+                    selectedPkg === p.id ? 'border-brand' : 'border-gray-300')}>
+                    {selectedPkg === p.id && <div className="w-2 h-2 rounded-full bg-brand" />}
+                  </div>
+                  <span className="text-lg">🎫</span>
+                  <div className="text-left">
+                    <div className="flex items-center gap-2">
+                      {p.recommended && (
+                        <span className="px-1.5 py-0.5 rounded-md bg-brand text-white text-[10px] font-bold">추천</span>
+                      )}
+                      <span className="text-gray-800 font-semibold text-sm">{p.amount.toLocaleString()}개</span>
+                      {p.bonus > 0 && (
+                        <span className="text-brand text-xs font-medium">+{p.bonus.toLocaleString()}개</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <span className="text-brand font-bold text-sm">{p.price.toLocaleString()}원</span>
+              </button>
+            ))}
+          </div>
+
+          {/* 결제수단 */}
+          <p className="text-gray-900 font-bold text-sm mb-3">결제수단</p>
+          <div className="space-y-1 mb-5">
+            {PAYMENT_METHODS.map(m => (
+              <button key={m.id} onClick={() => setSelectedMethod(m.id)}
+                className={cn('w-full flex items-center gap-3 px-4 py-3 rounded-xl border transition-all',
+                  selectedMethod === m.id ? 'border-brand bg-brand/5' : 'border-transparent hover:bg-gray-50')}>
+                <div className={cn('w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0',
+                  selectedMethod === m.id ? 'border-brand' : 'border-gray-300')}>
+                  {selectedMethod === m.id && <div className="w-2 h-2 rounded-full bg-brand" />}
+                </div>
+                <div className="text-left">
+                  <p className="text-gray-700 font-medium text-sm">{m.label}</p>
+                  {m.badge && <p className="text-brand text-xs mt-0.5">{m.badge}</p>}
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {/* 환불정책 */}
+          <div className="mb-5 text-xs text-gray-400 leading-relaxed space-y-1">
+            <p className="font-semibold text-gray-500 mb-1.5">완불 정책 및 크래커 이용 안내</p>
+            {[
+              '모든 결제 상품은 결제일로부터 7일 이내 완불을 요청할 수 있습니다.',
+              '7일 이내라도 구매한 크래커 목록을 사용한 이력이 있다면 완불이 불가합니다.',
+              '사용 이력이 있을 경우, 남은 크래커에 대한 완불은 불가합니다.',
+              '주관적인 AI 생성의 불만족으로 인한 완불은 불가합니다.',
+              '무료로 구매한 크래커의 유효기간은 취득 시점으로부터 5년입니다.',
+            ].map((text, i) => <p key={i}>• {text}</p>)}
+          </div>
+
+          {/* 결제 버튼 */}
+          <button
+            onClick={onClose}
+            className="w-full py-4 rounded-2xl bg-brand text-white font-bold text-base hover:brightness-110 transition-all"
+          >
+            결제하기
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
   );
 }
 
 // ─────────────────────────────────────────────
 // KEYWORD BOOK TAB  (키워드북)
 // ─────────────────────────────────────────────
-interface KeywordNote {
-  id: string;
-  settingId: string;
-  title: string;
-  keywords: string;
-  content: string;
-  expanded: boolean;
-  editing: boolean;
-}
-
 function KeywordsTab({ startSettings }: { startSettings: { id: string; name: string }[] }) {
-  const [notes, setNotes] = useState<KeywordNote[]>([]);
+  const { keywordNotes: notes, setKeywordNotes } = useStoryDraftStore();
   const [activeFilter, setActiveFilter] = useState<string>('all');
 
   const addNote = () => {
     const settingId = activeFilter === 'all' ? (startSettings[0]?.id ?? '1') : activeFilter;
-    setNotes(prev => [...prev, {
+    setKeywordNotes([...notes, {
       id: String(Date.now()),
       settingId,
-      title: `키워드 노트 ${prev.length + 1}`,
+      title: `키워드 노트 ${notes.length + 1}`,
       keywords: '',
       content: '',
       expanded: false,
@@ -1713,12 +2304,12 @@ function KeywordsTab({ startSettings }: { startSettings: { id: string; name: str
     }]);
   };
 
-  const updateNote = (id: string, field: keyof KeywordNote, value: unknown) => {
-    setNotes(prev => prev.map(n => n.id === id ? { ...n, [field]: value } : n));
+  const updateNote = (id: string, field: keyof DraftKeywordNote, value: unknown) => {
+    setKeywordNotes(notes.map(n => n.id === id ? { ...n, [field]: value } : n));
   };
 
   const removeNote = (id: string) => {
-    setNotes(prev => prev.filter(n => n.id !== id));
+    setKeywordNotes(notes.filter(n => n.id !== id));
   };
 
   const filteredNotes = activeFilter === 'all'
@@ -1863,111 +2454,247 @@ function KeywordsTab({ startSettings }: { startSettings: { id: string; name: str
 }
 
 // ─────────────────────────────────────────────
-// ENDING SETTINGS TAB  (엔딩 설정)
+// ENDING SETTINGS TAB
 // ─────────────────────────────────────────────
+type EndingGrade = 'N' | 'R' | 'SR' | 'SSR';
+
+interface EndingRule { id: string; turnStart: number; sortOrder: number }
+
 interface EndingItem {
   id: string;
+  grade: EndingGrade;
   name: string;
-  condition: string;
+  minTurnStart: number;
+  rules: EndingRule[];
+  prompt: string;
   epilogue: string;
   hint: string;
+  imageUrl: string | null;
   collapsed: boolean;
+  generatingEpilogue: boolean;
 }
 
+// 등급별 허용 개수 규칙 (총 엔딩 수에 따라 잠금 해제)
+const GRADE_LIMITS: Record<EndingGrade, { maxCount: number; unlockAt: number }> = {
+  N:   { maxCount: 1, unlockAt: 0 },
+  R:   { maxCount: 1, unlockAt: 0 },
+  SR:  { maxCount: 1, unlockAt: 4 },
+  SSR: { maxCount: 1, unlockAt: 6 },
+};
+
+const TURN_OPTIONS = [10, 15, 20, 25, 30, 40, 50, 60, 70, 80, 90, 100];
+
+const GRADE_COLORS: Record<EndingGrade, string> = {
+  N:   'text-gray-600 border-gray-300 bg-white',
+  R:   'text-blue-600 border-blue-300 bg-blue-50',
+  SR:  'text-purple-600 border-purple-300 bg-purple-50',
+  SSR: 'text-yellow-600 border-yellow-300 bg-yellow-50',
+};
+
 function EndingSettingsTab({
-  onNavigateToStats,
+  startSettings,
+  storyName,
+  stats,
+  onGoToStats,
+  onGradeCountChange,
 }: {
-  onNavigateToStats: () => void;
+  startSettings: { id: string; name: string }[];
+  storyName: string;
+  stats?: { id: string; name: string }[];
+  onGoToStats?: () => void;
+  onGradeCountChange?: (counts: Record<EndingGrade, number>) => void;
 }) {
+  const [activeStartId, setActiveStartId] = useState<string>(startSettings[0]?.id ?? '');
   const [endings, setEndings] = useState<EndingItem[]>([]);
-  const [minTurns, setMinTurns] = useState('30');
+  const [noStatsDialog, setNoStatsDialog] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Sync grade counts to parent whenever endings change
+  useEffect(() => {
+    if (!onGradeCountChange) return;
+    const counts: Record<EndingGrade, number> = { N: 0, R: 0, SR: 0, SSR: 0 };
+    endings.forEach(e => { counts[e.grade]++; });
+    onGradeCountChange(counts);
+  }, [endings, onGradeCountChange]);
 
   const addEnding = () => {
     if (endings.length >= 10) return;
     setEndings(prev => [...prev, {
       id: String(Date.now()),
+      grade: 'N',
       name: '',
-      condition: '',
+      minTurnStart: 10,
+      rules: [],
+      prompt: '',
       epilogue: '',
       hint: '',
+      imageUrl: null,
       collapsed: false,
+      generatingEpilogue: false,
     }]);
   };
 
-  const updateEnding = (id: string, field: keyof EndingItem, value: unknown) => {
+  const update = <K extends keyof EndingItem>(id: string, field: K, value: EndingItem[K]) =>
     setEndings(prev => prev.map(e => e.id === id ? { ...e, [field]: value } : e));
+
+  const remove = (id: string) => setEndings(prev => prev.filter(e => e.id !== id));
+
+  const addRule = (id: string) => {
+    if (!stats || stats.length === 0) { setNoStatsDialog(true); return; }
+    setEndings(prev => prev.map(e => e.id === id ? {
+      ...e,
+      rules: [...e.rules, { id: String(Date.now()), turnStart: 10, sortOrder: e.rules.length }],
+    } : e));
   };
 
-  const removeEnding = (id: string) => {
-    setEndings(prev => prev.filter(e => e.id !== id));
+  const removeRule = (endingId: string, ruleId: string) => {
+    setEndings(prev => prev.map(e => e.id === endingId ? {
+      ...e, rules: e.rules.filter(r => r.id !== ruleId),
+    } : e));
+  };
+
+  const handleGenerateEpilogue = async (ending: EndingItem) => {
+    if (!ending.prompt.trim()) return;
+    update(ending.id, 'generatingEpilogue', true);
+    try {
+      const { api } = await import('../../lib/api');
+      const res = await api.stories.generateEpilogue({
+        storyName, prompt: ending.prompt, endingName: ending.name || '엔딩',
+      });
+      update(ending.id, 'epilogue', (res.epilogue || '').slice(0, 1000));
+    } catch { /* silent */ }
+    finally { update(ending.id, 'generatingEpilogue', false); }
+  };
+
+  // 등급 분포 계산
+  const gradeCount = (g: EndingGrade) => endings.filter(e => e.grade === g).length;
+  const total = endings.length;
+  const gradeStatus = (g: EndingGrade) => {
+    const { maxCount, unlockAt } = GRADE_LIMITS[g];
+    if (total < unlockAt) return { available: false, used: 0, max: 0 };
+    return { available: true, used: gradeCount(g), max: maxCount };
+  };
+
+  const canSelectGrade = (endingId: string, g: EndingGrade) => {
+    const status = gradeStatus(g);
+    if (!status.available) return false;
+    const currentGrade = endings.find(e => e.id === endingId)?.grade;
+    if (currentGrade === g) return true; // 이미 이 등급이면 허용
+    return status.used < status.max;
   };
 
   return (
     <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
       {/* Header */}
       <h2 className="text-gray-900 font-bold text-base mb-1">엔딩 설정</h2>
-      <p className="text-gray-400 text-xs leading-relaxed mb-4">
+      <p className="text-gray-400 text-xs leading-relaxed mb-5">
         각 시작 설정에 따른 엔딩을 설정해보세요. 가장 먼저 조건에 도달한 엔딩 하나만 제공됩니다
         <br />(시작설정 별 최대 10개)
       </p>
 
-      {/* Setting pill */}
-      <div className="flex items-center gap-2 mb-5">
-        <button className="px-3 py-1.5 rounded-full text-sm font-semibold bg-gray-900 text-white">
-          기본 설정 {endings.length}
-        </button>
-      </div>
-
-      {/* 엔딩 제공 시점 */}
-      <div className="mb-5">
-        <div className="flex items-center gap-1 mb-1">
-          <span className="text-gray-900 font-semibold text-sm">엔딩 제공 시점</span>
-          <span className="text-brand font-bold text-sm">*</span>
-        </div>
-        <p className="text-gray-400 text-xs mb-2">해당 시점 이후 AI가 상황을 판단해 엔딩을 보여드려요(최소 10턴 이상)</p>
-        <div className="flex items-center gap-2">
-          <input
-            type="number"
-            value={minTurns}
-            min={10}
-            onChange={e => setMinTurns(e.target.value)}
-            className="w-32 px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm focus:outline-none focus:border-gray-400 text-center"
-          />
-          <span className="text-gray-500 text-sm">턴 이상</span>
-        </div>
+      {/* Start setting pills */}
+      <div className="flex items-center gap-2 mb-6 flex-wrap">
+        {(startSettings.length > 0 ? startSettings : [{ id: '', name: '기본 설정' }]).map((s, i) => (
+          <button
+            key={s.id || 'default'}
+            onClick={() => setActiveStartId(s.id)}
+            className={cn(
+              'px-3 py-1.5 rounded-full text-sm font-semibold transition-colors',
+              activeStartId === s.id || (!activeStartId && i === 0)
+                ? 'bg-gray-900 text-white'
+                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            )}
+          >
+            {s.name} {i === 0 ? endings.length : ''}
+          </button>
+        ))}
       </div>
 
       {/* Ending cards */}
       {endings.map((ending, i) => (
         <div key={ending.id} className="mb-3 rounded-xl border border-gray-200 overflow-hidden bg-white">
           {/* Card header */}
-          <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
+          <div className="flex items-center gap-2 px-4 py-3 bg-white border-b border-gray-100">
             <GripVertical className="w-4 h-4 text-gray-300 cursor-grab flex-shrink-0" />
-            <span className="flex-1 text-gray-900 font-semibold text-sm">엔딩 {i + 1}</span>
-            <button
-              onClick={() => removeEnding(ending.id)}
-              className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-            >
+            <span className="flex-1 text-gray-800 font-semibold text-sm">엔딩 {i + 1}</span>
+            <button onClick={() => remove(ending.id)} className="p-1.5 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors">
               <Trash2 className="w-3.5 h-3.5" />
             </button>
-            <button
-              onClick={() => updateEnding(ending.id, 'collapsed', !ending.collapsed)}
-              className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-            >
+            <button onClick={() => update(ending.id, 'collapsed', !ending.collapsed)} className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors">
               <ChevronUp className={cn('w-3.5 h-3.5 transition-transform', ending.collapsed && 'rotate-180')} />
             </button>
           </div>
 
           <AnimatePresence>
             {!ending.collapsed && (
-              <motion.div
-                initial={{ height: 0 }}
-                animate={{ height: 'auto' }}
-                exit={{ height: 0 }}
-                className="overflow-hidden"
-              >
-                <div className="p-4 space-y-5">
+              <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="overflow-hidden">
+                <div className="p-5 space-y-6">
+
+                  {/* 엔딩 이미지 */}
+                  <div>
+                    <div className="flex items-center gap-1 mb-2">
+                      <span className="text-gray-900 font-semibold text-sm">엔딩 이미지</span>
+                      <span className="text-brand font-bold text-sm">*</span>
+                    </div>
+                    <div className="flex items-start gap-4">
+                      <div className="w-[67px] h-[100px] rounded-xl overflow-hidden border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center flex-shrink-0">
+                        {ending.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={ending.imageUrl} alt="엔딩 이미지" className="w-full h-full object-cover" />
+                        ) : (
+                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-gray-400 text-xs mb-2">이미지를 필수로 등록해주세요.<br />5MB 이하/카드 사이즈 (1,005 x 1,490px)</p>
+                        <div className="flex gap-2">
+                          <button type="button" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors">
+                            <Upload className="w-3 h-3" />업로드
+                          </button>
+                          <button type="button" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors">
+                            <Wand2 className="w-3 h-3" />생성
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 엔딩 등급 */}
+                  <div>
+                    <div className="flex items-center gap-1 mb-2">
+                      <span className="text-gray-900 font-semibold text-sm">엔딩 등급</span>
+                      <span className="text-brand font-bold text-sm">*</span>
+                    </div>
+                    <div className="flex gap-2">
+                      {(['N', 'R', 'SR', 'SSR'] as EndingGrade[]).map(g => {
+                        const ok = canSelectGrade(ending.id, g);
+                        return (
+                          <button
+                            key={g}
+                            type="button"
+                            disabled={!ok}
+                            onClick={() => ok && update(ending.id, 'grade', g)}
+                            className={cn(
+                              'px-4 py-2 rounded-full border text-sm font-bold transition-colors',
+                              ending.grade === g
+                                ? g === 'N' ? 'bg-gray-800 text-white border-gray-800'
+                                  : g === 'R' ? 'bg-blue-500 text-white border-blue-500'
+                                  : g === 'SR' ? 'bg-purple-500 text-white border-purple-500'
+                                  : 'bg-yellow-500 text-white border-yellow-500'
+                                : ok
+                                  ? cn('hover:bg-gray-50', GRADE_COLORS[g])
+                                  : 'text-gray-300 border-gray-200 bg-gray-50 cursor-not-allowed opacity-50'
+                            )}
+                          >
+                            {g}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                   {/* 엔딩 이름 */}
                   <div>
                     <div className="flex items-center gap-1 mb-1.5">
@@ -1978,100 +2705,118 @@ function EndingSettingsTab({
                       <input
                         type="text"
                         value={ending.name}
-                        onChange={e => updateEnding(ending.id, 'name', e.target.value.slice(0, 20))}
+                        onChange={e => update(ending.id, 'name', e.target.value.slice(0, 20))}
                         placeholder="예) 미뉴의 해피엔딩"
                         className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 pr-14"
                       />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 text-xs">
-                        {ending.name.length} / 20
-                      </span>
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 text-xs">{ending.name.length} / 20</span>
                     </div>
                   </div>
 
-                  {/* 엔딩 기본 조건 */}
+                  {/* 엔딩 조건 */}
                   <div>
                     <div className="flex items-center gap-1 mb-1">
-                      <span className="text-gray-900 font-semibold text-sm">엔딩 기본 조건</span>
+                      <span className="text-gray-900 font-semibold text-sm">엔딩 조건</span>
+                      <span className="text-brand font-bold text-sm">*</span>
+                    </div>
+                    <p className="text-gray-400 text-xs mb-3">
+                      턴 수에 도달하고 아래 조건이 충족되면 엔딩이 제공돼요. (최소 10턴 이상, 5턴마다 조건 검사)
+                    </p>
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-gray-600 text-sm flex-shrink-0">엔딩 가능 시점:</span>
+                      <select
+                        value={ending.minTurnStart}
+                        onChange={e => update(ending.id, 'minTurnStart', Number(e.target.value))}
+                        className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 text-sm focus:outline-none focus:border-gray-400 bg-white"
+                      >
+                        {TURN_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                      <span className="text-gray-500 text-sm">턴 부터</span>
+                    </div>
+                    {ending.rules.map(rule => (
+                      <div key={rule.id} className="flex items-center gap-2 mb-2">
+                        <select
+                          value={rule.turnStart}
+                          onChange={e => setEndings(prev => prev.map(en => en.id === ending.id ? {
+                            ...en, rules: en.rules.map(r => r.id === rule.id ? { ...r, turnStart: Number(e.target.value) } : r)
+                          } : en))}
+                          className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 text-sm focus:outline-none bg-white"
+                        >
+                          {TURN_OPTIONS.map(t => <option key={t} value={t}>{t}턴</option>)}
+                        </select>
+                        <button onClick={() => removeRule(ending.id, rule.id)} className="text-gray-300 hover:text-red-400 transition-colors p-1">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      onClick={() => addRule(ending.id)}
+                      className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-dashed border-gray-300 text-gray-400 text-xs hover:bg-gray-50 transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" />규칙 추가
+                    </button>
+                  </div>
+
+                  {/* 프롬프트 */}
+                  <div>
+                    <div className="flex items-center gap-1 mb-1">
+                      <span className="text-gray-900 font-semibold text-sm">프롬프트</span>
                       <span className="text-brand font-bold text-sm">*</span>
                     </div>
                     <p className="text-gray-400 text-xs mb-2">엔딩을 판단하기 위한 상세한 조건을 묘사해 주세요</p>
                     <div className="relative">
                       <textarea
-                        value={ending.condition}
-                        onChange={e => updateEnding(ending.id, 'condition', e.target.value.slice(0, 500))}
-                        placeholder={`예) 미뉴가 가족을 찾는 과정에서 구체적인 단서(냄새, 장소, 목소리 등)를 발견했고 미뉴와 가족이 서로를 확실히 인지하여 미뉴가 안전함·안도감을 느끼고 있음 또는 가족과 이미 재회하여 좋은 시간을 보내고 있음`}
-                        rows={5}
+                        value={ending.prompt}
+                        onChange={e => update(ending.id, 'prompt', e.target.value.slice(0, 500))}
+                        placeholder="예) 미뉴가 가족을 찾는 과정에서 구체적인 단서(냄새, 장소, 목소리 등)를 발견했고 미뉴와 가족이 서로를 확실히 인지하여 미뉴가 안전함·안도감을 느끼고 있음 또는 가족과 이미 재회하여 좋은 시간을 보내고 있음"
+                        rows={4}
                         className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
                       />
-                      <span className="absolute right-3 bottom-3 text-gray-300 text-xs">
-                        {ending.condition.length} / 500
-                      </span>
+                      <span className="absolute right-3 bottom-3 text-gray-300 text-xs">{ending.prompt.length} / 500</span>
                     </div>
                   </div>
 
                   {/* 에필로그 */}
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-1">
-                        <span className="text-gray-900 font-semibold text-sm">에필로그</span>
-                        <span className="text-brand font-bold text-sm">*</span>
-                      </div>
-                      <button className="px-2.5 py-1 rounded-lg border border-brand/40 text-brand text-xs font-semibold hover:bg-brand/5 transition-colors">
-                        자동생성
+                      <span className="text-gray-900 font-semibold text-sm">에필로그</span>
+                      <button
+                        onClick={() => handleGenerateEpilogue(ending)}
+                        disabled={ending.generatingEpilogue || !ending.prompt.trim()}
+                        className="px-2.5 py-1 rounded-lg border border-brand/40 text-brand text-xs font-semibold hover:bg-brand/5 transition-colors disabled:opacity-40"
+                      >
+                        {ending.generatingEpilogue ? '생성 중...' : '자동생성'}
                       </button>
                     </div>
                     <p className="text-gray-400 text-xs mb-2">입력한 내용을 예시로 AI가 에필로그를 상황에 더 맞게 작성해요</p>
                     <div className="relative">
                       <textarea
                         value={ending.epilogue}
-                        onChange={e => updateEnding(ending.id, 'epilogue', e.target.value.slice(0, 1000))}
+                        onChange={e => update(ending.id, 'epilogue', e.target.value.slice(0, 1000))}
                         placeholder="자동 생성 기능을 활용하면 AI가 프롬프트를 참고하여 초안을 작성해 드려요"
                         rows={5}
                         className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
                       />
-                      <span className="absolute right-3 bottom-3 text-gray-300 text-xs">
-                        {ending.epilogue.length} / 1000
-                      </span>
+                      <span className="absolute right-3 bottom-3 text-gray-300 text-xs">{ending.epilogue.length} / 1000</span>
                     </div>
-                  </div>
-
-                  {/* 엔딩 세부 조건 */}
-                  <div>
-                    <div className="flex items-center gap-1 mb-1">
-                      <span className="text-gray-900 font-semibold text-sm">엔딩 세부 조건</span>
-                    </div>
-                    <p className="text-gray-400 text-xs leading-relaxed mb-3">
-                      ※ 1개의 조건만 충족돼도 엔딩이 제공됩니다 (최대 7개)<br />
-                      ※ 턴 수 조건과 관련 없이 해당 조건이 충족되면 엔딩이 노출됩니다
-                    </p>
-                    <button
-                      onClick={onNavigateToStats}
-                      className="flex items-center gap-1 text-gray-700 text-sm font-semibold hover:text-gray-900 transition-colors"
-                    >
-                      스탯 추가하기
-                      <ChevronDown className="w-3.5 h-3.5 -rotate-90" />
-                    </button>
                   </div>
 
                   {/* 엔딩 힌트 */}
                   <div>
-                    <div className="flex items-center gap-1 mb-1">
-                      <span className="text-gray-900 font-semibold text-sm">엔딩 힌트</span>
-                    </div>
+                    <span className="text-gray-900 font-semibold text-sm block mb-1">엔딩 힌트</span>
                     <p className="text-gray-400 text-xs mb-2">유저에게 보여질 엔딩 힌트를 작성해 주세요</p>
                     <div className="relative">
                       <textarea
                         value={ending.hint}
-                        onChange={e => updateEnding(ending.id, 'hint', e.target.value.slice(0, 20))}
+                        onChange={e => update(ending.id, 'hint', e.target.value.slice(0, 20))}
                         placeholder="예) 어디서 익숙한 소리가 들린다냥..!"
                         rows={2}
                         className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
                       />
-                      <span className="absolute right-3 bottom-3 text-gray-300 text-xs">
-                        {ending.hint.length} / 20
-                      </span>
+                      <span className="absolute right-3 bottom-3 text-gray-300 text-xs">{ending.hint.length} / 20</span>
                     </div>
                   </div>
+
                 </div>
               </motion.div>
             )}
@@ -2081,7 +2826,7 @@ function EndingSettingsTab({
 
       {/* Scroll to top */}
       {endings.length > 0 && (
-        <div className="flex justify-end mb-2">
+        <div className="flex justify-end mb-3">
           <button
             onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
             className="w-9 h-9 rounded-full border border-gray-200 bg-white shadow-sm flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
@@ -2091,15 +2836,40 @@ function EndingSettingsTab({
         </div>
       )}
 
-      {/* Add ending button */}
+      {/* Add ending */}
       <button
         onClick={addEnding}
         disabled={endings.length >= 10}
         className="w-full flex items-center justify-center gap-1.5 py-3 rounded-xl border border-dashed border-gray-300 text-gray-400 text-sm hover:bg-gray-50 hover:text-gray-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed mb-8"
       >
-        <Plus className="w-4 h-4" />
-        엔딩 추가
+        <Plus className="w-4 h-4" />엔딩 추가
       </button>
+
+      {/* 스탯 미등록 다이얼로그 */}
+      {noStatsDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-2xl shadow-xl w-80 mx-4 overflow-hidden">
+            <div className="px-6 pt-8 pb-6 text-center">
+              <h3 className="text-gray-900 font-bold text-base mb-3">스탯을 등록해주세요</h3>
+              <p className="text-gray-500 text-sm leading-relaxed">등록된 스탯을 바탕으로<br />상세 조건을 추가할 수 있어요</p>
+            </div>
+            <div className="px-4 pb-4 flex gap-2">
+              <button
+                onClick={() => setNoStatsDialog(false)}
+                className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={() => { setNoStatsDialog(false); onGoToStats?.(); }}
+                className="flex-1 py-3 rounded-xl bg-gray-900 text-white text-sm font-bold hover:bg-gray-800 transition-colors"
+              >
+                스탯 추가
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2554,21 +3324,93 @@ function PlaceholderTab({ label }: { label: string }) {
 }
 
 // ─────────────────────────────────────────────
-// STORY SETTINGS TAB (simplified example)
+// PROMPT TEMPLATES
+// ─────────────────────────────────────────────
+const PROMPT_TEMPLATES = [
+  {
+    id: 'basic',
+    label: '기본 프롬프트',
+    description: 'AI가 다양한 상황을 폭넓게 이해하고 답해요',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 12h18M12 3l9 9-9 9" />
+      </svg>
+    ),
+  },
+  {
+    id: 'roleplay',
+    label: '1:1 롤플레이 프롬프트',
+    description: 'AI가 사람처럼 대화하고 감정을 표현해요',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="12" cy="8" r="4" /><path strokeLinecap="round" d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+      </svg>
+    ),
+  },
+  {
+    id: 'simulation',
+    label: '시뮬레이션 프롬프트',
+    description: 'AI가 게임이나 여러 스토리들을 등장시키는 상황을 잘 만들어요',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <rect x="2" y="6" width="20" height="12" rx="2"/><path strokeLinecap="round" d="M8 12h8M12 8v8"/>
+      </svg>
+    ),
+  },
+  {
+    id: 'productivity',
+    label: '생산성 프롬프트',
+    description: 'AI가 전문 지식을 바탕으로 유용한 답을 해요',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+    ),
+  },
+  {
+    id: 'custom',
+    label: '제작자 커스텀 프롬프트',
+    description: '제작자가 직접 AI에게 모든 지시사항을 입력하는 고급 커스텀이에요',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+      </svg>
+    ),
+  },
+] as const;
+
+type PromptTemplateId = (typeof PROMPT_TEMPLATES)[number]['id'];
+
+// ─────────────────────────────────────────────
+// STORY SETTINGS TAB
 // ─────────────────────────────────────────────
 function StorySettingsTab({
-  storyName, storyDescription, onSystemPromptChange,
+  storyName, storyDescription, initialSystemPrompt, onSystemPromptChange,
 }: {
-  storyName: string; storyDescription: string; onSystemPromptChange: (v: string) => void;
+  storyName: string; storyDescription: string; initialSystemPrompt: string; onSystemPromptChange: (v: string) => void;
 }) {
-  const [systemPrompt, setSystemPrompt] = useState('');
+  const [selectedTemplate, setSelectedTemplate] = useState<PromptTemplateId>('basic');
+  const [templateDropdownOpen, setTemplateDropdownOpen] = useState(false);
+  const [systemPrompt, setSystemPrompt] = useState(initialSystemPrompt);
+  const [customPrompt, setCustomPrompt] = useState('');
   const [examples, setExamples] = useState([{ user: '', assistant: '' }]);
   const [generatingPrompt, setGeneratingPrompt] = useState(false);
   const [generatingExamples, setGeneratingExamples] = useState(false);
 
+  const isCustom = selectedTemplate === 'custom';
+  const activeTemplate = PROMPT_TEMPLATES.find(t => t.id === selectedTemplate)!;
+
   const handleUpdatePrompt = (v: string) => {
     setSystemPrompt(v);
     onSystemPromptChange(v);
+  };
+
+  const handleSelectTemplate = (id: PromptTemplateId) => {
+    setSelectedTemplate(id);
+    setTemplateDropdownOpen(false);
+    // custom 선택 시 커스텀 프롬프트를 systemPrompt로 반영
+    if (id === 'custom') onSystemPromptChange(customPrompt);
+    else onSystemPromptChange(systemPrompt);
   };
 
   const handleGeneratePrompt = async () => {
@@ -2576,7 +3418,10 @@ function StorySettingsTab({
     try {
       const { api } = await import('../../lib/api');
       const { systemPrompt: generated } = await api.stories.generateStorySettings({
-        name: storyName, description: storyDescription,
+        name: storyName,
+        description: storyDescription,
+        // 기존 내용이 있으면 바탕으로 생성
+        ...(systemPrompt.trim() ? { existingContent: systemPrompt } : {}),
       });
       handleUpdatePrompt(generated.slice(0, 3000));
     } catch {
@@ -2608,118 +3453,263 @@ function StorySettingsTab({
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
-      {/* System prompt */}
+      {/* ── 프롬프트 템플릿 선택기 ── */}
       <div className="mb-8">
-        <div className="flex items-center gap-1 mb-2">
-          <label className="text-gray-900 font-semibold text-sm">스토리 설정</label>
+        <div className="flex items-center gap-1 mb-1">
+          <label className="text-gray-900 font-semibold text-sm">프롬프트 템플릿</label>
           <span className="text-brand font-bold text-sm">*</span>
         </div>
-        <p className="text-gray-400 text-xs mb-2">스토리의 세계관, 배경, 규칙을 상세히 설명해주세요</p>
+        <p className="text-gray-400 text-xs mb-3">스토리의 목적에 맞는 템플릿을 선택해 주세요.<br />템플릿을 변경해도 입력하신 내용이 사라지지 않아요.</p>
+
         <div className="relative">
-          <textarea
-            value={systemPrompt}
-            onChange={(e) => handleUpdatePrompt(e.target.value.slice(0, 3000))}
-            placeholder="스토리 설정을 입력해 주세요"
-            rows={8}
-            className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-900 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 transition-colors resize-none"
-          />
-          <span className="absolute right-4 bottom-3 text-gray-300 text-xs">{systemPrompt.length} / 3000</span>
-        </div>
-        <div className="flex justify-end mt-2">
           <button
             type="button"
-            onClick={handleGeneratePrompt}
-            disabled={generatingPrompt}
-            className="px-3 py-1.5 rounded-lg border border-brand/40 text-brand text-xs font-semibold hover:bg-brand/5 transition-colors disabled:opacity-50"
+            onClick={() => setTemplateDropdownOpen(p => !p)}
+            className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-gray-200 bg-white hover:border-gray-300 transition-colors"
           >
-            {generatingPrompt ? '생성 중...' : '자동 생성'}
+            <span className="flex items-center gap-2.5 text-gray-700 text-sm font-medium">
+              <span className="text-gray-500">{activeTemplate.icon}</span>
+              {activeTemplate.label}
+            </span>
+            <ChevronDown className={cn('w-4 h-4 text-gray-400 transition-transform', templateDropdownOpen && 'rotate-180')} />
           </button>
+
+          {templateDropdownOpen && (
+            <>
+              <div className="fixed inset-0 z-30" onClick={() => setTemplateDropdownOpen(false)} />
+              <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl border border-gray-200 shadow-lg z-40 overflow-hidden py-1">
+                {PROMPT_TEMPLATES.map(t => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => handleSelectTemplate(t.id)}
+                    className={cn(
+                      'w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors',
+                      selectedTemplate === t.id && 'bg-gray-50'
+                    )}
+                  >
+                    <span className="text-gray-500 mt-0.5 flex-shrink-0">{t.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-gray-900 font-semibold text-sm">{t.label}</p>
+                      <p className="text-gray-400 text-xs mt-0.5">{t.description}</p>
+                    </div>
+                    {selectedTemplate === t.id && (
+                      <svg className="w-4 h-4 text-brand flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Advanced settings toggle */}
-      <button
-        type="button"
-        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-gray-200 text-gray-500 text-sm hover:bg-gray-50 transition-colors mb-8"
-      >
-        고급 설정
-        <ChevronUp className="w-4 h-4 rotate-180" />
-      </button>
-
-      {/* Examples */}
-      <div className="mb-4">
-        <div className="flex items-start justify-between mb-2">
-          <div>
-            <p className="text-gray-900 font-semibold text-sm mb-0.5">전개 예시</p>
-            <p className="text-gray-400 text-xs">전개 예시를 입력해서 스토리의 완성도를 높여보세요.<br />예시는 3개까지 등록할 수 있어요.</p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={handleGenerateExamples}
-              disabled={generatingExamples}
-              className="px-3 py-1.5 rounded-lg border border-brand/40 text-brand text-xs font-medium hover:bg-brand/5 transition-colors disabled:opacity-50"
-            >
-              {generatingExamples ? '생성 중...' : '전체 자동 생성'}
+      {/* ── 제작자 커스텀: 프롬프트 직접 입력 ── */}
+      {isCustom ? (
+        <div className="mb-8">
+          <div className="flex items-center gap-1.5 mb-1">
+            <label className="text-gray-900 font-semibold text-sm">프롬프트</label>
+            <span className="text-brand font-bold text-sm">*</span>
+            <button type="button" className="text-gray-300 hover:text-gray-500 transition-colors">
+              <HelpCircle className="w-3.5 h-3.5" />
             </button>
-            {examples.length < 3 && (
-              <button
-                type="button"
-                onClick={() => setExamples(p => [...p, { user: '', assistant: '' }])}
-                className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
-              >
-                예시 추가
-              </button>
-            )}
+          </div>
+          <p className="text-gray-400 text-xs mb-3">AI에게 지시할 내용을 자유 형식으로 입력해 주세요</p>
+          <div className="relative">
+            <textarea
+              value={customPrompt}
+              onChange={(e) => {
+                const v = e.target.value.slice(0, 5000);
+                setCustomPrompt(v);
+                onSystemPromptChange(v);
+              }}
+              placeholder="AI에게 지시할 내용을 자유 형식으로 입력해 주세요"
+              rows={14}
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-900 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 transition-colors resize-none"
+            />
+            <span className="absolute right-4 bottom-3 text-gray-300 text-xs">{customPrompt.length} / 5000</span>
           </div>
         </div>
-
-        {examples.map((ex, i) => (
-          <div key={i} className="mb-4 rounded-xl border border-gray-200 overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-100">
-              <span className="text-gray-700 font-semibold text-sm">예시 {i + 1}</span>
+      ) : (
+        <>
+          {/* ── 스토리 설정 및 정보 (기본/롤플레이/시뮬레이션/생산성) ── */}
+          <div className="mb-8">
+            <div className="flex items-center gap-1 mb-1">
+              <label className="text-gray-900 font-semibold text-sm">스토리 설정 및 정보</label>
+              <span className="text-brand font-bold text-sm">*</span>
+            </div>
+            <p className="text-gray-400 text-xs mb-3">세계관, 설정, 등장인물 외모, 성격, 말투 등 스토리의 더 자세한 정보를 입력해 주세요</p>
+            <div className="relative">
+              <textarea
+                value={systemPrompt}
+                onChange={(e) => handleUpdatePrompt(e.target.value.slice(0, 3000))}
+                placeholder="자동 생성 기능을 활용하면 AI가 프롬프트를 참고하여 초안을 작성해 드려요"
+                rows={8}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-900 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 transition-colors resize-none"
+              />
+              <span className="absolute right-4 bottom-3 text-gray-300 text-xs">{systemPrompt.length} / 3000</span>
+            </div>
+            <div className="flex justify-end mt-2">
               <button
                 type="button"
-                onClick={() => setExamples(p => p.filter((_, j) => j !== i))}
-                className="text-gray-400 hover:text-gray-600 text-sm transition-colors"
+                onClick={handleGeneratePrompt}
+                disabled={generatingPrompt}
+                className="px-3 py-1.5 rounded-lg border border-brand/40 text-brand text-xs font-semibold hover:bg-brand/5 transition-colors disabled:opacity-50"
               >
-                삭제
+                {generatingPrompt ? '생성 중...' : '자동 생성'}
               </button>
             </div>
-            <div className="p-3 space-y-3">
-              {/* User example */}
+          </div>
+
+          {/* ── 고급 설정 ── */}
+          <button
+            type="button"
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-gray-200 text-gray-500 text-sm hover:bg-gray-50 transition-colors mb-8"
+          >
+            고급 설정
+            <ChevronUp className="w-4 h-4 rotate-180" />
+          </button>
+
+          {/* ── 전개 예시 ── */}
+          <div className="mb-4">
+            <div className="flex items-start justify-between mb-2">
               <div>
-                <div className="flex items-center gap-2 mb-2 text-gray-500 text-xs">
-                  <div className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center text-[10px]">👤</div>
-                  나도이런거만들거야
-                </div>
-                <textarea
-                  value={ex.user}
-                  onChange={(e) => setExamples(p => p.map((item, j) => j === i ? { ...item, user: e.target.value.slice(0, 500) } : item))}
-                  placeholder="입력 예시"
-                  rows={3}
-                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
-                />
-                <p className="text-gray-300 text-xs text-right mt-1">{ex.user.length} / 500</p>
+                <p className="text-gray-900 font-semibold text-sm mb-0.5">전개 예시</p>
+                <p className="text-gray-400 text-xs">전개 예시를 입력해서 스토리의 완성도를 높여보세요.<br />예시는 3개까지 등록할 수 있어요.</p>
               </div>
-              {/* Divider with robot icon */}
-              <div className="flex items-center justify-center">
-                <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-base">🤖</div>
-              </div>
-              {/* Assistant example */}
-              <div>
-                <textarea
-                  value={ex.assistant}
-                  onChange={(e) => setExamples(p => p.map((item, j) => j === i ? { ...item, assistant: e.target.value.slice(0, 500) } : item))}
-                  placeholder="출력 예시"
-                  rows={3}
-                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
-                />
-                <p className="text-gray-300 text-xs text-right mt-1">{ex.assistant.length} / 500</p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleGenerateExamples}
+                  disabled={generatingExamples}
+                  className="px-3 py-1.5 rounded-lg border border-brand/40 text-brand text-xs font-medium hover:bg-brand/5 transition-colors disabled:opacity-50"
+                >
+                  {generatingExamples ? '생성 중...' : '전체 자동 생성'}
+                </button>
+                {examples.length < 3 && (
+                  <button
+                    type="button"
+                    onClick={() => setExamples(p => [...p, { user: '', assistant: '' }])}
+                    className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
+                  >
+                    예시 추가
+                  </button>
+                )}
               </div>
             </div>
+
+            {examples.map((ex, i) => (
+              <div key={i} className="mb-4 rounded-xl border border-gray-200 overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+                  <span className="text-gray-700 font-semibold text-sm">예시 {i + 1}</span>
+                  <button
+                    type="button"
+                    onClick={() => setExamples(p => p.filter((_, j) => j !== i))}
+                    className="text-gray-400 hover:text-gray-600 text-sm transition-colors"
+                  >
+                    삭제
+                  </button>
+                </div>
+                <div className="p-3 space-y-3">
+                  <div>
+                    <div className="flex items-center gap-2 mb-2 text-gray-500 text-xs">
+                      <div className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center text-[10px]">👤</div>
+                      나도이런거만들거야
+                    </div>
+                    <textarea
+                      value={ex.user}
+                      onChange={(e) => setExamples(p => p.map((item, j) => j === i ? { ...item, user: e.target.value.slice(0, 500) } : item))}
+                      placeholder="입력 예시"
+                      rows={3}
+                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
+                    />
+                    <p className="text-gray-300 text-xs text-right mt-1">{ex.user.length} / 500</p>
+                  </div>
+                  <div className="flex items-center justify-center">
+                    <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-base">🤖</div>
+                  </div>
+                  <div>
+                    <textarea
+                      value={ex.assistant}
+                      onChange={(e) => setExamples(p => p.map((item, j) => j === i ? { ...item, assistant: e.target.value.slice(0, 500) } : item))}
+                      placeholder="출력 예시"
+                      rows={3}
+                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-gray-800 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
+                    />
+                    <p className="text-gray-300 text-xs text-right mt-1">{ex.assistant.length} / 500</p>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// CHAT INPUT BAR (extracted to avoid IIFE in JSX)
+// ─────────────────────────────────────────────
+type ChatValidation =
+  | { type: 'required'; placeholder: string; errorMessage: string }
+  | { type: 'optional'; message: string }
+  | null;
+
+function ChatInputBar({ validation, sentMessage, setSentMessage, onLockedClick, onOptionalSend }: {
+  validation: ChatValidation;
+  sentMessage: string | null;
+  setSentMessage: (v: string | null) => void;
+  onLockedClick?: (errorMessage: string) => void;
+  onOptionalSend?: (message: string, confirmMsg: string) => void;
+}) {
+  const isLocked = validation?.type === 'required';
+  const inputPlaceholder = isLocked
+    ? (validation as { type: 'required'; placeholder: string }).placeholder
+    : '[첫 메시지]를 입력해주세요';
+
+  const handleSend = () => {
+    if (isLocked) {
+      onLockedClick?.((validation as { type: 'required'; errorMessage: string }).errorMessage);
+      return;
+    }
+    if (!sentMessage?.trim()) return;
+    if (validation?.type === 'optional') {
+      onOptionalSend?.(sentMessage.trim(), validation.message);
+    } else {
+      setSentMessage(sentMessage.trim());
+    }
+  };
+
+  return (
+    <div className="flex-shrink-0 px-4 py-3 border-t border-gray-100">
+      <div
+        className={cn('flex items-center gap-2 px-4 py-3 rounded-2xl border bg-gray-50', isLocked ? 'border-gray-200 cursor-not-allowed' : 'border-gray-200')}
+        onClick={() => { if (isLocked) onLockedClick?.((validation as { type: 'required'; errorMessage: string }).errorMessage); }}
+      >
+        {isLocked && (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-300 flex-shrink-0">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+        )}
+        <input
+          type="text"
+          value={isLocked ? '' : (sentMessage ?? '')}
+          onChange={e => { if (!isLocked) setSentMessage(e.target.value || null); }}
+          readOnly={isLocked}
+          placeholder={inputPlaceholder}
+          className={cn('flex-1 bg-transparent text-xs outline-none placeholder:text-gray-300', isLocked ? 'cursor-not-allowed text-gray-300 pointer-events-none' : 'text-gray-700')}
+        />
+        <button
+          onClick={e => { e.stopPropagation(); handleSend(); }}
+          className="w-7 h-7 rounded-full bg-gray-800 flex items-center justify-center flex-shrink-0 disabled:opacity-40"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+            <path d="M5 12h14m-7-7l7 7-7 7" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
       </div>
     </div>
   );
@@ -2885,19 +3875,66 @@ function CrackerChargeModal({ onClose }: { onClose: () => void }) {
 export function StoryCreateForm() {
   const { isAuthenticated, isLoading: authLoading } = useAuthStore();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<StoryTab>('profile');
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [squareImage, setSquareImage] = useState<string | null>(null);
-  const [verticalImage, setVerticalImage] = useState<string | null>(null);
-  const [playGuide, setPlayGuide] = useState('');
-  const [stats, setStats] = useState<StatItem[]>([]);
-  const [systemPrompt, setSystemPrompt] = useState('');
-  // Shared start-settings list for media/keywords/ending tabs
-  const [startSettingsList] = useState([{ id: '1', name: '기본 설정' }]);
+
+  // ── 자동저장 훅 활성화 ─────────────────────────────────────────────────
+  useAutoSave();
+
+  // ── Zustand draft store ────────────────────────────────────────────────
+  const {
+    storyId,
+    saveStatus, setSaveStatus,
+    activeTab, setActiveTab,
+    name, setName,
+    description, setDescription,
+    squareImage, setSquareImage,
+    verticalImage, setVerticalImage,
+    systemPrompt, setSystemPrompt,
+    startSettings, activeStartSettingId,
+    stats, setStats,
+    lastSavedAt,
+    reset,
+  } = useStoryDraftStore();
+
+  // 현재 활성 시작설정에서 미리보기에 필요한 값 파생
+  const activeStartSetting = startSettings.find(s => s.id === activeStartSettingId) ?? startSettings[0];
+  const prologue = activeStartSetting?.prologue ?? '';
+  const playGuide = activeStartSetting?.playGuide ?? '';
+  const suggestedReplies = activeStartSetting?.suggestedReplies ?? [];
+
+  // 채팅 미리보기 전용 로컬 상태 (저장 불필요)
+  const [sentMessage, setSentMessage] = useState<string | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{ show: boolean; message: string; pendingReply: string | null }>({ show: false, message: '', pendingReply: null });
+  const [errorDialog, setErrorDialog] = useState<{ show: boolean; message: string }>({ show: false, message: '' });
   // AI model selector
-  const [selectedModel, setSelectedModel] = useState<ChatModel>(CHAT_MODELS[2]); // default: 슈퍼챗 2.0
+  const [selectedModel, setSelectedModel] = useState<ChatModel>(CHAT_MODELS[2]);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+
+  const getChatValidation = (): ChatValidation => {
+    if (!name.trim())
+      return { type: 'required', placeholder: '[이름]을 입력해주세요', errorMessage: '이름을 입력해주세요' };
+    if (/[\u3131-\u314e\u314f-\u3163]/.test(name) || /[\p{Emoji_Presentation}\p{Extended_Pictographic}]/u.test(name))
+      return { type: 'required', placeholder: '[이름]을 입력해주세요', errorMessage: '이름에는 특수문자, 이모지, 자음, 모음을\n사용할 수 없습니다' };
+    if (!systemPrompt.trim())
+      return { type: 'required', placeholder: '[스토리 설정]을 입력해주세요', errorMessage: '스토리 설정을 먼저 입력해주세요' };
+    if (!prologue.trim())
+      return { type: 'required', placeholder: '[프롤로그]를 입력해주세요', errorMessage: '프롤로그를 먼저 입력해주세요' };
+    if (stats.length > 0 && stats.some((s: any) => !s.name.trim()))
+      return { type: 'optional', message: '스탯 필수 정보가 제대로 입력되지 않아\n일부 스탯이 제외된 채팅방이 생성돼요' };
+    return null;
+  };
+
+  const handleReplyClick = (reply: string) => {
+    const v = getChatValidation();
+    if (!v) { setSentMessage(reply); return; }
+    if (v.type === 'required') { setErrorDialog({ show: true, message: v.errorMessage }); return; }
+    if (v.type === 'optional') setConfirmDialog({ show: true, message: v.message, pendingReply: reply });
+  };
+
+  // Shared start-settings list for media/keywords/ending tabs
+  const startSettingsList = startSettings.map(s => ({ id: s.id, name: s.name }));
+
+  // Grade distribution for the ending tab right panel
+  const [endingGradeCounts, setEndingGradeCounts] = useState<Record<EndingGrade, number>>({ N: 0, R: 0, SR: 0, SSR: 0 });
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) router.push('/login?redirect=/creator/story/new');
@@ -2942,21 +3979,55 @@ export function StoryCreateForm() {
           </div>
         </div>
 
-        {/* Right: save buttons */}
+        {/* Right: save status + buttons */}
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors"
-          >
-            <Clock className="w-4 h-4" />
-            임시저장
-          </button>
+          {/* 자동저장 상태 인디케이터 */}
+          <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-sm font-medium min-w-[100px] justify-center">
+            {saveStatus === 'saving' && (
+              <>
+                <Loader2 className="w-3.5 h-3.5 text-gray-400 animate-spin" />
+                <span className="text-gray-400 text-xs">저장 중</span>
+              </>
+            )}
+            {saveStatus === 'saved' && (
+              <>
+                <Check className="w-3.5 h-3.5 text-green-500" />
+                <span className="text-green-600 text-xs">저장됨</span>
+              </>
+            )}
+            {saveStatus === 'error' && (
+              <>
+                <AlertCircle className="w-3.5 h-3.5 text-red-400" />
+                <span className="text-red-500 text-xs">저장 실패</span>
+              </>
+            )}
+            {saveStatus === 'idle' && (
+              <>
+                <Clock className="w-3.5 h-3.5 text-gray-300" />
+                <span className="text-gray-400 text-xs">임시저장</span>
+              </>
+            )}
+          </div>
           <button type="button" className="p-2 rounded-xl border border-gray-200 text-gray-400 hover:bg-gray-50 transition-colors">
             <History className="w-4 h-4" />
           </button>
           <button
             type="button"
-            className="px-5 py-2 rounded-xl bg-gray-900 text-white text-sm font-bold hover:bg-gray-800 transition-colors"
+            disabled={!storyId}
+            onClick={async () => {
+              if (!storyId) return;
+              try {
+                setSaveStatus('saving');
+                await api.stories.publish(storyId);
+                setSaveStatus('saved');
+                reset();
+                router.push('/creator');
+              } catch (e: any) {
+                setSaveStatus('error');
+                alert(e?.response?.data?.details?.join('\n') ?? '배포에 실패했습니다.');
+              }
+            }}
+            className="px-5 py-2 rounded-xl bg-gray-900 text-white text-sm font-bold hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             등록하기
           </button>
@@ -2986,45 +4057,61 @@ export function StoryCreateForm() {
       <div className="flex-1 flex overflow-hidden min-h-0">
         {/* Left form */}
         <div className="flex flex-col h-full" style={{ width: '58%', borderRight: '1px solid #f3f4f6' }}>
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, x: 8 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -8 }}
-              transition={{ duration: 0.12 }}
-              className="flex flex-col flex-1 min-h-0 overflow-hidden"
-            >
-              {activeTab === 'profile' && (
-                <ProfileForm
-                  name={name}
-                  setName={setName}
-                  description={description}
-                  setDescription={setDescription}
-                  onNext={handleNext}
-                  onSquareImageChange={setSquareImage}
-                  onVerticalImageChange={setVerticalImage}
-                />
-              )}
-              {activeTab === 'story-settings' && (
-                <StorySettingsTab
-                  storyName={name}
-                  storyDescription={description}
-                  onSystemPromptChange={setSystemPrompt}
-                />
-              )}
-              {activeTab === 'start-settings' && (
-                <StartSettingsTab storyName={name} systemPrompt={systemPrompt} onPlayGuideChange={setPlayGuide} />
-              )}
-              {activeTab === 'stat-settings' && <StatSettingsTab stats={stats} setStats={setStats} />}
-              {activeTab === 'media' && <MediaTab startSettings={startSettingsList} />}
-              {activeTab === 'keywords' && <KeywordsTab startSettings={startSettingsList} />}
-              {activeTab === 'ending' && (
-                <EndingSettingsTab onNavigateToStats={() => setActiveTab('stat-settings')} />
-              )}
-              {activeTab === 'register' && <RegisterTab name={name} />}
-            </motion.div>
-          </AnimatePresence>
+          {/* Keep-alive: 모든 탭 항상 마운트, 비활성 탭만 숨김 → 탭 전환 시 입력값 유지 */}
+          <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+            <div style={{ display: activeTab === 'profile' ? 'flex' : 'none' }} className="flex-col flex-1 min-h-0 overflow-hidden">
+              <ProfileForm
+                name={name}
+                setName={setName}
+                description={description}
+                setDescription={setDescription}
+                onNext={handleNext}
+                onSquareImageChange={setSquareImage}
+                onVerticalImageChange={setVerticalImage}
+              />
+            </div>
+            <div style={{ display: activeTab === 'story-settings' ? 'flex' : 'none' }} className="flex-col flex-1 min-h-0 overflow-hidden">
+              <StorySettingsTab
+                storyName={name}
+                storyDescription={description}
+                initialSystemPrompt={systemPrompt}
+                onSystemPromptChange={setSystemPrompt}
+              />
+            </div>
+            <div style={{ display: activeTab === 'start-settings' ? 'flex' : 'none' }} className="flex-col flex-1 min-h-0 overflow-hidden">
+              <StartSettingsTab
+                storyName={name}
+                systemPrompt={systemPrompt}
+                initialSettings={startSettings as StartSetting[]}
+                initialActiveId={activeStartSettingId}
+                onSettingsChange={(s, id) => { useStoryDraftStore.getState().setStartSettings(s as any); useStoryDraftStore.getState().setActiveStartSettingId(id); }}
+                onPrologueChange={(v) => { /* derived from store */ }}
+                onPlayGuideChange={(v) => { /* derived from store */ }}
+                onSuggestedRepliesChange={(v) => { /* derived from store */ }}
+              />
+            </div>
+            <div style={{ display: activeTab === 'stat-settings' ? 'flex' : 'none' }} className="flex-col flex-1 min-h-0 overflow-hidden">
+              <StatSettingsTab stats={stats as StatItem[]} setStats={(v) => setStats(typeof v === 'function' ? (v as (p: StatItem[]) => StatItem[])(stats as StatItem[]) as any : v as any)} />
+            </div>
+            <div style={{ display: activeTab === 'media' ? 'flex' : 'none' }} className="flex-col flex-1 min-h-0 overflow-hidden">
+              <MediaTab startSettings={startSettingsList} />
+            </div>
+            <div style={{ display: activeTab === 'keywords' ? 'flex' : 'none' }} className="flex-col flex-1 min-h-0 overflow-hidden">
+              <KeywordsTab startSettings={startSettingsList} />
+            </div>
+            <div style={{ display: activeTab === 'ending' ? 'flex' : 'none' }} className="flex-col flex-1 min-h-0 overflow-hidden">
+              <EndingSettingsTab
+                startSettings={startSettingsList}
+                storyName={name}
+                stats={stats as any}
+                onGoToStats={() => setActiveTab('stat-settings')}
+                onGradeCountChange={setEndingGradeCounts}
+              />
+            </div>
+            <div style={{ display: activeTab === 'register' ? 'flex' : 'none' }} className="flex-col flex-1 min-h-0 overflow-hidden">
+              <RegisterTab name={name} />
+            </div>
+          </div>
 
           {/* Bottom nav buttons */}
           <div className="flex-shrink-0 flex items-center justify-between px-8 py-4 border-t border-gray-100 bg-white">
@@ -3064,20 +4151,66 @@ export function StoryCreateForm() {
               />
             </>
           ) : activeTab === 'ending' ? (
-            /* Ending tab: EPILOGUE preview */
+            /* Ending tab: Grade distribution panel */
             <div className="flex-1 flex flex-col overflow-hidden">
               <div className="flex-shrink-0 px-4 py-3 border-b border-gray-100">
-                <span className="text-gray-700 font-semibold text-sm">미리보기</span>
+                <span className="text-gray-700 font-semibold text-sm">등급 부여 현황</span>
               </div>
-              <div className="flex-1 min-h-0 overflow-y-auto p-4">
-                <div className="rounded-xl border border-gray-200 overflow-hidden">
-                  <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100">
-                    <span className="text-gray-400 text-xs font-bold tracking-widest">EPILOGUE</span>
+              <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+                {/* Grade status cards */}
+                {(['N', 'R', 'SR', 'SSR'] as EndingGrade[]).map(grade => {
+                  const { maxCount, unlockAt } = GRADE_LIMITS[grade];
+                  const total = Object.values(endingGradeCounts).reduce((a, b) => a + b, 0);
+                  const unlocked = total >= unlockAt;
+                  const used = endingGradeCounts[grade];
+                  const gradeColorMap: Record<EndingGrade, { bg: string; text: string; border: string; badge: string }> = {
+                    N:   { bg: 'bg-gray-50',   text: 'text-gray-600',   border: 'border-gray-200', badge: 'bg-gray-200 text-gray-700' },
+                    R:   { bg: 'bg-blue-50',   text: 'text-blue-600',   border: 'border-blue-200', badge: 'bg-blue-200 text-blue-700' },
+                    SR:  { bg: 'bg-purple-50', text: 'text-purple-600', border: 'border-purple-200', badge: 'bg-purple-200 text-purple-700' },
+                    SSR: { bg: 'bg-yellow-50', text: 'text-yellow-600', border: 'border-yellow-200', badge: 'bg-yellow-200 text-yellow-700' },
+                  };
+                  const c = gradeColorMap[grade];
+                  return (
+                    <div key={grade} className={cn('rounded-xl border p-3', c.bg, c.border, !unlocked && 'opacity-50')}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className={cn('text-xs font-bold px-2 py-0.5 rounded-full', c.badge)}>{grade}</span>
+                          <span className={cn('text-xs font-semibold', c.text)}>
+                            {grade === 'N' ? '노멀' : grade === 'R' ? '레어' : grade === 'SR' ? '슈퍼레어' : '슈퍼슈퍼레어'}
+                          </span>
+                        </div>
+                        {unlocked ? (
+                          <span className={cn('text-sm font-bold', c.text)}>{used} / {maxCount}</span>
+                        ) : (
+                          <span className="text-xs text-gray-400">엔딩 {unlockAt}개 필요</span>
+                        )}
+                      </div>
+                      {unlocked && (
+                        <div className="w-full bg-white rounded-full h-1.5 border border-gray-200 overflow-hidden">
+                          <div
+                            className={cn('h-full rounded-full transition-all', grade === 'N' ? 'bg-gray-400' : grade === 'R' ? 'bg-blue-400' : grade === 'SR' ? 'bg-purple-400' : 'bg-yellow-400')}
+                            style={{ width: `${(used / maxCount) * 100}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {/* Total count */}
+                <div className="rounded-xl border border-gray-200 bg-white p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-500 font-medium">총 엔딩</span>
+                    <span className="text-sm font-bold text-gray-700">
+                      {Object.values(endingGradeCounts).reduce((a, b) => a + b, 0)} / 10
+                    </span>
                   </div>
-                  <div className="px-4 py-4">
-                    <p className="text-gray-900 font-bold text-sm mb-1">EPILOGUE 1</p>
-                    <p className="text-gray-400 text-xs">스토리의 에필로그를 작성해주세요</p>
+                  <div className="w-full bg-gray-100 rounded-full h-1.5 mt-1.5 overflow-hidden">
+                    <div
+                      className="h-full bg-gray-400 rounded-full transition-all"
+                      style={{ width: `${(Object.values(endingGradeCounts).reduce((a, b) => a + b, 0) / 10) * 100}%` }}
+                    />
                   </div>
+                  <p className="text-xs text-gray-400 mt-1.5">SR은 4개, SSR은 6개 이상 등록 시 해제됩니다</p>
                 </div>
               </div>
             </div>
@@ -3235,40 +4368,118 @@ export function StoryCreateForm() {
                       </svg>
                       {name.trim() || '스토리 이름'}
                     </p>
-                    {/* 말풍선 placeholder */}
-                    <div className="h-10 w-48 bg-blue-50 rounded-2xl rounded-tl-sm" />
+                    {/* 프롤로그 말풍선 — 입력된 경우 모든 탭에서 표시 */}
+                    {prologue.trim() ? (
+                      <div className="max-w-xs px-4 py-3 bg-blue-50 rounded-2xl rounded-tl-sm text-gray-800 text-sm leading-relaxed whitespace-pre-wrap">
+                        {prologue}
+                      </div>
+                    ) : (
+                      <div className="h-10 w-48 bg-blue-50 rounded-2xl rounded-tl-sm" />
+                    )}
                   </div>
                 </div>
 
-                {/* 플레이 가이드 — 시작 설정 탭에서만 표시 */}
-                {activeTab === 'start-settings' && playGuide.trim() && (
+                {/* 플레이 가이드 */}
+                {playGuide.trim() && (
                   <div className="mt-4 mx-1">
                     <p className="text-brand text-xs font-semibold mb-1.5">플레이 가이드</p>
                     <p className="text-gray-500 text-xs leading-relaxed whitespace-pre-wrap">{playGuide}</p>
                   </div>
                 )}
+
+                {/* 추천 답변 버튼 */}
+                {suggestedReplies.filter(r => r.trim()).length > 0 && !sentMessage && (
+                  <div className="mt-6">
+                    <p className="text-gray-400 text-xs text-right mb-2 flex items-center justify-end gap-1">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-3 3z"/></svg>
+                      이렇게 답변할 수 있어요
+                    </p>
+                    <div className="flex flex-col items-end gap-2">
+                      {suggestedReplies.filter(r => r.trim()).map((reply, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => handleReplyClick(reply)}
+                          className="px-4 py-2 rounded-2xl border border-brand text-brand text-xs font-medium hover:bg-brand hover:text-white transition-colors max-w-[80%] text-right"
+                        >
+                          {reply}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 사용자가 선택한 메시지 */}
+                {sentMessage && (
+                  <div className="mt-6 flex justify-end">
+                    <div className="max-w-[75%] px-4 py-3 bg-gray-800 text-white rounded-2xl rounded-tr-sm text-sm leading-relaxed whitespace-pre-wrap">
+                      {sentMessage}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Chat input */}
-              <div className="flex-shrink-0 px-4 py-3 border-t border-gray-100">
-                <div className="flex items-center gap-2 px-4 py-3 rounded-2xl border border-gray-200 bg-gray-50">
-                  <input
-                    type="text"
-                    placeholder="[첫 메시지]를 입력해주세요"
-                    className="flex-1 bg-transparent text-xs text-gray-400 outline-none placeholder:text-gray-300"
-                    readOnly
-                  />
-                  <button className="w-7 h-7 rounded-full bg-gray-800 flex items-center justify-center flex-shrink-0">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                      <path d="M5 12h14m-7-7l7 7-7 7" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </button>
-                </div>
-              </div>
+              <ChatInputBar
+                validation={getChatValidation()}
+                sentMessage={sentMessage}
+                setSentMessage={setSentMessage}
+                onLockedClick={(msg) => setErrorDialog({ show: true, message: msg })}
+                onOptionalSend={(msg, confirmMsg) => setConfirmDialog({ show: true, message: confirmMsg, pendingReply: msg })}
+              />
             </div>
           )}
         </div>
       </div>
+
+      {/* 임시 채팅방 생성 실패 다이얼로그 (필수 항목 미입력/잘못됨) */}
+      {errorDialog.show && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-2xl shadow-xl w-80 mx-4 overflow-hidden">
+            <div className="px-6 pt-8 pb-6 text-center">
+              <h3 className="text-gray-900 font-bold text-base mb-3">임시 채팅방 생성 실패</h3>
+              <p className="text-red-500 text-sm leading-relaxed whitespace-pre-line">{errorDialog.message}</p>
+            </div>
+            <div className="px-4 pb-4">
+              <button
+                onClick={() => setErrorDialog({ show: false, message: '' })}
+                className="w-full py-3 rounded-xl bg-gray-900 text-white text-sm font-bold hover:bg-gray-800 transition-colors flex items-center justify-center gap-1.5"
+              >
+                확인
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 임시 채팅방 생성 확인 다이얼로그 (선택 항목 미입력) */}
+      {confirmDialog.show && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-2xl shadow-xl w-80 mx-4 overflow-hidden">
+            <div className="px-6 pt-8 pb-6 text-center">
+              <h3 className="text-gray-900 font-bold text-base mb-3">임시 채팅방을 생성할까요?</h3>
+              <p className="text-gray-500 text-sm leading-relaxed whitespace-pre-line">{confirmDialog.message}</p>
+            </div>
+            <div className="px-4 pb-4 flex gap-2">
+              <button
+                onClick={() => setConfirmDialog({ show: false, message: '', pendingReply: null })}
+                className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={() => {
+                  if (confirmDialog.pendingReply) setSentMessage(confirmDialog.pendingReply);
+                  setConfirmDialog({ show: false, message: '', pendingReply: null });
+                }}
+                className="flex-1 py-3 rounded-xl bg-gray-900 text-white text-sm font-bold hover:bg-gray-800 transition-colors"
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

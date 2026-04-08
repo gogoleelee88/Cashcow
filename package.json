@@ -30,6 +30,7 @@
   },
   "packageManager": "npm@10.5.0",
   "dependencies": {
+    "ajv": "^8.18.0",
     "critters": "^0.0.23"
   }
 }

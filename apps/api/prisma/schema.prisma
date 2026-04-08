@@ -149,6 +149,7 @@ enum StoryCategory {
 }
 
 enum StoryStatus {
+  DRAFT
   ONGOING
   COMPLETED
   HIATUS
@@ -647,6 +648,8 @@ model Story {
   favorites        StoryFavorite[]
   characters       StoryCharacter[]
   startSettings    StoryStartSetting[]
+  endings          StoryEnding[]
+  examples         StoryExample[]
 
   @@index([authorId])
   @@index([category])
@@ -655,6 +658,21 @@ model Story {
   @@index([chatCount(sort: Desc)])
   @@index([createdAt(sort: Desc)])
   @@map("stories")
+}
+
+model StoryExample {
+  id             String   @id @default(cuid())
+  storyId        String
+  userMessage    String   @db.Text
+  assistantMessage String @db.Text
+  order          Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  story          Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@index([storyId])
+  @@map("story_examples")
 }
 
 model StoryChapter {
@@ -783,6 +801,7 @@ model StoryStartSetting {
   mediaImages      StoryMediaImage[]
   keywordNotes     StoryKeywordNote[]
   suggestedReplies StorySuggestedReply[]
+  endings          StoryEnding[]
 
   @@index([storyId])
   @@map("story_start_settings")
@@ -853,9 +872,11 @@ model StoryMediaImage {
 model StoryKeywordNote {
   id             String            @id @default(cuid())
   startSettingId String
+  title          String            @default("키워드 노트")
   keywords       String[]
   content        String            @db.Text
   order          Int               @default(0)
+  triggerCount   Int               @default(0)
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
@@ -863,4 +884,53 @@ model StoryKeywordNote {
 
   @@index([startSettingId])
   @@map("story_keyword_notes")
+}
+
+// ─────────────────────────────────────────────
+// STORY ENDINGS
+// ─────────────────────────────────────────────
+enum EndingGrade {
+  N
+  R
+  SR
+  SSR
+}
+
+model StoryEnding {
+  id              String       @id @default(cuid())
+  storyId         String
+  startSettingId  String?
+  grade           EndingGrade  @default(N)
+  name            String       @db.VarChar(20)
+  sortOrder       Int          @default(0)
+  minTurnStart    Int          @default(10)
+  prompt          String       @db.Text @default("")
+  epilogue        String?      @db.Text
+  hint            String?      @db.VarChar(20)
+  imageUrl        String?
+  imageKey        String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  story           Story        @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  startSetting    StoryStartSetting? @relation(fields: [startSettingId], references: [id], onDelete: SetNull)
+  rules           StoryEndingRule[]
+
+  @@index([storyId])
+  @@index([startSettingId])
+  @@index([storyId, startSettingId, sortOrder])
+  @@map("story_endings")
+}
+
+model StoryEndingRule {
+  id         String      @id @default(cuid())
+  endingId   String
+  turnStart  Int         @default(10)
+  sortOrder  Int         @default(0)
+  createdAt  DateTime    @default(now())
+
+  ending     StoryEnding @relation(fields: [endingId], references: [id], onDelete: Cascade)
+
+  @@index([endingId])
+  @@map("story_ending_rules")
 }
