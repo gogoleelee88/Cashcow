@@ -689,6 +689,7 @@ function ImageUploadArea({
   onPreviewChange,
   uploading,
   externalPreview,
+  onGenerate,
 }: {
   label: string;
   required?: boolean;
@@ -698,6 +699,7 @@ function ImageUploadArea({
   onPreviewChange?: (url: string | null) => void;
   uploading?: boolean;
   externalPreview?: string | null;
+  onGenerate?: () => void;
 }) {
   const [preview, setPreview] = useState<string | null>(null);
   const [rawImageSrc, setRawImageSrc] = useState<string | null>(null);
@@ -815,6 +817,7 @@ function ImageUploadArea({
               )}
               <button
                 type="button"
+                onClick={onGenerate}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
               >
                 <Wand2 className="w-3.5 h-3.5" />
@@ -960,6 +963,7 @@ function ProfileForm({
   squareImagePreview?: string | null;
   verticalImagePreview?: string | null;
 }) {
+  const router = useRouter();
   const [showAgeNotice, setShowAgeNotice] = useState(true);
   const [showAgeModal, setShowAgeModal] = useState(false);
   const [generatingName, setGeneratingName] = useState(false);
@@ -1108,6 +1112,7 @@ function ProfileForm({
         onPreviewChange={(blobUrl) =>
           handleImageUpload(blobUrl, 'square', setUploadingSquare, onSquareImageChange)
         }
+        onGenerate={() => router.push('/images')}
       />
 
       {/* Vertical image */}
@@ -1121,6 +1126,7 @@ function ProfileForm({
         onPreviewChange={(blobUrl) =>
           handleImageUpload(blobUrl, 'vertical', setUploadingVertical, onVerticalImageChange)
         }
+        onGenerate={() => router.push('/images')}
       />
 
       {/* Update notice */}
@@ -4074,6 +4080,8 @@ export function StoryCreateForm({ initialStoryId }: { initialStoryId?: string } 
   } = useStoryDraftStore();
 
   const [showDraftHistory, setShowDraftHistory] = useState(false);
+  const [publishErrors, setPublishErrors] = useState<string[]>([]);
+  const [publishedStoryId, setPublishedStoryId] = useState<string | null>(null);
 
   // ── 편집 모드: 기존 스토리 데이터 로딩 ────────────────────────────────
   const [editDataLoaded, setEditDataLoaded] = useState(false);
@@ -4243,6 +4251,49 @@ export function StoryCreateForm({ initialStoryId }: { initialStoryId?: string } 
         )}
       </AnimatePresence>
 
+      {/* 등록 성공 모달 */}
+      <AnimatePresence>
+        {publishedStoryId && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center" onClick={() => {}}>
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              className="relative z-10 bg-white rounded-2xl shadow-2xl w-[380px] mx-4 p-8 text-center"
+            >
+              <div className="text-5xl mb-4">🎉</div>
+              <h2 className="text-gray-900 font-bold text-xl mb-2">스토리가 등록됐어요!</h2>
+              <p className="text-gray-400 text-sm mb-8 leading-relaxed">
+                독자들이 이제 이야기를 시작할 수 있어요.
+              </p>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => {
+                    const id = publishedStoryId;
+                    reset();
+                    setPublishedStoryId(null);
+                    window.location.href = `/story/${id}`;
+                  }}
+                  className="w-full py-3 rounded-xl bg-gray-900 text-white text-sm font-bold hover:bg-gray-800 transition-colors"
+                >
+                  스토리 바로 보기
+                </button>
+                <button
+                  onClick={() => {
+                    reset();
+                    setPublishedStoryId(null);
+                    window.location.href = '/creator';
+                  }}
+                  className="w-full py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors"
+                >
+                  내 작품으로 가기
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* 임시저장 내역 모달 */}
       <AnimatePresence>
         {showDraftHistory && (
@@ -4312,18 +4363,20 @@ export function StoryCreateForm({ initialStoryId }: { initialStoryId?: string } 
           </button>
           <button
             type="button"
-            disabled={!storyId}
+            disabled={!storyId || saveStatus === 'saving'}
             onClick={async () => {
               if (!storyId) return;
+              setPublishErrors([]);
               try {
                 setSaveStatus('saving');
                 await api.stories.publish(storyId);
                 setSaveStatus('saved');
-                reset();
-                router.push('/creator');
+                setPublishedStoryId(storyId);
               } catch (e: any) {
                 setSaveStatus('error');
-                alert(e?.response?.data?.details?.join('\n') ?? '배포에 실패했습니다.');
+                const details: string[] = e?.response?.data?.details ?? [];
+                const msg: string = e?.response?.data?.error ?? '등록에 실패했습니다.';
+                setPublishErrors(details.length > 0 ? details : [msg]);
               }
             }}
             className="px-5 py-2 rounded-xl bg-gray-900 text-white text-sm font-bold hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -4351,6 +4404,33 @@ export function StoryCreateForm({ initialStoryId }: { initialStoryId?: string } 
           </button>
         ))}
       </div>
+
+      {/* ── 등록 에러 배너 ── */}
+      <AnimatePresence>
+        {publishErrors.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="flex-shrink-0 bg-red-50 border-b border-red-100 px-6 py-3"
+          >
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-red-600 text-xs font-semibold mb-1">등록 전 완성이 필요한 항목이 있어요</p>
+                <ul className="space-y-0.5">
+                  {publishErrors.map((e, i) => (
+                    <li key={i} className="text-red-500 text-xs">• {e}</li>
+                  ))}
+                </ul>
+              </div>
+              <button onClick={() => setPublishErrors([])} className="text-red-300 hover:text-red-500 transition-colors">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── MAIN SPLIT ── */}
       <div className="flex-1 flex overflow-hidden min-h-0">

@@ -972,7 +972,6 @@ export const storyRoutes: FastifyPluginAsync = async (fastify) => {
       // 유효성 검사
       const systemPrompt = decrypt(story.systemPromptEncrypted, story.systemPromptIv);
       const errors: string[] = [];
-      if (!story.coverUrl)               errors.push('프로필 이미지를 등록해주세요.');
       if (!story.title?.trim())          errors.push('제목을 입력해주세요.');
       if (!story.description?.trim())    errors.push('소개를 입력해주세요.');
       if (!story.greeting?.trim())       errors.push('인사말(프롤로그)을 입력해주세요.');
@@ -1253,13 +1252,17 @@ export const storyRoutes: FastifyPluginAsync = async (fastify) => {
         data: { conversationId, role: 'USER', content: content.trim(), creditCost: 0 },
       });
 
-      // Set SSE headers
-      reply.raw.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no',
-      });
+      // Set SSE headers (manual CORS needed because raw streaming bypasses Fastify CORS plugin)
+      const reqOrigin = request.headers.origin;
+      if (reqOrigin) {
+        reply.raw.setHeader('Access-Control-Allow-Origin', reqOrigin);
+        reply.raw.setHeader('Access-Control-Allow-Credentials', 'true');
+      }
+      reply.raw.setHeader('Content-Type', 'text/event-stream');
+      reply.raw.setHeader('Cache-Control', 'no-cache');
+      reply.raw.setHeader('Connection', 'keep-alive');
+      reply.raw.setHeader('X-Accel-Buffering', 'no');
+      reply.raw.flushHeaders();
 
       const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [
         ...recentMessages.reverse().map((m: any) => ({
@@ -1636,6 +1639,14 @@ ${statUnit ? `스탯 단위: ${statUnit}` : ''}
           await prisma.storyStartSetting.delete({ where: { id: serverSettings[i].id } }).catch(() => {});
         }
         result.startSettingIdMap = settingIdMap;
+
+        // story.greeting을 첫 번째 startSetting의 prologue와 동기화
+        if (startSettings.length > 0 && startSettings[0].prologue !== undefined) {
+          await prisma.story.update({
+            where: { id },
+            data: { greeting: startSettings[0].prologue },
+          });
+        }
       }
 
       // ── examples 동기화 (전체 교체) ──
@@ -2004,12 +2015,16 @@ ${statUnit ? `스탯 단위: ${statUnit}` : ''}
         return reply.status(400).send({ error: '메시지를 입력해주세요.' });
       }
 
-      reply.raw.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no',
-      });
+      const reqOrigin2 = request.headers.origin;
+      if (reqOrigin2) {
+        reply.raw.setHeader('Access-Control-Allow-Origin', reqOrigin2);
+        reply.raw.setHeader('Access-Control-Allow-Credentials', 'true');
+      }
+      reply.raw.setHeader('Content-Type', 'text/event-stream');
+      reply.raw.setHeader('Cache-Control', 'no-cache');
+      reply.raw.setHeader('Connection', 'keep-alive');
+      reply.raw.setHeader('X-Accel-Buffering', 'no');
+      reply.raw.flushHeaders();
 
       try {
         const baseSystem = systemPrompt?.trim()

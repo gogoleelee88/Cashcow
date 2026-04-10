@@ -29,6 +29,7 @@ function ChatView({ conversationId, greeting }: { conversationId: string; greeti
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState('');
+  const streamingTextRef = useRef('');
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const { accessToken, user, setUser } = useAuthStore();
@@ -76,23 +77,23 @@ function ChatView({ conversationId, greeting }: { conversationId: string; greeti
 
     abortRef.current = new AbortController();
 
+    streamingTextRef.current = '';
     streamStoryMessage(
       conversationId,
       content,
       accessToken,
       {
-        onDelta: (text) => setStreamingText((prev) => prev + text),
-        onDone: (data) => {
-          const assistantMsg: Message = {
-            id: `assistant-${Date.now()}`,
-            role: 'ASSISTANT',
-            content: streamingText + (data as any).text || '',
-            createdAt: new Date().toISOString(),
-          };
+        onDelta: (text) => {
+          streamingTextRef.current += text;
+          setStreamingText((prev) => prev + text);
+        },
+        onDone: () => {
+          const finalContent = streamingTextRef.current;
+          streamingTextRef.current = '';
           setMessages((prev) => [...prev, {
             id: `assistant-${Date.now()}`,
             role: 'ASSISTANT',
-            content: '',  // Will be replaced by streaming text
+            content: finalContent,
             createdAt: new Date().toISOString(),
           }]);
           setStreamingText('');
