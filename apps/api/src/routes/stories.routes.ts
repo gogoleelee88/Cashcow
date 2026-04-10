@@ -1340,9 +1340,9 @@ export const storyRoutes: FastifyPluginAsync = async (fastify) => {
       const limitNum = Math.min(Math.max(Number(limit), 1), 50);
 
       const [total, stories] = await Promise.all([
-        prismaRead.story.count({ where: { authorId: userId } }),
+        prismaRead.story.count({ where: { authorId: userId, isActive: true } }),
         prismaRead.story.findMany({
-          where: { authorId: userId },
+          where: { authorId: userId, isActive: true },
           orderBy: { createdAt: 'desc' },
           skip: (pageNum - 1) * limitNum,
           take: limitNum,
