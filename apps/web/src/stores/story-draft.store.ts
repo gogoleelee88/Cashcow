@@ -181,12 +181,10 @@ export const useStoryDraftStore = create<StoryDraftState>()(
     {
       name: 'cv-story-draft-v2',
       storage: createJSONStorage(() => localStorage),
-      // base64 이미지 미저장 (용량 문제), saveStatus는 세션마다 초기화
+      // saveStatus는 세션마다 초기화 (이미지는 압축 data URL로 저장 — S3 연결 시 CDN URL로 대체)
       partialize: (state) => ({
         ...state,
-        squareImage:  null,
-        verticalImage: null,
-        saveStatus:   'idle' as SaveStatus,
+        saveStatus: 'idle' as SaveStatus,
       }),
     }
   )

@@ -30,9 +30,62 @@ const createStorySchema = z.object({
   language:     z.string().default('ko'),
 });
 
+// ── 슬러그 생성 유틸 ────────────────────────────────────────────────────────
+function toSlug(title: string): string {
+  return title
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^\w가-힣ㄱ-ㅎㅏ-ㅣ-]/g, '')
+    .slice(0, 80) || 'untitled';
+}
+
+async function generateUniqueSlug(title: string, authorId: string, excludeId?: string): Promise<string> {
+  const base = toSlug(title);
+  let slug = base;
+  let suffix = 2;
+  while (true) {
+    const existing = await prisma.story.findFirst({
+      where: { authorId, slug, ...(excludeId ? { id: { not: excludeId } } : {}) },
+      select: { id: true },
+    });
+    if (!existing) return slug;
+    slug = `${base}-${suffix++}`;
+  }
+}
+
 export const storyRoutes: FastifyPluginAsync = async (fastify) => {
   // const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }); // 비활성화
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+  // ─────────────────────────────────────────────
+  // CHECK TITLE — 중복 제목 실시간 체크 (작가 범위)
+  // ─────────────────────────────────────────────
+  fastify.get('/check-title', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const userId = request.userId!;
+      const { title, excludeId } = request.query as { title?: string; excludeId?: string };
+      if (!title?.trim()) return reply.send({ available: true, suggestion: null });
+
+      const slug = toSlug(title);
+      const existing = await prisma.story.findFirst({
+        where: {
+          authorId: userId,
+          slug,
+          status: { not: 'DRAFT' },
+          ...(excludeId ? { id: { not: excludeId } } : {}),
+        },
+        select: { id: true, title: true },
+      });
+
+      if (!existing) return reply.send({ available: true, suggestion: null });
+
+      const suggestion = await generateUniqueSlug(title, userId, excludeId);
+      const suggestionTitle = title.trim() + (suggestion.endsWith('-2') ? ' (2)' : ` (${suggestion.split('-').pop()})`);
+      return reply.send({ available: false, suggestion: suggestionTitle });
+    },
+  });
 
   // ─────────────────────────────────────────────
   // LIST STORIES
@@ -252,6 +305,64 @@ export const storyRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       return reply.status(201).send({ data: story });
+    },
+  });
+
+  // ─────────────────────────────────────────────
+  // GET STORY EDIT DATA — 편집 폼용 전체 데이터 반환 (작성자 전용, 복호화 포함)
+  // ─────────────────────────────────────────────
+  fastify.get('/:id/edit-data', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const userId  = request.userId!;
+
+      const story = await prisma.story.findFirst({
+        where: { id, authorId: userId },
+        include: {
+          startSettings: {
+            orderBy: { order: 'asc' },
+            include: { suggestedReplies: { orderBy: { order: 'asc' } } },
+          },
+          examples: { orderBy: { order: 'asc' } },
+        },
+      });
+      if (!story) return reply.status(404).send({ error: '스토리를 찾을 수 없습니다.' });
+
+      const systemPrompt = decrypt(story.systemPromptEncrypted, story.systemPromptIv);
+
+      return reply.send({
+        data: {
+          id: story.id,
+          title: story.title,
+          description: story.description,
+          coverUrl: story.coverUrl,
+          coverKey: story.coverKey,
+          coverVerticalUrl: story.coverVerticalUrl,
+          coverVerticalKey: story.coverVerticalKey,
+          category: story.category,
+          tags: story.tags,
+          ageRating: story.ageRating,
+          visibility: story.visibility,
+          status: story.status,
+          language: story.language,
+          greeting: story.greeting,
+          systemPrompt,
+          startSettings: story.startSettings.map((s: any) => ({
+            id: s.id,
+            name: s.name,
+            prologue: s.prologue ?? '',
+            situation: s.situation ?? '',
+            playGuide: s.playGuide ?? '',
+            suggestedReplies: s.suggestedReplies.map((r: any) => r.text),
+          })),
+          examples: story.examples.map((e: any) => ({
+            id: e.id,
+            user: e.userMessage,
+            assistant: e.assistantMessage,
+          })),
+        },
+      });
     },
   });
 
@@ -872,9 +983,21 @@ export const storyRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(422).send({ error: '배포 전 필수 항목을 완성해주세요.', details: errors });
       }
 
+      // 같은 작가의 중복 제목 체크 (발행된 스토리 기준)
+      const slug = await generateUniqueSlug(story.title.trim(), userId, id);
+      const isExactSlug = toSlug(story.title.trim()) === slug;
+      if (!isExactSlug) {
+        // 이미 같은 slug가 있어서 suffix가 붙은 경우 → 중복 제목 경고
+        return reply.status(409).send({
+          code: 'DUPLICATE_TITLE',
+          error: `'${story.title}' 제목의 스토리가 이미 있어요.`,
+          suggestion: story.title.trim() + ` (${slug.split('-').pop()})`,
+        });
+      }
+
       await prisma.story.update({
         where: { id },
-        data:  { status: 'ONGOING' as any },
+        data:  { status: 'ONGOING' as any, slug },
       });
 
       await cache.del(`story:detail:${id}`);
@@ -1451,6 +1574,90 @@ ${statUnit ? `스탯 단위: ${statUnit}` : ''}
   // ─────────────────────────────────────────────
   // START SETTINGS CRUD  (/:storyId/start-settings)
   // ─────────────────────────────────────────────
+  // ─────────────────────────────────────────────
+  // DRAFT SNAPSHOT — 전체 draft 상태 한번에 서버 동기화
+  // startSettings(prologue/situation/playGuide/suggestedReplies) + examples 전체 upsert
+  // ─────────────────────────────────────────────
+  fastify.patch('/:id/draft-snapshot', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const userId = request.userId!;
+
+      const story = await prisma.story.findFirst({ where: { id, authorId: userId } });
+      if (!story) return reply.status(404).send({ error: '스토리를 찾을 수 없습니다.' });
+
+      const { startSettings, examples } = request.body as {
+        startSettings?: { localId: string; name: string; prologue: string; situation: string; playGuide: string; suggestedReplies: string[] }[];
+        examples?: { localId: string; user: string; assistant: string }[];
+      };
+
+      const result: { startSettingIdMap?: Record<string, string>; exampleIdMap?: Record<string, string> } = {};
+
+      // ── startSettings 동기화 ──
+      if (startSettings !== undefined) {
+        const serverSettings = await prisma.storyStartSetting.findMany({
+          where: { storyId: id },
+          orderBy: { order: 'asc' },
+        });
+        const settingIdMap: Record<string, string> = {};
+
+        for (let i = 0; i < startSettings.length; i++) {
+          const local = startSettings[i];
+          const server = serverSettings[i];
+
+          if (server) {
+            await prisma.$transaction(async (tx) => {
+              await tx.storySuggestedReply.deleteMany({ where: { startSettingId: server.id } });
+              if (local.suggestedReplies.length > 0) {
+                await tx.storySuggestedReply.createMany({
+                  data: local.suggestedReplies.map((text, idx) => ({ startSettingId: server.id, text, order: idx })),
+                });
+              }
+              await tx.storyStartSetting.update({
+                where: { id: server.id },
+                data: { name: local.name, prologue: local.prologue, situation: local.situation, playGuide: local.playGuide ?? '' },
+              });
+            });
+            settingIdMap[local.localId] = server.id;
+          } else {
+            const created = await prisma.storyStartSetting.create({
+              data: {
+                storyId: id, name: local.name, prologue: local.prologue,
+                situation: local.situation, playGuide: local.playGuide ?? '', order: i,
+                suggestedReplies: { create: local.suggestedReplies.map((text, idx) => ({ text, order: idx })) },
+              },
+            });
+            settingIdMap[local.localId] = created.id;
+          }
+        }
+        // 로컬보다 서버에 더 많은 설정이 있으면 삭제
+        for (let i = startSettings.length; i < serverSettings.length; i++) {
+          await prisma.storyStartSetting.delete({ where: { id: serverSettings[i].id } }).catch(() => {});
+        }
+        result.startSettingIdMap = settingIdMap;
+      }
+
+      // ── examples 동기화 (전체 교체) ──
+      if (examples !== undefined) {
+        await prisma.storyExample.deleteMany({ where: { storyId: id } });
+        const exampleIdMap: Record<string, string> = {};
+        const toCreate = examples.filter(e => e.user?.trim() || e.assistant?.trim());
+        for (let i = 0; i < toCreate.length; i++) {
+          const ex = toCreate[i];
+          const created = await prisma.storyExample.create({
+            data: { storyId: id, userMessage: ex.user, assistantMessage: ex.assistant, order: i },
+          });
+          exampleIdMap[ex.localId] = created.id;
+        }
+        result.exampleIdMap = exampleIdMap;
+      }
+
+      await cache.del(`story:detail:${id}`);
+      return reply.send({ data: result });
+    },
+  });
+
   fastify.get('/:storyId/start-settings', {
     preHandler: [requireAuth],
     handler: async (request, reply) => {

@@ -4,6 +4,10 @@ import { logger } from '../lib/logger';
 import { alertCritical } from '../lib/slack';
 import { queueDepth, queueJobDuration } from '../lib/metrics';
 import { prisma } from '../lib/prisma';
+import OpenAI, { toFile } from 'openai';
+import { randomBytes } from 'crypto';
+import { uploadBufferToS3 } from './s3.service';
+import { config } from '../config';
 
 const connection = { client: getBullRedis() };
 
@@ -48,6 +52,16 @@ export const memoryCompressionQueue = new Queue('memory-compression', {
   },
 });
 
+export const imageQueue = new Queue('image-generation', {
+  connection: getBullRedis(),
+  defaultJobOptions: {
+    attempts: 2,
+    backoff: { type: 'exponential', delay: 3000 },
+    removeOnComplete: { count: 200 },
+    removeOnFail: { count: 100 },
+  },
+});
+
 // ─────────────────────────────────────────────
 // JOB TYPES
 // ─────────────────────────────────────────────
@@ -78,6 +92,20 @@ export interface MemoryCompressionJobData {
   conversationId: string;
 }
 
+export interface ImageJobData {
+  imageRecordId: string;
+  type: 'GENERATE' | 'TRANSFORM';
+  userId: string;
+  prompt: string;
+  style?: string;
+  ratio: string;
+  count: number;
+  // transform only: base64-encoded source image
+  sourceImageBase64?: string;
+  sourceImageMimetype?: string;
+  sourceImageFilename?: string;
+}
+
 // ─────────────────────────────────────────────
 // JOB PRODUCERS
 // ─────────────────────────────────────────────
@@ -106,6 +134,11 @@ export async function enqueueMemoryCompression(conversationId: string): Promise<
     { conversationId },
     { jobId: `memory-${conversationId}`, delay: 5000 }  // 5s delay to batch
   );
+}
+
+export async function enqueueImageJob(data: ImageJobData): Promise<string> {
+  const job = await imageQueue.add('process-image', data);
+  return job.id!;
 }
 
 // ─────────────────────────────────────────────
@@ -243,11 +276,113 @@ async function processMemoryCompression(job: Job<MemoryCompressionJobData>): Pro
 }
 
 // ─────────────────────────────────────────────
+// IMAGE GENERATION PROCESSOR
+// ─────────────────────────────────────────────
+const RATIO_TO_SIZE: Record<string, '1024x1024' | '1536x1024' | '1024x1536'> = {
+  '1:1':  '1024x1024',
+  '4:3':  '1536x1024',
+  '3:4':  '1024x1536',
+  '16:9': '1536x1024',
+  '9:16': '1024x1536',
+  '2:3':  '1024x1536',
+};
+
+async function processImageJob(job: Job<ImageJobData>): Promise<void> {
+  const { imageRecordId, type, userId, prompt, ratio, count, sourceImageBase64, sourceImageMimetype, sourceImageFilename } = job.data;
+
+  await prisma.generatedImage.update({
+    where: { id: imageRecordId },
+    data: { status: 'PROCESSING' },
+  });
+
+  try {
+    const openai = new OpenAI({ apiKey: config.OPENAI_API_KEY });
+    const size = RATIO_TO_SIZE[ratio] ?? '1024x1024';
+    const urls: string[] = [];
+
+    if (type === 'GENERATE') {
+      const response = await openai.images.generate({
+        model: 'gpt-image-1',
+        prompt,
+        n: count,
+        size,
+      } as any);
+
+      for (const item of response.data) {
+        const b64 = (item as any).b64_json as string | undefined;
+        const remoteUrl = (item as any).url as string | undefined;
+
+        if (b64) {
+          const filename = `${userId}/${randomBytes(12).toString('hex')}.png`;
+          const url = await uploadBufferToS3(
+            Buffer.from(b64, 'base64'),
+            'images/generated',
+            filename,
+            'image/png'
+          );
+          urls.push(url);
+        } else if (remoteUrl) {
+          urls.push(remoteUrl);
+        }
+      }
+    } else {
+      // TRANSFORM
+      if (!sourceImageBase64) throw new Error('Source image missing for transform job');
+      const imageBuffer = Buffer.from(sourceImageBase64, 'base64');
+      const imageFile = await toFile(imageBuffer, sourceImageFilename ?? 'image.png', {
+        type: sourceImageMimetype ?? 'image/png',
+      });
+
+      const response = await openai.images.edit({
+        model: 'gpt-image-1',
+        image: imageFile,
+        prompt,
+        n: count,
+        size,
+      } as any);
+
+      for (const item of response.data) {
+        const b64 = (item as any).b64_json as string | undefined;
+        const remoteUrl = (item as any).url as string | undefined;
+
+        if (b64) {
+          const filename = `${userId}/${randomBytes(12).toString('hex')}.png`;
+          const url = await uploadBufferToS3(
+            Buffer.from(b64, 'base64'),
+            'images/generated',
+            filename,
+            'image/png'
+          );
+          urls.push(url);
+        } else if (remoteUrl) {
+          urls.push(remoteUrl);
+        }
+      }
+    }
+
+    await prisma.generatedImage.update({
+      where: { id: imageRecordId },
+      data: { status: 'COMPLETED', urls },
+    });
+
+    logger.info({ imageRecordId, count: urls.length }, 'Image job completed');
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    await prisma.generatedImage.update({
+      where: { id: imageRecordId },
+      data: { status: 'FAILED', errorMsg },
+    });
+    throw err;
+  }
+}
+
+// ─────────────────────────────────────────────
 // WORKERS
 // ─────────────────────────────────────────────
 let settlementWorker: Worker | null = null;
 let notificationWorker: Worker | null = null;
 let memoryWorker: Worker | null = null;
+let imageWorker: Worker | null = null;
 
 export function startWorkers(): void {
   settlementWorker = new Worker(
@@ -282,7 +417,22 @@ export function startWorkers(): void {
     { connection: getBullRedis(), concurrency: 3 }
   );
 
-  [settlementWorker, notificationWorker, memoryWorker].forEach((worker) => {
+  imageWorker = new Worker(
+    'image-generation',
+    async (job: Job) => {
+      const timer = queueJobDuration.startTimer({ queue_name: 'image-generation', job_type: job.name });
+      try {
+        await processImageJob(job as Job<ImageJobData>);
+        timer();
+      } catch (err) {
+        timer();
+        throw err;
+      }
+    },
+    { connection: getBullRedis(), concurrency: 3 }
+  );
+
+  [settlementWorker, notificationWorker, memoryWorker, imageWorker].forEach((worker) => {
     worker.on('failed', async (job, err) => {
       logger.error({ jobId: job?.id, queue: worker.name, err }, 'Job failed');
       if (job?.attemptsMade === job?.opts.attempts) {
@@ -302,6 +452,7 @@ export async function stopWorkers(): Promise<void> {
     settlementWorker?.close(),
     notificationWorker?.close(),
     memoryWorker?.close(),
+    imageWorker?.close(),
   ]);
 }
 

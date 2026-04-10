@@ -171,6 +171,20 @@ export const api = {
     my: (params?: Record<string, unknown>) =>
       apiClient.get('/api/stories/my', { params }).then((r) => r.data),
 
+    // 제목 중복 체크 (같은 작가 범위)
+    checkTitle: (title: string, excludeId?: string) =>
+      apiClient.get('/api/stories/check-title', { params: { title, excludeId } }).then((r) => r.data),
+
+    // 편집 폼용 전체 데이터 로딩 (복호화된 systemPrompt 포함)
+    getEditData: (id: string) =>
+      apiClient.get(`/api/stories/${id}/edit-data`).then((r) => r.data),
+
+    // 전체 draft 상태 서버 동기화 (startSettings + examples 한번에)
+    saveDraftSnapshot: (id: string, data: {
+      startSettings?: { localId: string; name: string; prologue: string; situation: string; playGuide: string; suggestedReplies: string[] }[];
+      examples?: { localId: string; user: string; assistant: string }[];
+    }) => apiClient.patch(`/api/stories/${id}/draft-snapshot`, data).then((r) => r.data),
+
     generateRandomName: () =>
       apiClient.post('/api/stories/generate/random-name').then((r) => r.data?.data ?? r.data),
 
@@ -368,6 +382,14 @@ export const api = {
     updateMe: (data: { displayName?: string; bio?: string; avatarUrl?: string }) =>
       apiClient.patch('/api/users/me', data).then((r) => r.data),
 
+    uploadAvatar: (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return apiClient.post('/api/users/me/avatar', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }).then((r) => r.data);
+    },
+
     earnings: () =>
       apiClient.get('/api/users/me/earnings').then((r) => r.data),
 
@@ -398,6 +420,29 @@ export const api = {
     /** 인증 완료 여부 폴링 */
     ageVerifyStatus: () =>
       apiClient.get('/api/users/me/age-verify/status').then((r) => r.data),
+  },
+
+  images: {
+    promptHelper: (data: { style?: string; userInput?: string }) =>
+      apiClient.post('/api/images/prompt-helper', data).then((r) => r.data),
+
+    generate: (data: { prompt: string; style?: string; ratio?: string; count?: number }) =>
+      apiClient.post('/api/images/generate', data).then((r) => r.data),
+
+    transform: (formData: FormData) =>
+      apiClient.post('/api/images/transform', formData).then((r) => r.data),
+
+    pollJob: (imageId: string) =>
+      apiClient.get(`/api/images/jobs/${imageId}`).then((r) => r.data),
+
+    getLibrary: (params?: { cursor?: string; limit?: number }) =>
+      apiClient.get('/api/images/library', { params }).then((r) => r.data),
+
+    getLiked: (params?: { cursor?: string; limit?: number }) =>
+      apiClient.get('/api/images/liked', { params }).then((r) => r.data),
+
+    toggleLike: (imageId: string) =>
+      apiClient.patch(`/api/images/${imageId}/like`).then((r) => r.data),
   },
 };
 

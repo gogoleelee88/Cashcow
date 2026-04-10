@@ -200,6 +200,7 @@ model User {
   storyConversations StoryConversation[]
   storyLikes       StoryLike[]
   storyFavorites   StoryFavorite[]
+  generatedImages  GeneratedImage[]
 
   @@index([email])
   @@index([username])
@@ -616,6 +617,7 @@ model AuditLog {
 model Story {
   id               String        @id @default(cuid())
   title            String
+  slug             String?       // 작가별 unique URL slug (DRAFT는 null)
   description      String        @db.Text
   coverUrl         String?
   coverKey         String?
@@ -651,6 +653,7 @@ model Story {
   endings          StoryEnding[]
   examples         StoryExample[]
 
+  @@unique([authorId, slug])    // 같은 작가가 동일 slug(=제목) 중복 발행 불가. DRAFT는 slug=null이므로 제외
   @@index([authorId])
   @@index([category])
   @@index([visibility])
@@ -933,4 +936,42 @@ model StoryEndingRule {
 
   @@index([endingId])
   @@map("story_ending_rules")
+}
+
+// ── 이미지 생성 ───────────────────────────────────────────────────────────────
+
+enum ImageGenType {
+  GENERATE
+  TRANSFORM
+}
+
+enum ImageGenStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model GeneratedImage {
+  id          String         @id @default(cuid())
+  userId      String
+  prompt      String         @db.Text
+  style       String?
+  ratio       String         @default("1:1")
+  type        ImageGenType   @default(GENERATE)
+  status      ImageGenStatus @default(PENDING)
+  urls        String[]
+  creditsUsed Int            @default(0)
+  jobId       String?        @unique
+  errorMsg    String?
+  isLiked     Boolean        @default(false)
+  sourceUrl   String?        // 변형 시 원본 이미지 URL
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, isLiked])
+  @@map("generated_images")
 }

@@ -11,25 +11,43 @@ import { useStoryDraftStore, type DraftKeywordNote } from '../../stores/story-dr
 import { api } from '../../lib/api';
 
 // ── 자동저장 훅 ───────────────────────────────────────────────────────────
-function useAutoSave() {
+function useAutoSave(initialStoryId?: string) {
   const {
     storyId, setStoryId, setSaveStatus,
     name, description, systemPrompt,
+    startSettings, setStartSettings,
+    examples,
+    squareImage, setSquareImage,
+    verticalImage, setVerticalImage,
   } = useStoryDraftStore();
 
-  // 폼 진입 시 storyId 없으면 draft 생성
+  // ── 폼 진입: storyId 결정 ─────────────────────────────────────────────
   useEffect(() => {
+    if (initialStoryId) {
+      setStoryId(initialStoryId);
+      return;
+    }
     if (storyId) return;
     api.stories.create({}).then((res) => {
       setStoryId(res.data.id);
     }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 프로필 기본 필드 debounce 자동저장
+  // ── 커버 이미지 복원: storyId 확정 후 이미지가 없으면 서버에서 가져옴 ──
+  useEffect(() => {
+    if (!storyId || squareImage) return;
+    api.stories.getEditData(storyId).then((res: any) => {
+      const d = res.data;
+      if (d.coverUrl)         setSquareImage(d.coverUrl,         d.coverKey ?? null);
+      if (d.coverVerticalUrl) setVerticalImage(d.coverVerticalUrl, d.coverVerticalKey ?? null);
+    }).catch(() => {});
+  }, [storyId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── 이름 + 소개 debounce 저장 (800ms) ────────────────────────────────
   useEffect(() => {
     if (!storyId || (!name && !description)) return;
-    setSaveStatus('saving');
     const t = setTimeout(() => {
+      setSaveStatus('saving');
       api.stories.update(storyId, { title: name, description })
         .then(() => setSaveStatus('saved'))
         .catch(() => setSaveStatus('error'));
@@ -37,17 +55,55 @@ function useAutoSave() {
     return () => clearTimeout(t);
   }, [storyId, name, description]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 시스템 프롬프트 debounce 자동저장
+  // ── 시스템 프롬프트 debounce 저장 (800ms) ────────────────────────────
   useEffect(() => {
     if (!storyId || !systemPrompt) return;
-    setSaveStatus('saving');
     const t = setTimeout(() => {
+      setSaveStatus('saving');
       api.stories.updateSystemPrompt(storyId, systemPrompt)
         .then(() => setSaveStatus('saved'))
         .catch(() => setSaveStatus('error'));
     }, 800);
     return () => clearTimeout(t);
   }, [storyId, systemPrompt]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── draft-snapshot: startSettings + examples debounce 저장 (1500ms) ─
+  useEffect(() => {
+    if (!storyId) return;
+    const t = setTimeout(async () => {
+      setSaveStatus('saving');
+      try {
+        const res = await api.stories.saveDraftSnapshot(storyId, {
+          startSettings: startSettings.map(s => ({
+            localId: s.id,
+            name: s.name,
+            prologue: s.prologue ?? '',
+            situation: s.situation ?? '',
+            playGuide: s.playGuide ?? '',
+            suggestedReplies: s.suggestedReplies ?? [],
+          })),
+          examples: examples.map(e => ({
+            localId: e.id,
+            user: e.user,
+            assistant: e.assistant,
+          })),
+        });
+        // 서버 ID로 로컬 store 업데이트 (ID 동기화) — 실제 변경 있을 때만
+        const idMap = res?.data?.startSettingIdMap;
+        if (idMap) {
+          const hasChange = startSettings.some(s => idMap[s.id] && idMap[s.id] !== s.id);
+          if (hasChange) {
+            const synced = startSettings.map(s => ({ ...s, id: idMap[s.id] ?? s.id }));
+            setStartSettings(synced as any);
+          }
+        }
+        setSaveStatus('saved');
+      } catch {
+        setSaveStatus('error');
+      }
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [storyId, startSettings, examples]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 // ─────────────────────────────────────────────
@@ -476,20 +532,37 @@ function AgeVerificationModal({ onClose, onVerified }: { onClose: () => void; on
 // ─────────────────────────────────────────────
 interface CropArea { x: number; y: number; width: number; height: number }
 
-async function getCroppedImg(imageSrc: string, pixelCrop: CropArea): Promise<string> {
+// 크롭 후 표시용 blob URL + localStorage용 압축 data URL 동시 반환
+async function getCroppedImg(imageSrc: string, pixelCrop: CropArea): Promise<{ blobUrl: string; dataUrl: string }> {
   const image = new Image();
   image.src = imageSrc;
-  await new Promise<void>((resolve) => { image.onload = () => resolve(); });
+  await new Promise<void>((resolve, reject) => {
+    image.onload = () => resolve();
+    image.onerror = () => reject(new Error('image load failed'));
+  });
 
+  // 원본 품질 캔버스 (표시용 blob URL)
   const canvas = document.createElement('canvas');
   canvas.width = pixelCrop.width;
   canvas.height = pixelCrop.height;
   const ctx = canvas.getContext('2d')!;
   ctx.drawImage(image, pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height, 0, 0, pixelCrop.width, pixelCrop.height);
 
-  return new Promise((resolve) => {
+  // 저장용 압축 캔버스 (max 400px, localStorage 용량 절약)
+  const MAX = 400;
+  const scale = Math.min(1, MAX / Math.max(pixelCrop.width, pixelCrop.height));
+  const thumbCanvas = document.createElement('canvas');
+  thumbCanvas.width = Math.round(pixelCrop.width * scale);
+  thumbCanvas.height = Math.round(pixelCrop.height * scale);
+  const thumbCtx = thumbCanvas.getContext('2d')!;
+  thumbCtx.drawImage(canvas, 0, 0, thumbCanvas.width, thumbCanvas.height);
+  const dataUrl = thumbCanvas.toDataURL('image/jpeg', 0.75);
+
+  const blobUrl = await new Promise<string>((resolve) => {
     canvas.toBlob((blob) => resolve(URL.createObjectURL(blob!)), 'image/jpeg', 0.95);
   });
+
+  return { blobUrl, dataUrl };
 }
 
 // ─────────────────────────────────────────────
@@ -503,7 +576,7 @@ function ImageCropModal({
 }: {
   imageSrc: string;
   aspect: number;
-  onConfirm: (croppedUrl: string) => void;
+  onConfirm: (blobUrl: string, dataUrl: string) => void;
   onCancel: () => void;
 }) {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
@@ -518,8 +591,12 @@ function ImageCropModal({
   const handleConfirm = async () => {
     if (!croppedAreaPixels) return;
     setApplying(true);
-    const url = await getCroppedImg(imageSrc, croppedAreaPixels);
-    onConfirm(url);
+    try {
+      const { blobUrl, dataUrl } = await getCroppedImg(imageSrc, croppedAreaPixels);
+      onConfirm(blobUrl, dataUrl);
+    } finally {
+      setApplying(false);
+    }
   };
 
   const label = aspect === 1 ? '1:1 정방형' : '2:3 세로형';
@@ -610,6 +687,8 @@ function ImageUploadArea({
   hint,
   size,
   onPreviewChange,
+  uploading,
+  externalPreview,
 }: {
   label: string;
   required?: boolean;
@@ -617,6 +696,8 @@ function ImageUploadArea({
   hint: string;
   size: string;
   onPreviewChange?: (url: string | null) => void;
+  uploading?: boolean;
+  externalPreview?: string | null;
 }) {
   const [preview, setPreview] = useState<string | null>(null);
   const [rawImageSrc, setRawImageSrc] = useState<string | null>(null);
@@ -635,9 +716,9 @@ function ImageUploadArea({
     e.target.value = '';
   };
 
-  const handleCropConfirm = (croppedUrl: string) => {
-    setPreview(croppedUrl);
-    onPreviewChange?.(croppedUrl);
+  const handleCropConfirm = (blobUrl: string, dataUrl: string) => {
+    setPreview(blobUrl);       // 로컬 고화질 미리보기 (현재 세션)
+    onPreviewChange?.(dataUrl); // 부모가 store에 저장 (압축 data URL → localStorage 유지)
     setShowCropper(false);
   };
 
@@ -673,14 +754,14 @@ function ImageUploadArea({
           {/* Preview box */}
           <div
             className={cn(
-              'flex-shrink-0 rounded-xl overflow-hidden border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center cursor-pointer hover:border-gray-300 transition-colors',
+              'relative flex-shrink-0 rounded-xl overflow-hidden border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center cursor-pointer hover:border-gray-300 transition-colors',
               ratio === '1:1' ? 'w-20 h-20' : 'w-20 h-[calc(20px*4/3)] min-h-[107px]'
             )}
-            onClick={() => inputRef.current?.click()}
+            onClick={() => !uploading && inputRef.current?.click()}
           >
-            {preview ? (
+            {(preview || externalPreview) ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={preview} alt="preview" className="w-full h-full object-cover" />
+              <img src={preview ?? externalPreview!} alt="preview" className="w-full h-full object-cover" />
             ) : (
               <div className="flex flex-col items-center gap-1 text-gray-300">
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -688,7 +769,13 @@ function ImageUploadArea({
                 </svg>
               </div>
             )}
-            <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+            <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} disabled={uploading} />
+            {/* 업로드 중 오버레이 */}
+            {uploading && (
+              <div className="absolute inset-0 bg-black/40 flex items-center justify-center rounded-xl">
+                <Loader2 className="w-5 h-5 text-white animate-spin" />
+              </div>
+            )}
           </div>
 
           {/* Info + buttons */}
@@ -698,12 +785,13 @@ function ImageUploadArea({
               <button
                 type="button"
                 onClick={() => inputRef.current?.click()}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
+                disabled={uploading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
               >
-                <Upload className="w-3.5 h-3.5" />
-                업로드
+                {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                {uploading ? '업로드 중...' : '업로드'}
               </button>
-              {preview && (
+              {(preview || externalPreview) && !uploading && (
                 <>
                   <button
                     type="button"
@@ -854,21 +942,98 @@ function RightPreviewPanel({
 function ProfileForm({
   name, setName,
   description, setDescription,
+  storyId,
   onNext,
   onSquareImageChange,
   onVerticalImageChange,
+  squareImagePreview,
+  verticalImagePreview,
 }: {
   name: string;
   setName: (v: string) => void;
   description: string;
   setDescription: (v: string) => void;
+  storyId?: string | null;
   onNext: () => void;
-  onSquareImageChange?: (url: string | null) => void;
-  onVerticalImageChange?: (url: string | null) => void;
+  onSquareImageChange?: (url: string | null, key?: string | null) => void;
+  onVerticalImageChange?: (url: string | null, key?: string | null) => void;
+  squareImagePreview?: string | null;
+  verticalImagePreview?: string | null;
 }) {
   const [showAgeNotice, setShowAgeNotice] = useState(true);
   const [showAgeModal, setShowAgeModal] = useState(false);
   const [generatingName, setGeneratingName] = useState(false);
+  const [uploadingSquare, setUploadingSquare] = useState(false);
+  const [uploadingVertical, setUploadingVertical] = useState(false);
+
+  // ── S3 이미지 업로드 핸들러 ──────────────────────────────────────────────
+  const handleImageUpload = async (
+    imageData: string | null,  // data URL (압축) or blob URL
+    variant: 'square' | 'vertical',
+    setUploading: (v: boolean) => void,
+    onDone: ((url: string | null, key?: string | null) => void) | undefined,
+  ) => {
+    if (!imageData) { onDone?.(null, null); return; }
+
+    // ── S3/R2 업로드 (스토리지 설정 후 주석 해제) ────────────────────────
+    // if (!storyId) { onDone?.(imageData); return; }
+    // setUploading(true);
+    // try {
+    //   // 1. data URL → Blob 객체
+    //   const fetchRes = await fetch(imageData);
+    //   const blob = await fetchRes.blob();
+    //
+    //   // 2. Presigned URL 요청
+    //   const { data } = await api.stories.getCoverUploadUrl(storyId, {
+    //     contentType: 'image/jpeg',
+    //     variant,
+    //   });
+    //
+    //   // 3. S3/R2에 PUT
+    //   await fetch(data.uploadUrl, {
+    //     method: 'PUT',
+    //     body: blob,
+    //     headers: { 'Content-Type': 'image/jpeg' },
+    //   });
+    //
+    //   // 4. 서버에 URL 확정
+    //   await api.stories.confirmCoverUpload(storyId, {
+    //     variant,
+    //     url: data.publicUrl,
+    //     key: data.key,
+    //   });
+    //
+    //   // 5. store에 CDN URL + key 저장
+    //   onDone?.(data.publicUrl, data.key);
+    // } catch {
+    //   onDone?.(blobUrl);
+    // } finally {
+    //   setUploading(false);
+    // }
+    // ────────────────────────────────────────────────────────────────────
+
+    // 임시: 스토리지 미설정 상태 — 압축 data URL을 store에 저장 (localStorage로 유지됨)
+    onDone?.(imageData);
+  };
+
+  // ── 실시간 제목 중복 체크 (500ms debounce) ────────────────────────────
+  const [titleCheck, setTitleCheck] = useState<{ available: boolean; suggestion: string | null } | null>(null);
+  const [titleCheckTimer, setTitleCheckTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleNameChange = (v: string) => {
+    setName(v);
+    if (titleCheckTimer) clearTimeout(titleCheckTimer);
+    if (!v.trim() || v.trim().length < 2) { setTitleCheck(null); return; }
+    const timer = setTimeout(async () => {
+      try {
+        const result = await api.stories.checkTitle(v.trim(), storyId ?? undefined);
+        setTitleCheck(result);
+      } catch {
+        setTitleCheck(null);
+      }
+    }, 500);
+    setTitleCheckTimer(timer);
+  };
 
   const handleRandomName = async () => {
     setGeneratingName(true);
@@ -938,7 +1103,11 @@ function ProfileForm({
         ratio="1:1"
         hint="이미지를 필수로 등록해주세요."
         size="5MB 이하 (1,080 x 1,080px)"
-        onPreviewChange={onSquareImageChange}
+        uploading={uploadingSquare}
+        externalPreview={squareImagePreview}
+        onPreviewChange={(blobUrl) =>
+          handleImageUpload(blobUrl, 'square', setUploadingSquare, onSquareImageChange)
+        }
       />
 
       {/* Vertical image */}
@@ -947,7 +1116,11 @@ function ProfileForm({
         ratio="2:3"
         hint="필수는 아니지만 미리 등록하면 더 예쁘게 노출돼요."
         size="5MB 이하 (1,080 x 1,620px)"
-        onPreviewChange={onVerticalImageChange}
+        uploading={uploadingVertical}
+        externalPreview={verticalImagePreview}
+        onPreviewChange={(blobUrl) =>
+          handleImageUpload(blobUrl, 'vertical', setUploadingVertical, onVerticalImageChange)
+        }
       />
 
       {/* Update notice */}
@@ -973,14 +1146,39 @@ function ProfileForm({
           <input
             type="text"
             value={name}
-            onChange={(e) => setName(e.target.value.slice(0, 30))}
+            onChange={(e) => handleNameChange(e.target.value.slice(0, 30))}
             placeholder="스토리의 이름을 입력해 주세요"
-            className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-900 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 transition-colors pr-16"
+            className={cn(
+              'w-full px-4 py-3 rounded-xl border text-gray-900 text-sm placeholder:text-gray-300 focus:outline-none transition-colors pr-16',
+              titleCheck?.available === false ? 'border-amber-300 focus:border-amber-400' : 'border-gray-200 focus:border-gray-400'
+            )}
           />
           <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-300 text-xs">
             {name.length} / 30
           </span>
         </div>
+        {/* 중복 제목 경고 */}
+        {titleCheck?.available === false && (
+          <div className="flex items-center gap-2 mt-1.5 text-amber-600 text-xs">
+            <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>내가 발행한 스토리 중 같은 제목이 있어요.</span>
+            {titleCheck.suggestion && (
+              <button
+                type="button"
+                onClick={() => { setName(titleCheck.suggestion!); setTitleCheck(null); }}
+                className="underline font-medium hover:text-amber-700"
+              >
+                '{titleCheck.suggestion}' 사용
+              </button>
+            )}
+          </div>
+        )}
+        {titleCheck?.available === true && name.trim().length >= 2 && (
+          <div className="flex items-center gap-1.5 mt-1.5 text-emerald-600 text-xs">
+            <Check className="w-3.5 h-3.5" />
+            <span>사용 가능한 제목이에요.</span>
+          </div>
+        )}
       </div>
 
       {/* Description */}
@@ -3099,14 +3297,27 @@ type PromptTemplateId = (typeof PROMPT_TEMPLATES)[number]['id'];
 // ─────────────────────────────────────────────
 function StorySettingsTab({
   storyName, storyDescription, initialSystemPrompt, onSystemPromptChange,
+  initialExamples, onExamplesChange,
 }: {
   storyName: string; storyDescription: string; initialSystemPrompt: string; onSystemPromptChange: (v: string) => void;
+  initialExamples?: { id: string; user: string; assistant: string }[];
+  onExamplesChange?: (examples: { id: string; user: string; assistant: string }[]) => void;
 }) {
   const [selectedTemplate, setSelectedTemplate] = useState<PromptTemplateId>('basic');
   const [templateDropdownOpen, setTemplateDropdownOpen] = useState(false);
   const [systemPrompt, setSystemPrompt] = useState(initialSystemPrompt);
   const [customPrompt, setCustomPrompt] = useState('');
-  const [examples, setExamples] = useState([{ user: '', assistant: '' }]);
+  const [examples, setExamplesLocal] = useState<{ id: string; user: string; assistant: string }[]>(
+    initialExamples?.length ? initialExamples : [{ id: '1', user: '', assistant: '' }]
+  );
+
+  const setExamples = (updater: ((prev: { id: string; user: string; assistant: string }[]) => { id: string; user: string; assistant: string }[]) | { id: string; user: string; assistant: string }[]) => {
+    setExamplesLocal(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      onExamplesChange?.(next);
+      return next;
+    });
+  };
   const [generatingPrompt, setGeneratingPrompt] = useState(false);
   const [generatingExamples, setGeneratingExamples] = useState(false);
   const [showProfileTooltip, setShowProfileTooltip] = useState(false);
@@ -3177,12 +3388,12 @@ function StorySettingsTab({
 
       if (generated.length > 0) {
         setExamples(prev => {
-          // 기존 슬롯이 없으면 생성된 수만큼 슬롯 만들기
-          const base = prev.length > 0 ? prev : generated.map(() => ({ user: '', assistant: '' }));
+          const base = prev.length > 0 ? prev : generated.map((_, i) => ({ id: String(Date.now() + i), user: '', assistant: '' }));
           return base.map((slot, i) => {
             const gen = generated[i];
             if (!gen) return slot;
             return {
+              id: slot.id ?? String(Date.now() + i),
               user: (gen.user || '').slice(0, 500),
               assistant: (gen.assistant || '').slice(0, 500),
             };
@@ -3206,7 +3417,7 @@ function StorySettingsTab({
       setTimeout(() => setShowExamplesMaxTooltip(false), 3000);
       return;
     }
-    setExamples(p => [...p, { user: '', assistant: '' }]);
+    setExamples(p => [...p, { id: String(Date.now()), user: '', assistant: '' }]);
   };
 
   return (
@@ -3721,12 +3932,12 @@ function CrackerChargeModal({ onClose }: { onClose: () => void }) {
 // ─────────────────────────────────────────────
 // MAIN STORY CREATE FORM
 // ─────────────────────────────────────────────
-export function StoryCreateForm() {
+export function StoryCreateForm({ initialStoryId }: { initialStoryId?: string } = {}) {
   const { isAuthenticated, isLoading: authLoading } = useAuthStore();
   const router = useRouter();
 
   // ── 자동저장 훅 활성화 ─────────────────────────────────────────────────
-  useAutoSave();
+  useAutoSave(initialStoryId);
 
   // ── Zustand draft store ────────────────────────────────────────────────
   const {
@@ -3738,11 +3949,34 @@ export function StoryCreateForm() {
     squareImage, setSquareImage,
     verticalImage, setVerticalImage,
     systemPrompt, setSystemPrompt,
-    startSettings, activeStartSettingId,
+    startSettings, setStartSettings, activeStartSettingId, setActiveStartSettingId,
     stats, setStats,
+    examples, setExamples,
     lastSavedAt,
     reset,
   } = useStoryDraftStore();
+
+  // ── 편집 모드: 기존 스토리 데이터 로딩 ────────────────────────────────
+  const [editDataLoaded, setEditDataLoaded] = useState(false);
+  useEffect(() => {
+    if (!initialStoryId || editDataLoaded) return;
+    api.stories.getEditData(initialStoryId).then((res: any) => {
+      const d = res.data;
+      setName(d.title ?? '');
+      setDescription(d.description ?? '');
+      setSystemPrompt(d.systemPrompt ?? '');
+      if (d.coverUrl) setSquareImage(d.coverUrl, d.coverKey ?? null);
+      if (d.coverVerticalUrl) setVerticalImage(d.coverVerticalUrl, d.coverVerticalKey ?? null);
+      if (d.startSettings?.length) {
+        setStartSettings(d.startSettings);
+        setActiveStartSettingId(d.startSettings[0].id);
+      }
+      if (d.examples?.length) setExamples(d.examples);
+      setEditDataLoaded(true);
+    }).catch(() => {
+      setEditDataLoaded(true); // 실패해도 빈 폼으로 진행
+    });
+  }, [initialStoryId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 현재 활성 시작설정에서 미리보기에 필요한 값 파생
   const activeStartSetting = startSettings.find(s => s.id === activeStartSettingId) ?? startSettings[0];
@@ -3848,6 +4082,27 @@ export function StoryCreateForm() {
     if (!authLoading && !isAuthenticated) router.push('/login?redirect=/creator/story/new');
   }, [isAuthenticated, authLoading, router]);
 
+  // ── 미저장 상태 이탈 경고 ────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (saveStatus === 'saving') e.preventDefault();
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [saveStatus]);
+
+  // 편집 모드에서 데이터 로딩 완료 전까지 폼 렌더 차단 (StorySettingsTab의 useState 초기값 보장)
+  if (initialStoryId && !editDataLoaded) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-white">
+        <div className="flex flex-col items-center gap-3 text-gray-400">
+          <Loader2 className="w-8 h-8 animate-spin" />
+          <p className="text-sm">스토리 정보를 불러오는 중...</p>
+        </div>
+      </div>
+    );
+  }
+
   const currentTabIndex = TABS.findIndex(t => t.key === activeTab);
 
   const handleNext = () => {
@@ -3900,7 +4155,9 @@ export function StoryCreateForm() {
             {saveStatus === 'saved' && (
               <>
                 <Check className="w-3.5 h-3.5 text-green-500" />
-                <span className="text-green-600 text-xs">저장됨</span>
+                <span className="text-green-600 text-xs">
+                  {lastSavedAt ? `${new Date(lastSavedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 저장됨` : '저장됨'}
+                </span>
               </>
             )}
             {saveStatus === 'error' && (
@@ -3973,9 +4230,12 @@ export function StoryCreateForm() {
                 setName={setName}
                 description={description}
                 setDescription={setDescription}
+                storyId={storyId}
                 onNext={handleNext}
                 onSquareImageChange={setSquareImage}
                 onVerticalImageChange={setVerticalImage}
+                squareImagePreview={squareImage}
+                verticalImagePreview={verticalImage}
               />
             </div>
             <div style={{ display: activeTab === 'story-settings' ? 'flex' : 'none' }} className="flex-col flex-1 min-h-0 overflow-hidden">
@@ -3984,6 +4244,8 @@ export function StoryCreateForm() {
                 storyDescription={description}
                 initialSystemPrompt={systemPrompt}
                 onSystemPromptChange={setSystemPrompt}
+                initialExamples={examples}
+                onExamplesChange={setExamples}
               />
             </div>
             <div style={{ display: activeTab === 'start-settings' ? 'flex' : 'none' }} className="flex-col flex-1 min-h-0 overflow-hidden">
