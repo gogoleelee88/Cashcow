@@ -54,13 +54,8 @@ export function SettingsContent() {
 
     if (avatarFile) {
       try {
-        const uploadData = await api.characters.getUploadUrl(avatarFile.type, 'avatar');
-        await fetch(uploadData.uploadUrl, {
-          method: 'PUT',
-          body: avatarFile,
-          headers: { 'Content-Type': avatarFile.type },
-        });
-        avatarUrl = uploadData.fileUrl;
+        const res = await api.users.uploadAvatar(avatarFile);
+        avatarUrl = res.data.avatarUrl;
       } catch {
         toast.error('오류', '이미지 업로드에 실패했습니다.');
         return;
