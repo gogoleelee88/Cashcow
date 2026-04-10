@@ -106,21 +106,25 @@ async function shot(page, name) {
   const title = await page.locator('h1').first().textContent().catch(() => '');
   console.log(`  페이지 제목: ${title}`);
 
-  // ── 4. 이야기 시작하기 클릭 ────────────────────────────────────────────
+  // ── 4. 이야기 시작하기 클릭 → 새 채팅 페이지로 이동 ───────────────────
   console.log('\n[대화 시작]');
   const startBtn = page.locator('button:has-text("이야기 시작하기")');
   await startBtn.waitFor({ state: 'visible', timeout: 8000 });
   await startBtn.click();
+
+  // 새 페이지 /story/{id}/chat?conv=... 로 이동 대기
+  await page.waitForURL(/\/story\/.+\/chat/, { timeout: 12000, waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(3000);
   await shot(page, '02_chat_opened');
+  console.log(`  채팅 페이지 URL: ${page.url()}`);
 
-  // 채팅창이 열렸는지 확인 (프롤로그 메시지)
+  // 프롤로그 텍스트 확인
   const prologueVisible = await page.locator(`text=${STORY.prologue.slice(0, 10)}`).isVisible().catch(() => false);
   console.log(`  프롤로그 표시: ${prologueVisible}`);
 
   // ── 5. 채팅 메시지 전송 ────────────────────────────────────────────────
   console.log('\n[채팅]');
-  const chatInput = page.locator('input[placeholder*="메시지를 입력"]');
+  const chatInput = page.locator('input[placeholder*="메시지 보내기"]');
   await chatInput.waitFor({ state: 'visible', timeout: 8000 });
 
   const msg1 = '네, 각오가 됐습니다. 첫 번째 임무가 무엇인지 알려주세요.';
@@ -128,48 +132,46 @@ async function shot(page, name) {
   await shot(page, '03_message_typed');
   console.log(`  메시지 입력: ${msg1}`);
 
-  // 전송 버튼 클릭
-  await page.locator('button[class*="bg-gray-800"]').last().click();
+  // Enter 키로 전송
+  await chatInput.press('Enter');
   console.log('  전송 완료, AI 응답 대기...');
 
-  // AI 응답 스트리밍 대기 (최대 20초)
+  // AI 응답 스트리밍 대기 (커서 animate-pulse 또는 bounce 사라지면 완료)
   await page.waitForFunction(
-    () => {
-      const dots = document.querySelector('.animate-bounce');
-      return !dots; // 로딩 닷이 사라지면 응답 완료
-    },
-    { timeout: 20000 }
-  ).catch(() => console.log('  ⚠️ 스트리밍 대기 타임아웃 (응답 느림)'));
+    () => !document.querySelector('.animate-bounce') && !document.querySelector('.animate-pulse'),
+    { timeout: 25000 }
+  ).catch(() => console.log('  ⚠️ 스트리밍 대기 타임아웃'));
 
   await page.waitForTimeout(1500);
   await shot(page, '04_ai_response');
 
-  // 응답 메시지 확인
-  const msgs = await page.locator('.bg-blue-50').allTextContents();
-  console.log(`\n  AI 응답 수: ${msgs.length}`);
-  msgs.forEach((m, i) => console.log(`  [${i + 1}] ${m.slice(0, 80)}`));
+  // 유저 메시지 확인 (border-t border-b 스타일)
+  const userMsgs = await page.locator('.border-t.border-b').allTextContents();
+  console.log(`\n  유저 메시지 수: ${userMsgs.length}`);
+  // prose 텍스트 확인 (leading-[1.85])
+  const proseMsgs = await page.locator('.text-gray-700.leading-\\[1\\.85\\]').allTextContents();
+  console.log(`  AI 산문 단락 수: ${proseMsgs.length}`);
 
   // ── 6. 두 번째 메시지 ──────────────────────────────────────────────────
   console.log('\n[두 번째 메시지]');
   const msg2 = '임무를 잘 완수하겠습니다. 어디로 가면 되나요?';
   await chatInput.fill(msg2);
-  await page.locator('button[class*="bg-gray-800"]').last().click();
+  await chatInput.press('Enter');
   console.log(`  전송: ${msg2}`);
 
   await page.waitForFunction(
-    () => !document.querySelector('.animate-bounce'),
-    { timeout: 20000 }
+    () => !document.querySelector('.animate-bounce') && !document.querySelector('.animate-pulse'),
+    { timeout: 25000 }
   ).catch(() => console.log('  ⚠️ 스트리밍 대기 타임아웃'));
 
   await page.waitForTimeout(1500);
   await shot(page, '05_second_response');
 
-  const allMsgs = await page.locator('.bg-blue-50').allTextContents();
-  console.log(`  전체 AI 메시지 수: ${allMsgs.length}`);
+  const allUserMsgs = await page.locator('.border-t.border-b').allTextContents();
+  console.log(`  전체 유저 메시지 수: ${allUserMsgs.length}`);
 
-  if (allMsgs.length >= 2) {
-    console.log('\n🎉 채팅 완주 성공!');
-    console.log(`  마지막 AI 응답: ${allMsgs[allMsgs.length - 1].slice(0, 100)}`);
+  if (allUserMsgs.length >= 2) {
+    console.log('\n🎉 채팅 완주 성공! (소설 UI)');
   } else {
     console.log('\n❌ 채팅 응답 부족');
   }
