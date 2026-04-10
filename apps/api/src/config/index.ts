@@ -26,8 +26,13 @@ const envSchema = z.object({
   // Encryption
   ENCRYPTION_KEY: z.string().length(64), // 32 bytes as hex
 
-  // Anthropic
-  ANTHROPIC_API_KEY: z.string(),
+  // OpenAI
+  OPENAI_API_KEY: z.string(),
+  OPENAI_HAIKU_MODEL: z.string().default('gpt-4o-mini'),
+  OPENAI_SONNET_MODEL: z.string().default('gpt-4o'),
+
+  // Anthropic (비활성화 - OpenAI로 전환됨)
+  ANTHROPIC_API_KEY: z.string().optional().default('disabled'),
   ANTHROPIC_HAIKU_MODEL: z.string().default('claude-haiku-4-5-20251001'),
   ANTHROPIC_SONNET_MODEL: z.string().default('claude-sonnet-4-6'),
 

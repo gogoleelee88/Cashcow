@@ -590,14 +590,15 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
 
       const { name, concept, category, language } = body.data;
 
-      const Anthropic = (await import('@anthropic-ai/sdk')).default;
+      // OpenAI로 전환 (Anthropic 비활성화)
+      const OpenAI = (await import('openai')).default;
       const { config: cfg } = await import('../config');
-      const anthropic = new Anthropic({ apiKey: cfg.ANTHROPIC_API_KEY });
+      const openai = new OpenAI({ apiKey: cfg.OPENAI_API_KEY });
 
       const langInstruction = language === 'ko' ? '한국어로 작성해주세요.' : 'Write in English.';
 
-      const response = await anthropic.messages.create({
-        model: cfg.ANTHROPIC_HAIKU_MODEL,
+      const response = await openai.chat.completions.create({
+        model: cfg.OPENAI_HAIKU_MODEL,
         max_tokens: 1500,
         messages: [
           {
@@ -621,7 +622,7 @@ JSON만 응답하고, 다른 텍스트는 포함하지 마세요.`,
         ],
       });
 
-      const text = response.content[0].type === 'text' ? response.content[0].text : '';
+      const text = response.choices[0].message.content ?? '';
 
       try {
         // Extract JSON from response (handle markdown code blocks)

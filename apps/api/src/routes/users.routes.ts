@@ -2,6 +2,9 @@ import type { FastifyPluginAsync } from 'fastify';
 import { requireAuth } from '../plugins/auth.plugin';
 import { prismaRead, prisma } from '../lib/prisma';
 import { z } from 'zod';
+import fs from 'fs';
+import path from 'path';
+import crypto from 'crypto';
 
 export const userRoutes: FastifyPluginAsync = async (fastify) => {
   // ─────────────────────────────────────────────
@@ -119,6 +122,48 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
         await prisma.follow.create({ data: { followerId, followingId: target.id } });
         return reply.send({ success: true, data: { following: true } });
       }
+    },
+  });
+
+  // ─────────────────────────────────────────────
+  // UPLOAD AVATAR (local storage)
+  // ─────────────────────────────────────────────
+  fastify.post('/me/avatar', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const userId = request.userId!;
+      const data = await request.file();
+      if (!data) {
+        return reply.code(400).send({ success: false, error: { code: 'NO_FILE', message: '파일이 없습니다.' } });
+      }
+
+      const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+      if (!allowed.includes(data.mimetype)) {
+        return reply.code(400).send({ success: false, error: { code: 'INVALID_TYPE', message: 'JPEG, PNG, WebP, GIF만 허용됩니다.' } });
+      }
+
+      const ext = data.mimetype.split('/')[1].replace('jpeg', 'jpg');
+      const filename = `${crypto.randomBytes(16).toString('hex')}.${ext}`;
+      const uploadDir = path.join(process.cwd(), 'uploads', 'avatars', userId);
+      fs.mkdirSync(uploadDir, { recursive: true });
+      const filePath = path.join(uploadDir, filename);
+
+      await new Promise<void>((resolve, reject) => {
+        const ws = fs.createWriteStream(filePath);
+        data.file.pipe(ws);
+        ws.on('finish', resolve);
+        ws.on('error', reject);
+      });
+
+      const publicUrl = `${process.env.API_BASE_URL}/uploads/avatars/${userId}/${filename}`;
+
+      const updated = await prisma.user.update({
+        where: { id: userId },
+        data: { avatarUrl: publicUrl },
+        select: { avatarUrl: true },
+      });
+
+      return reply.send({ success: true, data: { avatarUrl: updated.avatarUrl } });
     },
   });
 

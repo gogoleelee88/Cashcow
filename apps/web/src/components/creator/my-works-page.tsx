@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { ChevronDown, X, Settings, ArrowRight, MessageCircle, Heart, Eye, EyeOff, Lock } from 'lucide-react';
+import { ChevronDown, X, Settings, ArrowRight, MessageCircle, Heart, Eye, EyeOff, Lock, AlertTriangle } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/auth.store';
 import { useEffect } from 'react';
@@ -76,35 +76,20 @@ function CreateWorkModal({ onClose }: { onClose: () => void }) {
               className="group rounded-xl overflow-hidden border border-gray-200 hover:border-gray-400 hover:shadow-md transition-all text-left"
             >
               {/* Image */}
-              <div className="relative h-44 bg-gradient-to-br from-slate-800 via-purple-900 to-indigo-900 overflow-hidden">
-                {/* Cyberpunk overlay art */}
-                <div className="absolute inset-0 flex items-end p-3">
-                  <div className="space-y-1">
-                    <div className="bg-black/60 rounded-lg px-2.5 py-1.5 inline-block">
-                      <p className="text-white/90 text-[11px] font-medium leading-relaxed">
-                        화려한 직막만이 감도는 이 곳에서<br />
-                        <span className="text-white/70">단지 분명한 사실은, 이 세계가 이미 인간의</span><br />
-                        <span className="text-white/70">손을 떠나 있다는 것뿐이었다.</span>
-                      </p>
-                    </div>
-                  </div>
+              <div className="relative h-44 overflow-hidden bg-gray-900">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/story-cover.jpg"
+                  alt="스토리"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 p-3">
+                  <p className="text-white text-[11px] font-medium leading-relaxed drop-shadow-md">
+                    순식간에 도달하는 이세계는<br />
+                    역경도 설렘도 불안도 공포도 즐길 수 있었다
+                  </p>
                 </div>
-                {/* Neon city silhouette */}
-                <div className="absolute top-0 left-0 w-full h-full opacity-30">
-                  <div className="w-full h-full bg-gradient-to-b from-purple-600/30 via-transparent to-transparent" />
-                </div>
-                {/* Animated neon bars */}
-                {[...Array(5)].map((_, i) => (
-                  <div
-                    key={i}
-                    className="absolute bottom-0 bg-gradient-to-t from-pink-500/40 to-transparent"
-                    style={{
-                      left: `${10 + i * 18}%`,
-                      width: '8%',
-                      height: `${40 + i * 10}%`,
-                    }}
-                  />
-                ))}
               </div>
 
               {/* Text */}
@@ -123,23 +108,23 @@ function CreateWorkModal({ onClose }: { onClose: () => void }) {
               className="group rounded-xl overflow-hidden border border-gray-200 hover:border-gray-400 hover:shadow-md transition-all text-left"
             >
               {/* Image */}
-              <div className="relative h-44 bg-gradient-to-br from-green-100 via-emerald-50 to-teal-100 overflow-hidden">
-                <div className="absolute inset-0 flex items-center justify-center">
-                  {/* Anime girl illustration placeholder */}
-                  <div className="w-32 h-40 bg-gradient-to-b from-amber-100 to-amber-200 rounded-t-full flex items-end justify-center overflow-hidden">
-                    <div className="w-24 h-32 bg-gradient-to-b from-amber-200 to-amber-300 rounded-t-3xl" />
+              <div className="relative h-44 overflow-hidden bg-slate-100">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/character-cover.jpg"
+                  alt="캐릭터"
+                  className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
+                {/* 메시지 말풍선 */}
+                <div className="absolute bottom-3 right-3 flex flex-col items-end gap-1.5">
+                  <div className="bg-white/95 shadow-md rounded-2xl rounded-br-sm px-3 py-2 max-w-[120px]">
+                    <p className="text-gray-800 text-[11px] font-medium leading-relaxed">너랑 같은 조가 되었어 😊</p>
                   </div>
-                </div>
-                {/* Chat bubbles */}
-                <div className="absolute bottom-12 right-3">
-                  <div className="bg-white/90 shadow-sm rounded-xl rounded-br-sm px-2.5 py-1.5 text-[11px] text-gray-700 font-medium">
-                    지금 뭐해? 같이 걷고 싶어.
+                  <div className="bg-white/95 shadow-md rounded-2xl rounded-br-sm px-3 py-2 max-w-[110px]">
+                    <p className="text-gray-800 text-[11px] font-medium leading-relaxed">오늘부터 잘 부탁해 🩷</p>
                   </div>
-                </div>
-                <div className="absolute bottom-3 right-6">
-                  <div className="bg-white/90 shadow-sm rounded-xl rounded-br-sm px-2.5 py-1.5 text-[11px] text-gray-700 font-medium">
-                    조금만 기다려. 금방 걸게.
-                  </div>
+                  <p className="text-white/70 text-[9px] mr-1">오후 3:24</p>
                 </div>
               </div>
 
@@ -346,6 +331,17 @@ export function MyWorksPage() {
   const characters: any[] = charsData?.data ?? [];
   const stories: any[] = storiesData?.data ?? [];
 
+  // 발행된 스토리 중 같은 작가의 중복 제목 감지
+  const duplicateTitles = useMemo(() => {
+    const published = stories.filter((s: any) => s.status !== 'DRAFT');
+    const counts: Record<string, number> = {};
+    for (const s of published) {
+      const key = s.title?.trim().toLowerCase();
+      if (key) counts[key] = (counts[key] ?? 0) + 1;
+    }
+    return new Set(Object.entries(counts).filter(([, n]) => n > 1).map(([t]) => t));
+  }, [stories]);
+
   // Merge all works
   const allWorks = [
     ...characters.map((c: any) => ({ ...c, _type: 'character' })),
@@ -449,33 +445,66 @@ export function MyWorksPage() {
                 >
                   <div className="w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100">
                     <Image
-                      src={item.coverImageUrl || `https://api.dicebear.com/8.x/shapes/svg?seed=${item.id}`}
-                      alt={item.title}
+                      src={item.coverUrl || `https://api.dicebear.com/8.x/shapes/svg?seed=${item.id}`}
+                      alt={item.title || '제목 없음'}
                       width={56}
                       height={56}
                       className="object-cover w-full h-full"
                     />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="text-gray-900 font-semibold text-sm truncate">{item.title}</h3>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 font-medium">스토리</span>
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <h3 className="text-gray-900 font-semibold text-sm truncate">
+                        {item.title?.trim() || '제목 없음'}
+                      </h3>
+                      {/* 상태 배지 */}
+                      {item.status === 'DRAFT' ? (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 font-medium flex-shrink-0">임시저장</span>
+                      ) : item.status === 'COMPLETED' ? (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium flex-shrink-0">완결</span>
+                      ) : (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 font-medium flex-shrink-0">연재중</span>
+                      )}
+                      {/* 중복 제목 경고 배지 */}
+                      {item.status !== 'DRAFT' && duplicateTitles.has(item.title?.trim().toLowerCase()) && (
+                        <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-500 font-medium flex-shrink-0" title="같은 제목의 스토리가 있어요">
+                          <AlertTriangle className="w-3 h-3" />
+                          중복 제목
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-3 text-gray-400 text-xs">
                       <span className="flex items-center gap-1">
                         <MessageCircle className="w-3 h-3" />
-                        {formatCount(item.viewCount ?? 0)}
+                        {formatCount(item.chatCount ?? 0)}
                       </span>
+                      <span className="flex items-center gap-1">
+                        <Heart className="w-3 h-3" />
+                        {formatCount(item.likeCount ?? 0)}
+                      </span>
+                      <span className="text-gray-300">·</span>
                       <span>{formatRelativeTime(item.createdAt)}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                    {/* 수정 버튼 — 항상 편집 폼으로 이동 */}
                     <Link
-                      href={`/story/${item.id}`}
+                      href={`/creator/story/${item.id}/edit`}
                       className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-all"
+                      title="수정"
                     >
-                      <ArrowRight className="w-4 h-4" />
+                      <Settings className="w-4 h-4" />
                     </Link>
+                    {/* 발행된 스토리만 미리보기 링크 */}
+                    {item.status !== 'DRAFT' && (
+                      <Link
+                        href={`/story/${item.id}`}
+                        className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-all"
+                        title="보기"
+                      >
+                        <ArrowRight className="w-4 h-4" />
+                      </Link>
+                    )}
                   </div>
                 </motion.div>
               )

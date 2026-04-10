@@ -3,8 +3,11 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
+import staticFiles from '@fastify/static';
 import { Server } from 'socket.io';
 import { createServer } from 'http';
+import path from 'path';
+import fs from 'fs';
 import * as Sentry from '@sentry/node';
 import { config } from './config';
 import { logger } from './lib/logger';
@@ -23,6 +26,7 @@ import { healthRoutes } from './routes/health.routes';
 import { notificationRoutes } from './routes/notifications.routes';
 import { userRoutes } from './routes/users.routes';
 import { storyRoutes } from './routes/stories.routes';
+import { imageRoutes } from './routes/images.routes';
 import { verifyAccessToken } from './services/auth.service';
 
 // ─────────────────────────────────────────────
@@ -78,6 +82,13 @@ async function registerPlugins(): Promise<void> {
     limits: { fileSize: 5 * 1024 * 1024, files: 1 },
   });
 
+  const uploadsDir = path.join(process.cwd(), 'uploads');
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  await app.register(staticFiles, {
+    root: uploadsDir,
+    prefix: '/uploads/',
+  });
+
   await app.register(rateLimitPlugin);
   await app.register(authPlugin);
 
@@ -104,6 +115,7 @@ async function registerRoutes(): Promise<void> {
   app.register(notificationRoutes, { prefix: '/api/notifications' });
   app.register(userRoutes, { prefix: '/api/users' });
   app.register(storyRoutes, { prefix: '/api/stories' });
+  app.register(imageRoutes, { prefix: '/api/images' });
 
   // 404 handler
   app.setNotFoundHandler((request, reply) => {

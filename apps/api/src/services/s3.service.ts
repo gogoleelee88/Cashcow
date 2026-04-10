@@ -13,7 +13,13 @@ const s3 = new AWS.S3({
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
-export type S3UploadPath = 'avatars' | 'characters/avatars' | 'characters/backgrounds';
+export type S3UploadPath =
+  | 'avatars'
+  | 'characters/avatars'
+  | 'characters/backgrounds'
+  | 'stories/covers'
+  | 'stories/media'
+  | 'images/generated';
 
 /**
  * Generate a pre-signed upload URL for direct client-to-S3 upload.
@@ -64,6 +70,30 @@ export async function generatePresignedReadUrl(key: string, expiresIn = 3600): P
     Key: key,
     Expires: expiresIn,
   });
+}
+
+/**
+ * Upload a buffer directly to S3 (server-side upload for AI-generated images).
+ */
+export async function uploadBufferToS3(
+  buffer: Buffer,
+  path: S3UploadPath,
+  filename: string,
+  contentType = 'image/png'
+): Promise<string> {
+  const key = `${path}/${filename}`;
+  await s3
+    .putObject({
+      Bucket: config.AWS_S3_BUCKET,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+    })
+    .promise();
+
+  return config.AWS_CLOUDFRONT_URL
+    ? `${config.AWS_CLOUDFRONT_URL}/${key}`
+    : `https://${config.AWS_S3_BUCKET}.s3.${config.AWS_REGION}.amazonaws.com/${key}`;
 }
 
 /**

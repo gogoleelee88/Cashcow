@@ -251,8 +251,8 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
         const { config } = await import('../config');
 
         const model = conversation.character.model === 'claude-sonnet-4'
-          ? config.ANTHROPIC_SONNET_MODEL
-          : config.ANTHROPIC_HAIKU_MODEL;
+          ? config.OPENAI_SONNET_MODEL
+          : config.OPENAI_HAIKU_MODEL;
 
         await streamChatResponse({
           characterId: conversation.characterId,

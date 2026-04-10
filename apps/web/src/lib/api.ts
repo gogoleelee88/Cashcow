@@ -114,8 +114,47 @@ export const api = {
     get: (id: string) =>
       apiClient.get(`/api/stories/${id}`).then((r) => r.data),
 
-    create: (data: unknown) =>
-      apiClient.post('/api/stories', data).then((r) => r.data),
+    // 스토리 draft 생성 (폼 진입 즉시)
+    create: (data?: { title?: string; description?: string; systemPrompt?: string; greeting?: string }) =>
+      apiClient.post('/api/stories', data ?? {}).then((r) => r.data),
+
+    // 프로필 탭 자동저장
+    update: (id: string, data: { title?: string; description?: string; greeting?: string; language?: string }) =>
+      apiClient.patch(`/api/stories/${id}`, data).then((r) => r.data),
+
+    // 스토리 삭제
+    delete: (id: string) =>
+      apiClient.delete(`/api/stories/${id}`).then((r) => r.data),
+
+    // 커버 이미지
+    getCoverUploadUrl: (id: string, data: { contentType: string; variant: 'square' | 'vertical' }) =>
+      apiClient.post(`/api/stories/${id}/cover/upload-url`, data).then((r) => r.data),
+
+    confirmCoverUpload: (id: string, data: { variant: 'square' | 'vertical'; url: string; key: string }) =>
+      apiClient.patch(`/api/stories/${id}/cover`, data).then((r) => r.data),
+
+    deleteCover: (id: string, variant: 'square' | 'vertical') =>
+      apiClient.delete(`/api/stories/${id}/cover`, { data: { variant } }).then((r) => r.data),
+
+    // 시스템 프롬프트 저장
+    updateSystemPrompt: (id: string, systemPrompt: string) =>
+      apiClient.patch(`/api/stories/${id}/system-prompt`, { systemPrompt }).then((r) => r.data),
+
+    // 대화 예시
+    listExamples: (storyId: string) =>
+      apiClient.get(`/api/stories/${storyId}/examples`).then((r) => r.data),
+
+    createExample: (storyId: string, data: { userMessage: string; assistantMessage: string; order?: number }) =>
+      apiClient.post(`/api/stories/${storyId}/examples`, data).then((r) => r.data),
+
+    updateExample: (storyId: string, exId: string, data: { userMessage?: string; assistantMessage?: string }) =>
+      apiClient.put(`/api/stories/${storyId}/examples/${exId}`, data).then((r) => r.data),
+
+    deleteExample: (storyId: string, exId: string) =>
+      apiClient.delete(`/api/stories/${storyId}/examples/${exId}`).then((r) => r.data),
+
+    reorderExamples: (storyId: string, orderedIds: string[]) =>
+      apiClient.patch(`/api/stories/${storyId}/examples/reorder`, { orderedIds }).then((r) => r.data),
 
     like: (id: string) =>
       apiClient.post(`/api/stories/${id}/like`).then((r) => r.data),
@@ -132,17 +171,134 @@ export const api = {
     my: (params?: Record<string, unknown>) =>
       apiClient.get('/api/stories/my', { params }).then((r) => r.data),
 
-    generateRandomName: () =>
-      apiClient.post('/api/stories/generate/name').then((r) => r.data?.data ?? r.data),
+    // 제목 중복 체크 (같은 작가 범위)
+    checkTitle: (title: string, excludeId?: string) =>
+      apiClient.get('/api/stories/check-title', { params: { title, excludeId } }).then((r) => r.data),
 
-    generatePrologue: (data: { name: string; systemPrompt: string; settingName: string }) =>
+    // 편집 폼용 전체 데이터 로딩 (복호화된 systemPrompt 포함)
+    getEditData: (id: string) =>
+      apiClient.get(`/api/stories/${id}/edit-data`).then((r) => r.data),
+
+    // 전체 draft 상태 서버 동기화 (startSettings + examples 한번에)
+    saveDraftSnapshot: (id: string, data: {
+      startSettings?: { localId: string; name: string; prologue: string; situation: string; playGuide: string; suggestedReplies: string[] }[];
+      examples?: { localId: string; user: string; assistant: string }[];
+    }) => apiClient.patch(`/api/stories/${id}/draft-snapshot`, data).then((r) => r.data),
+
+    generateRandomName: () =>
+      apiClient.post('/api/stories/generate/random-name').then((r) => r.data?.data ?? r.data),
+
+    generatePrologue: (data: { name?: string; description?: string; systemPrompt?: string; settingName?: string }) =>
       apiClient.post('/api/stories/generate/prologue', data).then((r) => r.data?.data ?? r.data),
 
     generateStorySettings: (data: { name: string; description: string }) =>
       apiClient.post('/api/stories/generate/story-settings', data).then((r) => r.data?.data ?? r.data),
 
-    generateExamples: (data: { name: string; systemPrompt: string; settingName: string }) =>
+    generateExamples: (data: { name: string; description?: string; systemPrompt: string; settingName?: string }) =>
       apiClient.post('/api/stories/generate/examples', data).then((r) => r.data?.data ?? r.data),
+
+    generateStatDescription: (data: { storyName: string; storyDescription: string; systemPrompt?: string; statName: string; statUnit?: string }) =>
+      apiClient.post('/api/stories/generate/stat-description', data).then((r) => r.data),
+
+    // Start settings
+    listStartSettings: (storyId: string) =>
+      apiClient.get(`/api/stories/${storyId}/start-settings`).then((r) => r.data),
+
+    createStartSetting: (storyId: string, data: unknown) =>
+      apiClient.post(`/api/stories/${storyId}/start-settings`, data).then((r) => r.data),
+
+    updateStartSetting: (storyId: string, settingId: string, data: unknown) =>
+      apiClient.put(`/api/stories/${storyId}/start-settings/${settingId}`, data).then((r) => r.data),
+
+    deleteStartSetting: (storyId: string, settingId: string) =>
+      apiClient.delete(`/api/stories/${storyId}/start-settings/${settingId}`).then((r) => r.data),
+
+    // Stats
+    listStats: (storyId: string, settingId: string) =>
+      apiClient.get(`/api/stories/${storyId}/start-settings/${settingId}/stats`).then((r) => r.data),
+
+    createStat: (storyId: string, settingId: string, data: unknown) =>
+      apiClient.post(`/api/stories/${storyId}/start-settings/${settingId}/stats`, data).then((r) => r.data),
+
+    updateStat: (storyId: string, settingId: string, statId: string, data: unknown) =>
+      apiClient.put(`/api/stories/${storyId}/start-settings/${settingId}/stats/${statId}`, data).then((r) => r.data),
+
+    deleteStat: (storyId: string, settingId: string, statId: string) =>
+      apiClient.delete(`/api/stories/${storyId}/start-settings/${settingId}/stats/${statId}`).then((r) => r.data),
+
+    reorderStats: (storyId: string, settingId: string, orderedIds: string[]) =>
+      apiClient.patch(`/api/stories/${storyId}/start-settings/${settingId}/stats/reorder`, { orderedIds }).then((r) => r.data),
+
+    // Media
+    getMediaUploadUrl: (storyId: string, settingId: string, contentType: string) =>
+      apiClient.post(`/api/stories/${storyId}/start-settings/${settingId}/media/upload-url`, { contentType }).then((r) => r.data),
+
+    confirmMediaUpload: (storyId: string, settingId: string, data: { url: string; key: string; order?: number }) =>
+      apiClient.post(`/api/stories/${storyId}/start-settings/${settingId}/media`, data).then((r) => r.data),
+
+    deleteMedia: (storyId: string, settingId: string, mediaId: string) =>
+      apiClient.delete(`/api/stories/${storyId}/start-settings/${settingId}/media/${mediaId}`).then((r) => r.data),
+
+    reorderMedia: (storyId: string, settingId: string, orderedIds: string[]) =>
+      apiClient.patch(`/api/stories/${storyId}/start-settings/${settingId}/media/reorder`, { orderedIds }).then((r) => r.data),
+
+    // Endings
+    listEndings: (storyId: string, startSettingId?: string) =>
+      apiClient.get(`/api/stories/${storyId}/endings`, { params: startSettingId ? { startSettingId } : {} }).then((r) => r.data),
+
+    createEnding: (storyId: string, data: unknown) =>
+      apiClient.post(`/api/stories/${storyId}/endings`, data).then((r) => r.data),
+
+    updateEnding: (storyId: string, endingId: string, data: unknown) =>
+      apiClient.put(`/api/stories/${storyId}/endings/${endingId}`, data).then((r) => r.data),
+
+    deleteEnding: (storyId: string, endingId: string) =>
+      apiClient.delete(`/api/stories/${storyId}/endings/${endingId}`).then((r) => r.data),
+
+    generateEpilogue: (data: { storyName: string; prompt: string; endingName: string }) =>
+      apiClient.post('/api/stories/generate/epilogue', data).then((r) => r.data),
+
+    // Keyword notes
+    listKeywordNotes: (storyId: string, startSettingId?: string) =>
+      apiClient.get(`/api/stories/${storyId}/keyword-notes`, { params: startSettingId ? { startSettingId } : {} }).then((r) => r.data),
+
+    createKeywordNote: (storyId: string, data: { startSettingId: string; title: string; keywords: string[]; content: string; order?: number }) =>
+      apiClient.post(`/api/stories/${storyId}/keyword-notes`, data).then((r) => r.data),
+
+    updateKeywordNote: (storyId: string, noteId: string, data: Partial<{ startSettingId: string; title: string; keywords: string[]; content: string; order: number }>) =>
+      apiClient.put(`/api/stories/${storyId}/keyword-notes/${noteId}`, data).then((r) => r.data),
+
+    deleteKeywordNote: (storyId: string, noteId: string) =>
+      apiClient.delete(`/api/stories/${storyId}/keyword-notes/${noteId}`).then((r) => r.data),
+
+    // Media list
+    listMedia: (storyId: string, settingId: string) =>
+      apiClient.get(`/api/stories/${storyId}/start-settings/${settingId}/media`).then((r) => r.data),
+
+    // Story characters
+    listCharacters: (storyId: string) =>
+      apiClient.get(`/api/stories/${storyId}/characters`).then((r) => r.data),
+
+    addCharacter: (storyId: string, data: { characterId: string; role?: string }) =>
+      apiClient.post(`/api/stories/${storyId}/characters`, data).then((r) => r.data),
+
+    removeCharacter: (storyId: string, characterId: string) =>
+      apiClient.delete(`/api/stories/${storyId}/characters/${characterId}`).then((r) => r.data),
+
+    // Status change
+    updateStatus: (id: string, status: 'ONGOING' | 'COMPLETED' | 'HIATUS') =>
+      apiClient.patch(`/api/stories/${id}/status`, { status }).then((r) => r.data),
+
+    // Delete conversation
+    deleteConversation: (conversationId: string) =>
+      apiClient.delete(`/api/stories/conversations/${conversationId}`).then((r) => r.data),
+
+    // Publish
+    updatePublishSettings: (id: string, data: { category?: string; visibility?: string; ageRating?: string; chatModel?: string; tags?: string[] }) =>
+      apiClient.patch(`/api/stories/${id}/publish-settings`, data).then((r) => r.data),
+
+    publish: (id: string) =>
+      apiClient.post(`/api/stories/${id}/publish`).then((r) => r.data),
   },
 
   characters: {
@@ -226,6 +382,14 @@ export const api = {
     updateMe: (data: { displayName?: string; bio?: string; avatarUrl?: string }) =>
       apiClient.patch('/api/users/me', data).then((r) => r.data),
 
+    uploadAvatar: (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return apiClient.post('/api/users/me/avatar', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }).then((r) => r.data);
+    },
+
     earnings: () =>
       apiClient.get('/api/users/me/earnings').then((r) => r.data),
 
@@ -256,6 +420,29 @@ export const api = {
     /** 인증 완료 여부 폴링 */
     ageVerifyStatus: () =>
       apiClient.get('/api/users/me/age-verify/status').then((r) => r.data),
+  },
+
+  images: {
+    promptHelper: (data: { style?: string; userInput?: string }) =>
+      apiClient.post('/api/images/prompt-helper', data).then((r) => r.data),
+
+    generate: (data: { prompt: string; style?: string; ratio?: string; count?: number }) =>
+      apiClient.post('/api/images/generate', data).then((r) => r.data),
+
+    transform: (formData: FormData) =>
+      apiClient.post('/api/images/transform', formData).then((r) => r.data),
+
+    pollJob: (imageId: string) =>
+      apiClient.get(`/api/images/jobs/${imageId}`).then((r) => r.data),
+
+    getLibrary: (params?: { cursor?: string; limit?: number }) =>
+      apiClient.get('/api/images/library', { params }).then((r) => r.data),
+
+    getLiked: (params?: { cursor?: string; limit?: number }) =>
+      apiClient.get('/api/images/liked', { params }).then((r) => r.data),
+
+    toggleLike: (imageId: string) =>
+      apiClient.patch(`/api/images/${imageId}/like`).then((r) => r.data),
   },
 };
 
@@ -455,6 +642,89 @@ export function streamStoryMessage(
     } catch (readErr: any) {
       if (readErr.name === 'AbortError') return;
       callbacks.onError('스트리밍 연결이 끊어졌습니다.');
+    }
+  }
+
+  doStream();
+}
+
+// ─────────────────────────────────────────────
+// PREVIEW CHAT STREAM (창작 폼 내 테스트 채팅)
+// ─────────────────────────────────────────────
+export function streamPreviewChat(
+  data: {
+    systemPrompt: string;
+    history: Array<{ role: 'user' | 'assistant'; content: string }>;
+    userMessage: string;
+    characterName?: string;
+  },
+  accessToken: string,
+  callbacks: {
+    onDelta: (text: string) => void;
+    onDone: () => void;
+    onError: (message: string) => void;
+    signal?: AbortSignal;
+  }
+): void {
+  async function doStream(): Promise<void> {
+    if (callbacks.signal?.aborted) return;
+
+    let response: Response;
+    try {
+      response = await fetch(`${BASE_URL}/api/stories/preview-chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+          Accept: 'text/event-stream',
+        },
+        body: JSON.stringify(data),
+        signal: callbacks.signal,
+      });
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
+      callbacks.onError('네트워크 연결이 끊어졌습니다.');
+      return;
+    }
+
+    if (!response.ok) {
+      const errBody = await response.json().catch(() => ({ error: '오류가 발생했습니다.' }));
+      callbacks.onError(typeof errBody.error === 'string' ? errBody.error : '오류가 발생했습니다.');
+      return;
+    }
+
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    if (!reader) { callbacks.onError('스트리밍을 지원하지 않는 환경입니다.'); return; }
+
+    let buffer = '';
+    let lastEvent = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('event: ')) { lastEvent = line.slice(7).trim(); continue; }
+          if (line.startsWith('data: ')) {
+            try {
+              const parsed = JSON.parse(line.slice(6));
+              const eventType = lastEvent || 'delta';
+              lastEvent = '';
+              if (eventType === 'delta' && parsed.text) { callbacks.onDelta(parsed.text); }
+              else if (eventType === 'done') { callbacks.onDone(); }
+              else if (eventType === 'error') { callbacks.onError(parsed.message || '오류가 발생했습니다.'); }
+            } catch {}
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
     }
   }
 

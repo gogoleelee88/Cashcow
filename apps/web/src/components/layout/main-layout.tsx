@@ -18,7 +18,7 @@ const NAV_ITEMS = [
   { href: '/story', label: '스토리', icon: BookOpen },
   { href: '/', label: '캐릭터', icon: Users },
   { href: '/creator', label: '내 작품', icon: Bookmark },
-  { href: '/explore?tab=image', label: '이미지', icon: ImageIcon },
+  { href: '/images', label: '이미지', icon: ImageIcon },
 ];
 
 export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
