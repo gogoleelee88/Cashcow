@@ -297,6 +297,7 @@ export function StoryChatPage({ storyId }: { storyId: string }) {
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState('');
+  const [suggestedRepliesOpen, setSuggestedRepliesOpen] = useState(false);
   const streamingTextRef = useRef('');
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -308,6 +309,17 @@ export function StoryChatPage({ storyId }: { storyId: string }) {
     queryFn: () => api.stories.get(storyId),
     staleTime: 1000 * 60 * 5,
   });
+
+  // Start settings (추천답변)
+  const { data: startSettingsData } = useQuery({
+    queryKey: ['story-start-settings', storyId],
+    queryFn: () => api.stories.listStartSettings(storyId),
+    staleTime: 1000 * 60 * 5,
+    enabled: !!storyId,
+  });
+  const suggestedReplies: string[] = (startSettingsData?.data?.[0]?.suggestedReplies ?? [])
+    .map((r: any) => (typeof r === 'string' ? r : r.text))
+    .filter((r: string) => r.trim());
 
   // Messages
   const { data: msgData } = useQuery({
@@ -483,6 +495,20 @@ export function StoryChatPage({ storyId }: { storyId: string }) {
         {/* ── 입력창 ───────────────────────── */}
         <div className="flex-shrink-0 border-t border-gray-100 px-6 py-4 bg-white">
           <div className="max-w-[680px] mx-auto">
+            {/* 추천답변 목록 */}
+            {suggestedRepliesOpen && suggestedReplies.length > 0 && (
+              <div className="flex flex-col items-end gap-2 mb-2">
+                {suggestedReplies.map((reply, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => { setInput(reply); setSuggestedRepliesOpen(false); inputRef.current?.focus(); }}
+                    className="px-4 py-2 rounded-2xl border border-brand text-brand text-xs font-medium hover:bg-brand hover:text-white transition-colors max-w-[80%] text-right"
+                  >
+                    {reply}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="rounded-2xl border border-gray-200 bg-gray-50 focus-within:border-gray-300 transition-colors overflow-hidden">
               <input
                 ref={inputRef}
@@ -500,9 +526,19 @@ export function StoryChatPage({ storyId }: { storyId: string }) {
                   <button className="w-7 h-7 flex items-center justify-center text-gray-300 hover:text-gray-500 transition-colors text-base">
                     ✳
                   </button>
-                  <button className="flex items-center gap-1 px-3 h-7 rounded-full border border-gray-200 text-[12px] text-gray-400 hover:bg-gray-100 transition-colors">
+                  <button
+                    onClick={() => suggestedReplies.length > 0 && setSuggestedRepliesOpen(p => !p)}
+                    className={cn(
+                      'flex items-center gap-1 px-3 h-7 rounded-full border text-[12px] transition-colors',
+                      suggestedReplies.length === 0
+                        ? 'border-gray-200 text-gray-300 cursor-default'
+                        : suggestedRepliesOpen
+                          ? 'border-brand text-brand bg-brand/5'
+                          : 'border-gray-200 text-gray-400 hover:bg-gray-100'
+                    )}
+                  >
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d={suggestedRepliesOpen ? 'M19.5 8.25l-7.5 7.5-7.5-7.5' : 'M4.5 15.75l7.5-7.5 7.5 7.5'} />
                     </svg>
                     추천답변
                   </button>

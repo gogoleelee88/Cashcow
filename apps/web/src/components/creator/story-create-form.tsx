@@ -2808,7 +2808,7 @@ const MODEL_OPTIONS = [
   { label: '💭 일반챗', value: 'normal_chat' },
 ];
 
-function RegisterTab({ name, coverUrl }: { name: string; coverUrl?: string }) {
+function RegisterTab({ name, coverUrl, onVisibilityChange }: { name: string; coverUrl?: string; onVisibilityChange?: (v: string) => void }) {
   const [showAgeNotice, setShowAgeNotice] = useState(true);
   const [showAgeModal, setShowAgeModal] = useState(false);
   const [detailDesc, setDetailDesc] = useState('');
@@ -3077,7 +3077,7 @@ function RegisterTab({ name, coverUrl }: { name: string; coverUrl?: string }) {
                 name="visibility"
                 value={opt.value}
                 checked={visibility === opt.value}
-                onChange={() => setVisibility(opt.value as 'public' | 'private' | 'link')}
+                onChange={() => { const v = opt.value as 'public' | 'private' | 'link'; setVisibility(v); onVisibilityChange?.(v); }}
                 className="accent-brand mt-0.5"
               />
               <div>
@@ -4082,6 +4082,8 @@ export function StoryCreateForm({ initialStoryId }: { initialStoryId?: string } 
   const [showDraftHistory, setShowDraftHistory] = useState(false);
   const [publishErrors, setPublishErrors] = useState<string[]>([]);
   const [publishedStoryId, setPublishedStoryId] = useState<string | null>(null);
+  const [registerVisibility, setRegisterVisibility] = useState<string>('private');
+  const [isAlreadyPublished, setIsAlreadyPublished] = useState(false);
 
   // ── 편집 모드: 기존 스토리 데이터 로딩 ────────────────────────────────
   const [editDataLoaded, setEditDataLoaded] = useState(false);
@@ -4099,6 +4101,7 @@ export function StoryCreateForm({ initialStoryId }: { initialStoryId?: string } 
         setActiveStartSettingId(d.startSettings[0].id);
       }
       if (d.examples?.length) setExamples(d.examples);
+      if (d.status && d.status !== 'DRAFT') setIsAlreadyPublished(true);
       setEditDataLoaded(true);
     }).catch(() => {
       setEditDataLoaded(true); // 실패해도 빈 폼으로 진행
@@ -4369,7 +4372,9 @@ export function StoryCreateForm({ initialStoryId }: { initialStoryId?: string } 
               setPublishErrors([]);
               try {
                 setSaveStatus('saving');
-                await api.stories.publish(storyId);
+                const visMap: Record<string, string> = { public: 'PUBLIC', private: 'PRIVATE', link: 'UNLISTED' };
+                await api.stories.updatePublishSettings(storyId, { visibility: visMap[registerVisibility] ?? 'PRIVATE' });
+                if (!isAlreadyPublished) await api.stories.publish(storyId);
                 setSaveStatus('saved');
                 setPublishedStoryId(storyId);
               } catch (e: any) {
@@ -4499,7 +4504,7 @@ export function StoryCreateForm({ initialStoryId }: { initialStoryId?: string } 
               />
             </div>
             <div style={{ display: activeTab === 'register' ? 'flex' : 'none' }} className="flex-col flex-1 min-h-0 overflow-hidden">
-              <RegisterTab name={name} />
+              <RegisterTab name={name} onVisibilityChange={setRegisterVisibility} />
             </div>
           </div>
 
