@@ -340,6 +340,15 @@ export const api = {
 
     my: (params?: Record<string, unknown>) =>
       apiClient.get('/api/characters/my', { params }).then((r) => r.data),
+
+    getDraft: () =>
+      apiClient.get('/api/characters/draft').then((r) => r.data),
+
+    saveDraft: (data: unknown) =>
+      apiClient.put('/api/characters/draft', data).then((r) => r.data),
+
+    deleteDraft: () =>
+      apiClient.delete('/api/characters/draft').then((r) => r.data),
   },
 
   chat: {
@@ -657,6 +666,7 @@ export function streamPreviewChat(
     history: Array<{ role: 'user' | 'assistant'; content: string }>;
     userMessage: string;
     characterName?: string;
+    exampleDialogues?: Array<{ id: string; messages: Array<{ id: string; role: 'character' | 'user'; content: string }> }>;
   },
   accessToken: string,
   callbacks: {

@@ -8,17 +8,31 @@ import { requireAuth, requireAgeVerification } from '../plugins/auth.plugin';
 import { searchRateLimit, uploadRateLimit } from '../plugins/rate-limit.plugin';
 import { logger } from '../lib/logger';
 import type { CharacterCategory, CharacterVisibility, AgeRating, AudienceTarget } from '@prisma/client';
+import { randomBytes } from 'crypto';
+import path from 'path';
+import fs from 'fs';
 
 const CACHE_TTL_CHARACTER_LIST = 120;  // 2 min
 const CACHE_TTL_CHARACTER_DETAIL = 300; // 5 min
 const CACHE_TTL_TRENDING = 600;         // 10 min
 const CACHE_TTL_RANKINGS = 300;         // 5 min
 
+const exampleMessageSchema = z.object({
+  id: z.string(),
+  role: z.enum(['character', 'user']),
+  content: z.string().max(2000),
+});
+const exampleDialogueSchema = z.object({
+  id: z.string(),
+  messages: z.array(exampleMessageSchema).max(50),
+});
+
 const createCharacterSchema = z.object({
   name: z.string().min(1).max(50),
   description: z.string().min(10).max(500),
   systemPrompt: z.string().min(20).max(10000),
   greeting: z.string().min(1).max(1000),
+  exampleDialogues: z.array(exampleDialogueSchema).max(20).optional(),
   category: z.enum(['ANIME', 'GAME', 'MOVIE', 'BOOK', 'ORIGINAL', 'CELEBRITY', 'HISTORICAL', 'VTUBER', 'OTHER']),
   tags: z.array(z.string().max(30)).max(10).default([]),
   visibility: z.enum(['PUBLIC', 'PRIVATE', 'UNLISTED']).default('PUBLIC'),
@@ -374,6 +388,7 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
           systemPromptEncrypted: encrypted,
           systemPromptIv: iv,
           greeting: body.data.greeting,
+          exampleDialogues: body.data.exampleDialogues as any ?? [],
           category: body.data.category,
           tags: body.data.tags,
           visibility: body.data.visibility,
@@ -418,6 +433,9 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
         updateData.systemPromptEncrypted = encrypted;
         updateData.systemPromptIv = iv;
         delete updateData.systemPrompt;
+      }
+      if (body.data.exampleDialogues !== undefined) {
+        updateData.exampleDialogues = body.data.exampleDialogues as any;
       }
 
       const updated = await prisma.character.update({
@@ -522,7 +540,69 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // ─────────────────────────────────────────────
-  // UPLOAD URL (Pre-signed S3)
+  // DIRECT MULTIPART UPLOAD (local storage fallback)
+  // POST /api/characters/upload
+  // ─────────────────────────────────────────────
+  fastify.post('/upload', {
+    preHandler: [requireAuth, uploadRateLimit],
+    config: { rawBody: false },
+    handler: async (request, reply) => {
+      const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+      const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+
+      let fileBuffer: Buffer | null = null;
+      let mimetype = '';
+      let uploadType: 'avatar' | 'background' = 'avatar';
+
+      for await (const part of request.parts()) {
+        if (part.type === 'file' && part.fieldname === 'file') {
+          mimetype = part.mimetype;
+          if (!ALLOWED_TYPES.includes(mimetype)) {
+            return reply.code(400).send({
+              success: false,
+              error: { code: 'INVALID_TYPE', message: 'JPG, PNG, WebP, GIF만 업로드할 수 있어요.' },
+            });
+          }
+          fileBuffer = await part.toBuffer();
+        } else if (part.type === 'field' && part.fieldname === 'type') {
+          const val = part.value as string;
+          if (val === 'background') uploadType = 'background';
+        }
+      }
+
+      if (!fileBuffer) {
+        return reply.code(400).send({
+          success: false,
+          error: { code: 'NO_FILE', message: '파일을 선택해 주세요.' },
+        });
+      }
+      if (fileBuffer.length > MAX_SIZE) {
+        return reply.code(400).send({
+          success: false,
+          error: { code: 'FILE_TOO_LARGE', message: '5MB 이하의 파일만 업로드할 수 있어요.' },
+        });
+      }
+
+      const ext = mimetype.split('/')[1].replace('jpeg', 'jpg');
+      const userId = request.userId!;
+      const folder = uploadType === 'background' ? 'characters/backgrounds' : 'characters/avatars';
+      const filename = `${randomBytes(16).toString('hex')}.${ext}`;
+      const key = `${folder}/${userId}/${filename}`;
+      const filePath = path.join(process.cwd(), 'uploads', key);
+
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, fileBuffer);
+
+      const { config: cfg } = await import('../config');
+      const url = `${cfg.API_BASE_URL}/uploads/${key}`;
+
+      logger.info({ userId, key, size: fileBuffer.length }, 'Character image uploaded');
+      return reply.send({ success: true, data: { url, key } });
+    },
+  });
+
+  // ─────────────────────────────────────────────
+  // UPLOAD URL (Pre-signed S3) — production only
   // ─────────────────────────────────────────────
   fastify.post('/upload-url', {
     preHandler: [requireAuth, uploadRateLimit],
@@ -532,8 +612,8 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
         type: 'avatar' | 'background';
       };
 
-      const path = type === 'background' ? 'characters/backgrounds' : 'characters/avatars';
-      const result = await generatePresignedUploadUrl(path, contentType, request.userId!);
+      const uploadPath = type === 'background' ? 'characters/backgrounds' : 'characters/avatars';
+      const result = await generatePresignedUploadUrl(uploadPath, contentType, request.userId!);
       return reply.send({ success: true, data: result });
     },
   });
@@ -678,6 +758,60 @@ JSON만 응답하고, 다른 텍스트는 포함하지 마세요.`,
       });
 
       return reply.send({ success: true });
+    },
+  });
+
+  // ─────────────────────────────────────────────
+  // CHARACTER DRAFT — SAVE
+  // ─────────────────────────────────────────────
+  fastify.put('/draft', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const userId = request.userId!;
+      const data = request.body as Record<string, unknown>;
+
+      await prisma.characterDraft.upsert({
+        where: { userId },
+        create: { userId, data: data as any },
+        update: { data: data as any, updatedAt: new Date() },
+      });
+
+      return reply.code(200).send({ success: true });
+    },
+  });
+
+  // ─────────────────────────────────────────────
+  // CHARACTER DRAFT — GET
+  // ─────────────────────────────────────────────
+  fastify.get('/draft', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const userId = request.userId!;
+
+      const draft = await prismaRead.characterDraft.findUnique({
+        where: { userId },
+        select: { data: true, updatedAt: true },
+      });
+
+      if (!draft) {
+        return reply.code(404).send({ success: false, error: { code: 'NOT_FOUND' } });
+      }
+
+      return reply.send({ success: true, data: draft });
+    },
+  });
+
+  // ─────────────────────────────────────────────
+  // CHARACTER DRAFT — DELETE
+  // ─────────────────────────────────────────────
+  fastify.delete('/draft', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const userId = request.userId!;
+
+      await prisma.characterDraft.deleteMany({ where: { userId } });
+
+      return reply.code(200).send({ success: true });
     },
   });
 };

@@ -972,7 +972,6 @@ export const storyRoutes: FastifyPluginAsync = async (fastify) => {
       // 유효성 검사
       const systemPrompt = decrypt(story.systemPromptEncrypted, story.systemPromptIv);
       const errors: string[] = [];
-      if (!story.coverUrl)               errors.push('프로필 이미지를 등록해주세요.');
       if (!story.title?.trim())          errors.push('제목을 입력해주세요.');
       if (!story.description?.trim())    errors.push('소개를 입력해주세요.');
       if (!story.greeting?.trim())       errors.push('인사말(프롤로그)을 입력해주세요.');
@@ -1253,13 +1252,17 @@ export const storyRoutes: FastifyPluginAsync = async (fastify) => {
         data: { conversationId, role: 'USER', content: content.trim(), creditCost: 0 },
       });
 
-      // Set SSE headers
-      reply.raw.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no',
-      });
+      // Set SSE headers (manual CORS needed because raw streaming bypasses Fastify CORS plugin)
+      const reqOrigin = request.headers.origin;
+      if (reqOrigin) {
+        reply.raw.setHeader('Access-Control-Allow-Origin', reqOrigin);
+        reply.raw.setHeader('Access-Control-Allow-Credentials', 'true');
+      }
+      reply.raw.setHeader('Content-Type', 'text/event-stream');
+      reply.raw.setHeader('Cache-Control', 'no-cache');
+      reply.raw.setHeader('Connection', 'keep-alive');
+      reply.raw.setHeader('X-Accel-Buffering', 'no');
+      reply.raw.flushHeaders();
 
       const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [
         ...recentMessages.reverse().map((m: any) => ({
@@ -1340,9 +1343,9 @@ export const storyRoutes: FastifyPluginAsync = async (fastify) => {
       const limitNum = Math.min(Math.max(Number(limit), 1), 50);
 
       const [total, stories] = await Promise.all([
-        prismaRead.story.count({ where: { authorId: userId } }),
+        prismaRead.story.count({ where: { authorId: userId, isActive: true } }),
         prismaRead.story.findMany({
-          where: { authorId: userId },
+          where: { authorId: userId, isActive: true },
           orderBy: { createdAt: 'desc' },
           skip: (pageNum - 1) * limitNum,
           take: limitNum,
@@ -1636,6 +1639,14 @@ ${statUnit ? `스탯 단위: ${statUnit}` : ''}
           await prisma.storyStartSetting.delete({ where: { id: serverSettings[i].id } }).catch(() => {});
         }
         result.startSettingIdMap = settingIdMap;
+
+        // story.greeting을 첫 번째 startSetting의 prologue와 동기화
+        if (startSettings.length > 0 && startSettings[0].prologue !== undefined) {
+          await prisma.story.update({
+            where: { id },
+            data: { greeting: startSettings[0].prologue },
+          });
+        }
       }
 
       // ── examples 동기화 (전체 교체) ──
@@ -1663,8 +1674,12 @@ ${statUnit ? `스탯 단위: ${statUnit}` : ''}
     handler: async (request, reply) => {
       const { storyId } = request.params as { storyId: string };
       const userId = request.userId!;
-      const story = await prismaRead.story.findFirst({ where: { id: storyId, authorId: userId } });
+      const story = await prismaRead.story.findFirst({ where: { id: storyId } });
       if (!story) return reply.status(404).send({ error: '스토리를 찾을 수 없습니다.' });
+      // 비공개 스토리는 작성자만 조회 가능
+      if (story.visibility === 'PRIVATE' && story.authorId !== userId) {
+        return reply.status(403).send({ error: '접근 권한이 없습니다.' });
+      }
 
       const settings = await prismaRead.storyStartSetting.findMany({
         where: { storyId },
@@ -1993,28 +2008,49 @@ ${statUnit ? `스탯 단위: ${statUnit}` : ''}
   fastify.post('/preview-chat', {
     preHandler: [requireAuth],
     handler: async (request, reply) => {
-      const { systemPrompt, history, userMessage, characterName } = request.body as {
+      const { systemPrompt, history, userMessage, characterName, exampleDialogues } = request.body as {
         systemPrompt: string;
         history: Array<{ role: 'user' | 'assistant'; content: string }>;
         userMessage: string;
         characterName?: string;
+        exampleDialogues?: Array<{ id: string; messages: Array<{ role: 'character' | 'user'; content: string }> }>;
       };
 
       if (!userMessage?.trim()) {
         return reply.status(400).send({ error: '메시지를 입력해주세요.' });
       }
 
-      reply.raw.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no',
-      });
+      const reqOrigin2 = request.headers.origin;
+      if (reqOrigin2) {
+        reply.raw.setHeader('Access-Control-Allow-Origin', reqOrigin2);
+        reply.raw.setHeader('Access-Control-Allow-Credentials', 'true');
+      }
+      reply.raw.setHeader('Content-Type', 'text/event-stream');
+      reply.raw.setHeader('Cache-Control', 'no-cache');
+      reply.raw.setHeader('Connection', 'keep-alive');
+      reply.raw.setHeader('X-Accel-Buffering', 'no');
+      reply.raw.flushHeaders();
 
       try {
-        const baseSystem = systemPrompt?.trim()
+        let baseSystem = systemPrompt?.trim()
           ? systemPrompt
           : `당신은 ${characterName || 'AI 캐릭터'}입니다. 캐릭터에 맞게 자연스럽게 대화해주세요.`;
+
+        // 예시 대화를 few-shot으로 시스템 프롬프트에 포함
+        if (exampleDialogues && exampleDialogues.length > 0) {
+          const validExamples = exampleDialogues.filter(ex => ex.messages && ex.messages.length > 0);
+          if (validExamples.length > 0) {
+            const exampleText = validExamples.map((ex, i) => {
+              const lines = ex.messages.map(m =>
+                m.role === 'character'
+                  ? `${characterName || '캐릭터'}: ${m.content}`
+                  : `사용자: ${m.content}`
+              ).join('\n');
+              return `[예시 ${i + 1}]\n${lines}`;
+            }).join('\n\n');
+            baseSystem += `\n\n아래는 대화 예시입니다. 이 예시를 참고하여 캐릭터의 말투와 성격을 유지하세요:\n\n${exampleText}`;
+          }
+        }
 
         const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [
           ...((history ?? []).slice(-10) as Array<{ role: 'user' | 'assistant'; content: string }>),

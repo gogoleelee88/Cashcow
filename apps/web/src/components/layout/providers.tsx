@@ -1,7 +1,6 @@
 'use client';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../stores/auth.store';
 import { api } from '../../lib/api';
@@ -51,9 +50,6 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <AuthInitializer />
       {children}
       <Toaster />
-      {process.env.NODE_ENV === 'development' && (
-        <ReactQueryDevtools initialIsOpen={false} />
-      )}
     </QueryClientProvider>
   );
 }

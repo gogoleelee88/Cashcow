@@ -689,6 +689,7 @@ function ImageUploadArea({
   onPreviewChange,
   uploading,
   externalPreview,
+  onGenerate,
 }: {
   label: string;
   required?: boolean;
@@ -698,6 +699,7 @@ function ImageUploadArea({
   onPreviewChange?: (url: string | null) => void;
   uploading?: boolean;
   externalPreview?: string | null;
+  onGenerate?: () => void;
 }) {
   const [preview, setPreview] = useState<string | null>(null);
   const [rawImageSrc, setRawImageSrc] = useState<string | null>(null);
@@ -815,6 +817,7 @@ function ImageUploadArea({
               )}
               <button
                 type="button"
+                onClick={onGenerate}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
               >
                 <Wand2 className="w-3.5 h-3.5" />
@@ -960,6 +963,7 @@ function ProfileForm({
   squareImagePreview?: string | null;
   verticalImagePreview?: string | null;
 }) {
+  const router = useRouter();
   const [showAgeNotice, setShowAgeNotice] = useState(true);
   const [showAgeModal, setShowAgeModal] = useState(false);
   const [generatingName, setGeneratingName] = useState(false);
@@ -1108,6 +1112,7 @@ function ProfileForm({
         onPreviewChange={(blobUrl) =>
           handleImageUpload(blobUrl, 'square', setUploadingSquare, onSquareImageChange)
         }
+        onGenerate={() => router.push('/images')}
       />
 
       {/* Vertical image */}
@@ -1121,6 +1126,7 @@ function ProfileForm({
         onPreviewChange={(blobUrl) =>
           handleImageUpload(blobUrl, 'vertical', setUploadingVertical, onVerticalImageChange)
         }
+        onGenerate={() => router.push('/images')}
       />
 
       {/* Update notice */}
@@ -2802,7 +2808,7 @@ const MODEL_OPTIONS = [
   { label: '💭 일반챗', value: 'normal_chat' },
 ];
 
-function RegisterTab({ name, coverUrl }: { name: string; coverUrl?: string }) {
+function RegisterTab({ name, coverUrl, onVisibilityChange }: { name: string; coverUrl?: string; onVisibilityChange?: (v: string) => void }) {
   const [showAgeNotice, setShowAgeNotice] = useState(true);
   const [showAgeModal, setShowAgeModal] = useState(false);
   const [detailDesc, setDetailDesc] = useState('');
@@ -3071,7 +3077,7 @@ function RegisterTab({ name, coverUrl }: { name: string; coverUrl?: string }) {
                 name="visibility"
                 value={opt.value}
                 checked={visibility === opt.value}
-                onChange={() => setVisibility(opt.value as 'public' | 'private' | 'link')}
+                onChange={() => { const v = opt.value as 'public' | 'private' | 'link'; setVisibility(v); onVisibilityChange?.(v); }}
                 className="accent-brand mt-0.5"
               />
               <div>
@@ -3126,7 +3132,7 @@ function RegisterTab({ name, coverUrl }: { name: string; coverUrl?: string }) {
 // ─────────────────────────────────────────────
 // REGISTER RIGHT PANEL  (등록 탭 미리보기)
 // ─────────────────────────────────────────────
-function RegisterPreviewPanel({ name }: { name: string }) {
+function RegisterPreviewPanel({ name, coverImage }: { name: string; coverImage?: string | null }) {
   const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\. /g, '.').replace('.', '');
 
   return (
@@ -3134,8 +3140,13 @@ function RegisterPreviewPanel({ name }: { name: string }) {
       {/* Story card */}
       <div className="mx-4 mt-4 rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
         {/* Cover image area */}
-        <div className="relative bg-gradient-to-br from-brand/80 to-brand aspect-[4/3] flex items-center justify-center">
-          <div className="text-5xl select-none">😊</div>
+        <div className="relative bg-gradient-to-br from-brand/80 to-brand aspect-[4/3] flex items-center justify-center overflow-hidden">
+          {coverImage ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={coverImage} alt="커버" className="w-full h-full object-cover" />
+          ) : (
+            <div className="text-5xl select-none">😊</div>
+          )}
           <div className="absolute bottom-3 right-3 flex items-center gap-1 bg-black/40 text-white text-xs font-semibold px-2 py-1 rounded-full">
             <span>👍</span> 1.6K
           </div>
@@ -3787,6 +3798,118 @@ const CRACKER_PACKAGES = [
   { id: 'cracker_10000', label: '10,000 크래커', price: 90000, crackers: 10000, bonus: 3000, popular: false },
 ];
 
+// ── 임시저장 내역 모달 ─────────────────────────────────────────────────────
+function DraftHistoryModal({ onClose, currentStoryId }: { onClose: () => void; currentStoryId: string | null }) {
+  const router = useRouter();
+  const { reset } = useStoryDraftStore();
+  const [drafts, setDrafts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.stories.my({ limit: 50 }).then((res: any) => {
+      const all: any[] = res.data ?? [];
+      setDrafts(all.filter((s: any) => s.status === 'DRAFT'));
+    }).finally(() => setLoading(false));
+  }, []);
+
+  const handleOpen = (id: string) => {
+    if (id === currentStoryId) { onClose(); return; }
+    reset();
+    router.push(`/creator/story/${id}/edit`);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-20" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: -8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: -8 }}
+        transition={{ duration: 0.15 }}
+        className="relative z-10 bg-white rounded-2xl shadow-2xl w-[480px] max-w-[calc(100vw-2rem)] mx-4 overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* 헤더 */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="text-gray-900 font-bold text-base">임시저장 내역</h2>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* 안내 */}
+        <div className="mx-4 mt-3 mb-2 px-3 py-2 bg-gray-50 rounded-xl flex items-center gap-2 text-xs text-gray-500">
+          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-gray-400" />
+          미등록 스토리 1개당 총 50개까지 저장할 수 있어요
+        </div>
+
+        {/* 개수 */}
+        <div className="flex items-center justify-between px-6 py-2">
+          <span className="text-sm text-gray-500">총 <span className="font-semibold text-gray-800">{drafts.length}</span>개</span>
+        </div>
+
+        {/* 리스트 */}
+        <div className="max-h-[360px] overflow-y-auto px-4 pb-4">
+          {loading ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="w-6 h-6 text-gray-300 animate-spin" />
+            </div>
+          ) : drafts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-14 text-center">
+              <div className="w-14 h-14 mb-3 text-gray-200 flex items-center justify-center">
+                <svg viewBox="0 0 48 48" fill="none" className="w-12 h-12">
+                  <rect x="6" y="8" width="28" height="36" rx="3" fill="#e5e7eb" />
+                  <rect x="10" y="16" width="20" height="2.5" rx="1.25" fill="#9ca3af" />
+                  <rect x="10" y="22" width="14" height="2.5" rx="1.25" fill="#9ca3af" />
+                  <circle cx="36" cy="34" r="9" fill="#d1d5db" />
+                  <path d="M33 34h6M36 31v6" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              </div>
+              <p className="text-gray-400 text-sm">아직 임시저장한 스토리가 없어요</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {drafts.map((draft) => (
+                <button
+                  key={draft.id}
+                  onClick={() => handleOpen(draft.id)}
+                  className={cn(
+                    'w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-all hover:border-gray-300 hover:bg-gray-50',
+                    draft.id === currentStoryId
+                      ? 'border-blue-200 bg-blue-50'
+                      : 'border-gray-100'
+                  )}
+                >
+                  <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
+                    {draft.coverUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={draft.coverUrl} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-gray-200 to-gray-300" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">
+                      {draft.title?.trim() || '제목 없음'}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {new Date(draft.createdAt).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })} 저장
+                    </p>
+                  </div>
+                  {draft.id === currentStoryId && (
+                    <span className="text-xs text-blue-500 font-medium flex-shrink-0">현재 편집 중</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 function CrackerChargeModal({ onClose }: { onClose: () => void }) {
   const [selected, setSelected] = useState(CRACKER_PACKAGES[3].id);
   const [loading, setLoading] = useState(false);
@@ -3956,6 +4079,12 @@ export function StoryCreateForm({ initialStoryId }: { initialStoryId?: string } 
     reset,
   } = useStoryDraftStore();
 
+  const [showDraftHistory, setShowDraftHistory] = useState(false);
+  const [publishErrors, setPublishErrors] = useState<string[]>([]);
+  const [publishedStoryId, setPublishedStoryId] = useState<string | null>(null);
+  const [registerVisibility, setRegisterVisibility] = useState<string>('private');
+  const [isAlreadyPublished, setIsAlreadyPublished] = useState(false);
+
   // ── 편집 모드: 기존 스토리 데이터 로딩 ────────────────────────────────
   const [editDataLoaded, setEditDataLoaded] = useState(false);
   useEffect(() => {
@@ -3972,6 +4101,7 @@ export function StoryCreateForm({ initialStoryId }: { initialStoryId?: string } 
         setActiveStartSettingId(d.startSettings[0].id);
       }
       if (d.examples?.length) setExamples(d.examples);
+      if (d.status && d.status !== 'DRAFT') setIsAlreadyPublished(true);
       setEditDataLoaded(true);
     }).catch(() => {
       setEditDataLoaded(true); // 실패해도 빈 폼으로 진행
@@ -4123,6 +4253,59 @@ export function StoryCreateForm({ initialStoryId }: { initialStoryId?: string } 
           <CrackerChargeModal onClose={() => setCrackerModalOpen(false)} />
         )}
       </AnimatePresence>
+
+      {/* 등록 성공 모달 */}
+      <AnimatePresence>
+        {publishedStoryId && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center" onClick={() => {}}>
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              className="relative z-10 bg-white rounded-2xl shadow-2xl w-[380px] mx-4 p-8 text-center"
+            >
+              <div className="text-5xl mb-4">🎉</div>
+              <h2 className="text-gray-900 font-bold text-xl mb-2">스토리가 등록됐어요!</h2>
+              <p className="text-gray-400 text-sm mb-8 leading-relaxed">
+                독자들이 이제 이야기를 시작할 수 있어요.
+              </p>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => {
+                    const id = publishedStoryId;
+                    reset();
+                    setPublishedStoryId(null);
+                    window.location.href = `/story/${id}`;
+                  }}
+                  className="w-full py-3 rounded-xl bg-gray-900 text-white text-sm font-bold hover:bg-gray-800 transition-colors"
+                >
+                  스토리 바로 보기
+                </button>
+                <button
+                  onClick={() => {
+                    reset();
+                    setPublishedStoryId(null);
+                    window.location.href = '/creator';
+                  }}
+                  className="w-full py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors"
+                >
+                  내 작품으로 가기
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* 임시저장 내역 모달 */}
+      <AnimatePresence>
+        {showDraftHistory && (
+          <DraftHistoryModal
+            onClose={() => setShowDraftHistory(false)}
+            currentStoryId={storyId}
+          />
+        )}
+      </AnimatePresence>
       {/* ── TOP BAR ── */}
       <div className="flex-shrink-0 flex items-center justify-between px-6 py-3 border-b border-gray-100 bg-white z-20">
         {/* Left: back + title */}
@@ -4173,23 +4356,32 @@ export function StoryCreateForm({ initialStoryId }: { initialStoryId?: string } 
               </>
             )}
           </div>
-          <button type="button" className="p-2 rounded-xl border border-gray-200 text-gray-400 hover:bg-gray-50 transition-colors">
+          <button
+            type="button"
+            onClick={() => setShowDraftHistory(true)}
+            className="p-2 rounded-xl border border-gray-200 text-gray-400 hover:bg-gray-50 transition-colors"
+            title="임시저장 내역"
+          >
             <History className="w-4 h-4" />
           </button>
           <button
             type="button"
-            disabled={!storyId}
+            disabled={!storyId || saveStatus === 'saving'}
             onClick={async () => {
               if (!storyId) return;
+              setPublishErrors([]);
               try {
                 setSaveStatus('saving');
-                await api.stories.publish(storyId);
+                const visMap: Record<string, string> = { public: 'PUBLIC', private: 'PRIVATE', link: 'UNLISTED' };
+                await api.stories.updatePublishSettings(storyId, { visibility: visMap[registerVisibility] ?? 'PRIVATE' });
+                if (!isAlreadyPublished) await api.stories.publish(storyId);
                 setSaveStatus('saved');
-                reset();
-                router.push('/creator');
+                setPublishedStoryId(storyId);
               } catch (e: any) {
                 setSaveStatus('error');
-                alert(e?.response?.data?.details?.join('\n') ?? '배포에 실패했습니다.');
+                const details: string[] = e?.response?.data?.details ?? [];
+                const msg: string = e?.response?.data?.error ?? '등록에 실패했습니다.';
+                setPublishErrors(details.length > 0 ? details : [msg]);
               }
             }}
             className="px-5 py-2 rounded-xl bg-gray-900 text-white text-sm font-bold hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -4217,6 +4409,33 @@ export function StoryCreateForm({ initialStoryId }: { initialStoryId?: string } 
           </button>
         ))}
       </div>
+
+      {/* ── 등록 에러 배너 ── */}
+      <AnimatePresence>
+        {publishErrors.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="flex-shrink-0 bg-red-50 border-b border-red-100 px-6 py-3"
+          >
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-red-600 text-xs font-semibold mb-1">등록 전 완성이 필요한 항목이 있어요</p>
+                <ul className="space-y-0.5">
+                  {publishErrors.map((e, i) => (
+                    <li key={i} className="text-red-500 text-xs">• {e}</li>
+                  ))}
+                </ul>
+              </div>
+              <button onClick={() => setPublishErrors([])} className="text-red-300 hover:text-red-500 transition-colors">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── MAIN SPLIT ── */}
       <div className="flex-1 flex overflow-hidden min-h-0">
@@ -4285,7 +4504,7 @@ export function StoryCreateForm({ initialStoryId }: { initialStoryId?: string } 
               />
             </div>
             <div style={{ display: activeTab === 'register' ? 'flex' : 'none' }} className="flex-col flex-1 min-h-0 overflow-hidden">
-              <RegisterTab name={name} />
+              <RegisterTab name={name} onVisibilityChange={setRegisterVisibility} />
             </div>
           </div>
 
@@ -4396,7 +4615,7 @@ export function StoryCreateForm({ initialStoryId }: { initialStoryId?: string } 
               <div className="flex-shrink-0 px-4 py-3 border-b border-gray-100">
                 <span className="text-gray-700 font-semibold text-sm">미리보기</span>
               </div>
-              <RegisterPreviewPanel name={name} />
+              <RegisterPreviewPanel name={name} coverImage={squareImage} />
             </div>
           ) : (
             /* Chat preview for start/stat/other tabs */
