@@ -6,7 +6,7 @@ import { encrypt, decrypt } from '../lib/encryption';
 import { requireAuth } from '../plugins/auth.plugin';
 import { searchRateLimit, uploadRateLimit } from '../plugins/rate-limit.plugin';
 import { logger } from '../lib/logger';
-import { generatePresignedUploadUrl, deleteS3Object } from '../services/s3.service';
+import { generatePresignedUploadUrl, deleteS3Object } from '../services/storage.service';
 // StoryCategory, CharacterVisibility, AgeRating types used as strings (Prisma client not yet generated)
 // import Anthropic from '@anthropic-ai/sdk'; // Anthropic 비활성화 - OpenAI로 전환
 import OpenAI from 'openai';

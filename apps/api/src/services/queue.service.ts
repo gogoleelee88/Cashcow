@@ -6,7 +6,7 @@ import { queueDepth, queueJobDuration } from '../lib/metrics';
 import { prisma } from '../lib/prisma';
 import OpenAI, { toFile } from 'openai';
 import { randomBytes } from 'crypto';
-import { uploadBufferToS3 } from './s3.service';
+import { uploadBufferToS3 } from './storage.service';
 import { config } from '../config';
 
 const connection = { client: getBullRedis() };

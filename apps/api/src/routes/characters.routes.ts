@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma, prismaRead } from '../lib/prisma';
 import { cache, CacheKeys } from '../lib/redis';
 import { encrypt, decrypt } from '../lib/encryption';
-import { generatePresignedUploadUrl, deleteS3Object } from '../services/s3.service';
+import { generatePresignedUploadUrl, deleteS3Object } from '../services/storage.service';
 import { requireAuth, requireAgeVerification } from '../plugins/auth.plugin';
 import { searchRateLimit, uploadRateLimit } from '../plugins/rate-limit.plugin';
 import { logger } from '../lib/logger';
@@ -30,6 +30,7 @@ const exampleDialogueSchema = z.object({
 const createCharacterSchema = z.object({
   name: z.string().min(1).max(50),
   description: z.string().min(10).max(500),
+  detailDescription: z.string().max(1000).optional(),
   systemPrompt: z.string().min(20).max(10000),
   greeting: z.string().min(1).max(1000),
   exampleDialogues: z.array(exampleDialogueSchema).max(20).optional(),
@@ -37,6 +38,8 @@ const createCharacterSchema = z.object({
   tags: z.array(z.string().max(30)).max(10).default([]),
   visibility: z.enum(['PUBLIC', 'PRIVATE', 'UNLISTED']).default('PUBLIC'),
   ageRating: z.enum(['ALL', 'TEEN', 'MATURE']).default('ALL'),
+  audienceTarget: z.enum(['ALL', 'MALE_ORIENTED', 'FEMALE_ORIENTED']).default('ALL'),
+  commentDisabled: z.boolean().default(false),
   language: z.string().default('ko'),
   model: z.enum(['claude-haiku-3', 'claude-sonnet-4']).default('claude-haiku-3'),
   temperature: z.number().min(0).max(1).default(0.8),
@@ -385,6 +388,7 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
         data: {
           name: body.data.name,
           description: body.data.description,
+          detailDescription: body.data.detailDescription ?? null,
           systemPromptEncrypted: encrypted,
           systemPromptIv: iv,
           greeting: body.data.greeting,
@@ -393,6 +397,8 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
           tags: body.data.tags,
           visibility: body.data.visibility,
           ageRating: body.data.ageRating,
+          audienceTarget: body.data.audienceTarget,
+          commentDisabled: body.data.commentDisabled,
           language: body.data.language,
           model: body.data.model,
           temperature: body.data.temperature,

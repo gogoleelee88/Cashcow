@@ -27,18 +27,18 @@ export function ChatPageContent() {
   const router = useRouter();
   const characterId = searchParams?.get('characterId');
   const conversationId = searchParams?.get('conversationId');
-  const { user, isAuthenticated, accessToken } = useAuthStore();
+  const { user, isAuthenticated, isLoading, accessToken } = useAuthStore();
   const queryClient = useQueryClient();
 
   const [activeConvId, setActiveConvId] = useState<string | null>(conversationId ?? null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Redirect to login if not authenticated
+  // Redirect to login if not authenticated — wait for Zustand to finish hydrating from localStorage first
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isLoading && !isAuthenticated) {
       router.push(`/login?redirect=/chat${characterId ? `?characterId=${characterId}` : ''}`);
     }
-  }, [isAuthenticated, router, characterId]);
+  }, [isLoading, isAuthenticated, router, characterId]);
 
   // Auto-start conversation from characterId param
   const startConversationMutation = useMutation({
@@ -57,7 +57,7 @@ export function ChatPageContent() {
     }
   }, [characterId, conversationId, isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!isAuthenticated) return null;
+  if (isLoading || !isAuthenticated) return null;
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">

@@ -24,7 +24,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
         take: Number(limit),
         include: {
           character: {
-            select: { id: true, name: true, avatarUrl: true, category: true },
+            select: { id: true, name: true, avatarUrl: true, category: true, greeting: true },
           },
           messages: {
             orderBy: { createdAt: 'desc' },
@@ -229,6 +229,13 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
       reply.raw.setHeader('Cache-Control', 'no-cache');
       reply.raw.setHeader('Connection', 'keep-alive');
       reply.raw.setHeader('X-Accel-Buffering', 'no');
+      // CORS headers must be set manually here because reply.raw.flushHeaders()
+      // bypasses Fastify's onSend lifecycle where @fastify/cors normally injects them
+      const origin = request.headers.origin;
+      if (origin) {
+        reply.raw.setHeader('Access-Control-Allow-Origin', origin);
+        reply.raw.setHeader('Access-Control-Allow-Credentials', 'true');
+      }
       reply.raw.flushHeaders();
 
       const sendEvent = (event: string, data: unknown) => {

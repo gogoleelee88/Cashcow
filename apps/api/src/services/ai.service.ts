@@ -161,8 +161,8 @@ export interface StreamOptions {
   userId: string;
   userMessage: string;
   onChunk: (text: string) => void;
-  onComplete: (result: { inputTokens: number; outputTokens: number; fullText: string }) => void;
-  onError: (error: Error) => void;
+  onComplete: (result: { inputTokens: number; outputTokens: number; fullText: string }) => Promise<void>;
+  onError: (error: Error) => Promise<void> | void;
   signal?: AbortSignal;
 }
 
@@ -247,7 +247,7 @@ export async function streamChatResponse(options: StreamOptions): Promise<void> 
     aiTokensUsed.inc({ model, type: 'input' }, inputTokens);
     aiTokensUsed.inc({ model, type: 'output' }, outputTokens);
 
-    onComplete({ inputTokens, outputTokens, fullText: finalText });
+    await onComplete({ inputTokens, outputTokens, fullText: finalText });
   } catch (err) {
     timer({ model: 'unknown', status: 'error' });
     aiRequestTotal.inc({ model: 'unknown', status: 'error' });
