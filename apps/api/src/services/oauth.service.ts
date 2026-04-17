@@ -47,7 +47,7 @@ export async function exchangeGoogleCode(
       client_secret: config.GOOGLE_CLIENT_SECRET!,
       redirect_uri: redirectUri,
       grant_type: 'authorization_code',
-    }),
+    }).toString(),
   });
   if (!res.ok) {
     const err = await res.text();
@@ -137,7 +137,7 @@ export async function exchangeKakaoCode(
   const res = await fetch('https://kauth.kakao.com/oauth/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8' },
-    body,
+    body: body.toString(),
   });
   if (!res.ok) {
     const err = await res.json();

@@ -310,7 +310,8 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
 
       const profile = await prisma.creatorProfile.upsert({
         where: { userId },
-        create: { userId, ...body.data },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        create: { userId, ...body.data } as any,
         update: body.data,
       });
 
