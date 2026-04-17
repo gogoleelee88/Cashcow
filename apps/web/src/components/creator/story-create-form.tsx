@@ -10,6 +10,16 @@ import { useAuthStore } from '../../stores/auth.store';
 import { useStoryDraftStore, type DraftKeywordNote } from '../../stores/story-draft.store';
 import { api } from '../../lib/api';
 
+// ── data URL → Blob 변환 (CSP connect-src에서 data: 가 차단되므로 fetch 대신 사용) ──
+function dataUrlToBlob(dataUrl: string): Blob {
+  const [header, base64] = dataUrl.split(',');
+  const mime = header.match(/:(.*?);/)?.[1] ?? 'image/jpeg';
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
 // ── 자동저장 훅 ───────────────────────────────────────────────────────────
 function useAutoSave(initialStoryId?: string) {
   const {
@@ -41,6 +51,44 @@ function useAutoSave(initialStoryId?: string) {
       if (d.coverUrl)         setSquareImage(d.coverUrl,         d.coverKey ?? null);
       if (d.coverVerticalUrl) setVerticalImage(d.coverVerticalUrl, d.coverVerticalKey ?? null);
     }).catch(() => {});
+  }, [storyId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── storyId 확정 후, data URL로 임시 저장된 커버 이미지를 Supabase에 업로드 ──
+  useEffect(() => {
+    if (!storyId) return;
+
+    const uploadPending = async (
+      imageData: string | null,
+      variant: 'square' | 'vertical',
+      onDone: (url: string, key: string) => void,
+    ) => {
+      // Supabase URL이면 이미 업로드된 것 → 스킵
+      if (!imageData || imageData.startsWith('https://')) return;
+      // data URL인 경우 Supabase에 업로드
+      try {
+        const blob = imageData.startsWith('data:') ? dataUrlToBlob(imageData) : await fetch(imageData).then(r => r.blob());
+        const { data } = await api.stories.getCoverUploadUrl(storyId, {
+          contentType: 'image/jpeg',
+          variant,
+        });
+        await fetch(data.uploadUrl, {
+          method: 'PUT',
+          body: blob,
+          headers: { 'Content-Type': 'image/jpeg' },
+        });
+        await api.stories.confirmCoverUpload(storyId, {
+          variant,
+          url: data.publicUrl,
+          key: data.key,
+        });
+        onDone(data.publicUrl, data.key);
+      } catch {
+        // 업로드 실패 시 data URL 유지
+      }
+    };
+
+    uploadPending(squareImage, 'square', (url, key) => setSquareImage(url, key));
+    uploadPending(verticalImage, 'vertical', (url, key) => setVerticalImage(url, key));
   }, [storyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 이름 + 소개 debounce 저장 (800ms) ────────────────────────────────
@@ -970,7 +1018,7 @@ function ProfileForm({
   const [uploadingSquare, setUploadingSquare] = useState(false);
   const [uploadingVertical, setUploadingVertical] = useState(false);
 
-  // ── S3 이미지 업로드 핸들러 ──────────────────────────────────────────────
+  // ── Supabase 이미지 업로드 핸들러 ──────────────────────────────────────────────
   const handleImageUpload = async (
     imageData: string | null,  // data URL (압축) or blob URL
     variant: 'square' | 'vertical',
@@ -979,45 +1027,42 @@ function ProfileForm({
   ) => {
     if (!imageData) { onDone?.(null, null); return; }
 
-    // ── S3/R2 업로드 (스토리지 설정 후 주석 해제) ────────────────────────
-    // if (!storyId) { onDone?.(imageData); return; }
-    // setUploading(true);
-    // try {
-    //   // 1. data URL → Blob 객체
-    //   const fetchRes = await fetch(imageData);
-    //   const blob = await fetchRes.blob();
-    //
-    //   // 2. Presigned URL 요청
-    //   const { data } = await api.stories.getCoverUploadUrl(storyId, {
-    //     contentType: 'image/jpeg',
-    //     variant,
-    //   });
-    //
-    //   // 3. S3/R2에 PUT
-    //   await fetch(data.uploadUrl, {
-    //     method: 'PUT',
-    //     body: blob,
-    //     headers: { 'Content-Type': 'image/jpeg' },
-    //   });
-    //
-    //   // 4. 서버에 URL 확정
-    //   await api.stories.confirmCoverUpload(storyId, {
-    //     variant,
-    //     url: data.publicUrl,
-    //     key: data.key,
-    //   });
-    //
-    //   // 5. store에 CDN URL + key 저장
-    //   onDone?.(data.publicUrl, data.key);
-    // } catch {
-    //   onDone?.(blobUrl);
-    // } finally {
-    //   setUploading(false);
-    // }
-    // ────────────────────────────────────────────────────────────────────
+    // storyId가 없으면 data URL을 임시로 사용 (draft 생성 후 재업로드됨)
+    if (!storyId) { onDone?.(imageData); return; }
 
-    // 임시: 스토리지 미설정 상태 — 압축 data URL을 store에 저장 (localStorage로 유지됨)
-    onDone?.(imageData);
+    setUploading(true);
+    try {
+      // 1. data URL → Blob 객체 (data: URL은 CSP connect-src 차단 → atob 사용)
+      const blob = imageData.startsWith('data:') ? dataUrlToBlob(imageData) : await fetch(imageData).then(r => r.blob());
+
+      // 2. Presigned URL 요청
+      const { data } = await api.stories.getCoverUploadUrl(storyId, {
+        contentType: 'image/jpeg',
+        variant,
+      });
+
+      // 3. Supabase Storage에 PUT
+      await fetch(data.uploadUrl, {
+        method: 'PUT',
+        body: blob,
+        headers: { 'Content-Type': 'image/jpeg' },
+      });
+
+      // 4. 서버에 URL 확정 → DB 저장
+      await api.stories.confirmCoverUpload(storyId, {
+        variant,
+        url: data.publicUrl,
+        key: data.key,
+      });
+
+      // 5. store에 CDN URL + key 저장
+      onDone?.(data.publicUrl, data.key);
+    } catch {
+      // 업로드 실패 시 data URL로 폴백 (미리보기는 유지)
+      onDone?.(imageData);
+    } finally {
+      setUploading(false);
+    }
   };
 
   // ── 실시간 제목 중복 체크 (500ms debounce) ────────────────────────────

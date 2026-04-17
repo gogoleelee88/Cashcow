@@ -3,14 +3,12 @@ import { z } from 'zod';
 import { prisma, prismaRead } from '../lib/prisma';
 import { cache, CacheKeys } from '../lib/redis';
 import { encrypt, decrypt } from '../lib/encryption';
-import { generatePresignedUploadUrl, deleteS3Object } from '../services/storage.service';
+import { generatePresignedUploadUrl, uploadBufferToStorage, deleteS3Object } from '../services/storage.service';
 import { requireAuth, requireAgeVerification } from '../plugins/auth.plugin';
 import { searchRateLimit, uploadRateLimit } from '../plugins/rate-limit.plugin';
 import { logger } from '../lib/logger';
 import type { CharacterCategory, CharacterVisibility, AgeRating, AudienceTarget } from '@prisma/client';
 import { randomBytes } from 'crypto';
-import path from 'path';
-import fs from 'fs';
 
 const CACHE_TTL_CHARACTER_LIST = 120;  // 2 min
 const CACHE_TTL_CHARACTER_DETAIL = 300; // 5 min
@@ -546,7 +544,7 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // ─────────────────────────────────────────────
-  // DIRECT MULTIPART UPLOAD (local storage fallback)
+  // DIRECT MULTIPART UPLOAD (Supabase Storage)
   // POST /api/characters/upload
   // ─────────────────────────────────────────────
   fastify.post('/upload', {
@@ -592,17 +590,12 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
       const ext = mimetype.split('/')[1].replace('jpeg', 'jpg');
       const userId = request.userId!;
       const folder = uploadType === 'background' ? 'characters/backgrounds' : 'characters/avatars';
-      const filename = `${randomBytes(16).toString('hex')}.${ext}`;
-      const key = `${folder}/${userId}/${filename}`;
-      const filePath = path.join(process.cwd(), 'uploads', key);
+      const filename = `${userId}/${randomBytes(16).toString('hex')}.${ext}`;
+      const key = `${folder}/${filename}`;
 
-      fs.mkdirSync(path.dirname(filePath), { recursive: true });
-      fs.writeFileSync(filePath, fileBuffer);
+      const url = await uploadBufferToStorage(fileBuffer, folder as any, filename, mimetype);
 
-      const { config: cfg } = await import('../config');
-      const url = `${cfg.API_BASE_URL}/uploads/${key}`;
-
-      logger.info({ userId, key, size: fileBuffer.length }, 'Character image uploaded');
+      logger.info({ userId, key, size: fileBuffer.length }, 'Character image uploaded to Supabase');
       return reply.send({ success: true, data: { url, key } });
     },
   });

@@ -2,9 +2,8 @@ import type { FastifyPluginAsync } from 'fastify';
 import { requireAuth } from '../plugins/auth.plugin';
 import { prismaRead, prisma } from '../lib/prisma';
 import { z } from 'zod';
-import fs from 'fs';
-import path from 'path';
 import crypto from 'crypto';
+import { uploadBufferToStorage } from '../services/storage.service';
 
 export const userRoutes: FastifyPluginAsync = async (fastify) => {
   // ─────────────────────────────────────────────
@@ -126,7 +125,7 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // ─────────────────────────────────────────────
-  // UPLOAD AVATAR (local storage)
+  // UPLOAD AVATAR (Supabase Storage)
   // ─────────────────────────────────────────────
   fastify.post('/me/avatar', {
     preHandler: [requireAuth],
@@ -143,19 +142,10 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const ext = data.mimetype.split('/')[1].replace('jpeg', 'jpg');
-      const filename = `${crypto.randomBytes(16).toString('hex')}.${ext}`;
-      const uploadDir = path.join(process.cwd(), 'uploads', 'avatars', userId);
-      fs.mkdirSync(uploadDir, { recursive: true });
-      const filePath = path.join(uploadDir, filename);
+      const filename = `${userId}/${crypto.randomBytes(16).toString('hex')}.${ext}`;
 
-      await new Promise<void>((resolve, reject) => {
-        const ws = fs.createWriteStream(filePath);
-        data.file.pipe(ws);
-        ws.on('finish', resolve);
-        ws.on('error', reject);
-      });
-
-      const publicUrl = `${process.env.API_BASE_URL}/uploads/avatars/${userId}/${filename}`;
+      const fileBuffer = await data.toBuffer();
+      const publicUrl = await uploadBufferToStorage(fileBuffer, 'avatars', filename, data.mimetype);
 
       const updated = await prisma.user.update({
         where: { id: userId },
