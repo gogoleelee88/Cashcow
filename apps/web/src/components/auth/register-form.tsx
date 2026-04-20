@@ -4,13 +4,167 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Eye, EyeOff, Zap, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Zap, AlertCircle, CheckCircle2, Loader2, ChevronRight, Check } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/auth.store';
 import { isValidEmail, isValidUsername, isValidPassword } from '@characterverse/utils';
 import { cn } from '../../lib/utils';
 
+// ─────────────────────────────────────────────
+// TERMS STEP
+// ─────────────────────────────────────────────
+function TermsStep({ onNext }: { onNext: () => void }) {
+  const [agreed, setAgreed] = useState({
+    age: false,
+    service: false,
+    privacy: false,
+    marketing: false,
+  });
+
+  const allRequired = agreed.age && agreed.service && agreed.privacy;
+  const allChecked = allRequired && agreed.marketing;
+
+  const toggleAll = () => {
+    const next = !allChecked;
+    setAgreed({ age: next, service: next, privacy: next, marketing: next });
+  };
+
+  const toggle = (key: keyof typeof agreed) => {
+    setAgreed((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  return (
+    <div className="min-h-screen bg-white flex flex-col items-center px-4">
+      {/* Header */}
+      <div className="w-full max-w-[560px] pt-16 pb-10 text-center">
+        <div className="text-[#E8613C] font-bold text-base mb-2">CharacterVerse</div>
+        <h1 className="text-[28px] font-bold text-gray-900">회원가입</h1>
+      </div>
+
+      {/* Terms card */}
+      <div className="w-full max-w-[560px]">
+        <div className="mb-5">
+          <p className="text-sm font-semibold text-gray-800">CharacterVerse 계정</p>
+          <p className="text-[17px] font-bold text-gray-900 mt-0.5">서비스 약관에 동의해주세요</p>
+        </div>
+
+        <div className="space-y-0">
+          {/* 모두 동의 */}
+          <label className="flex items-center gap-3 py-3 cursor-pointer select-none">
+            <span
+              onClick={toggleAll}
+              className={cn(
+                'w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border transition-colors',
+                allChecked ? 'bg-[#3CBFB4] border-[#3CBFB4]' : 'border-gray-300 bg-white'
+              )}
+            >
+              {allChecked && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+            </span>
+            <span className="text-[15px] font-semibold text-gray-800" onClick={toggleAll}>모두 동의</span>
+          </label>
+
+          {/* divider */}
+          <div className="h-px bg-gray-200 my-1" />
+
+          {/* 만 14세 */}
+          <label className="flex items-center gap-3 py-3 cursor-pointer select-none" onClick={() => toggle('age')}>
+            <span className={cn(
+              'w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border transition-colors',
+              agreed.age ? 'bg-[#3CBFB4] border-[#3CBFB4]' : 'border-gray-300 bg-white'
+            )}>
+              {agreed.age && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+            </span>
+            <span className="text-[14px] text-gray-700">만 14세 이상입니다</span>
+          </label>
+
+          {/* 서비스 이용약관 */}
+          <div className="flex items-center gap-3 py-3">
+            <span
+              onClick={() => toggle('service')}
+              className={cn(
+                'w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border transition-colors cursor-pointer',
+                agreed.service ? 'bg-[#3CBFB4] border-[#3CBFB4]' : 'border-gray-300 bg-white'
+              )}
+            >
+              {agreed.service && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+            </span>
+            <span className="text-[14px] text-gray-700 flex-1 cursor-pointer" onClick={() => toggle('service')}>
+              [필수] 서비스 이용약관
+            </span>
+            <Link href="/terms" className="text-gray-400 hover:text-gray-600">
+              <ChevronRight className="w-4 h-4" />
+            </Link>
+          </div>
+
+          {/* 개인정보 수집 및 이용 */}
+          <div className="flex items-center gap-3 py-3">
+            <span
+              onClick={() => toggle('privacy')}
+              className={cn(
+                'w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border transition-colors cursor-pointer',
+                agreed.privacy ? 'bg-[#3CBFB4] border-[#3CBFB4]' : 'border-gray-300 bg-white'
+              )}
+            >
+              {agreed.privacy && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+            </span>
+            <span className="text-[14px] text-gray-700 flex-1 cursor-pointer" onClick={() => toggle('privacy')}>
+              [필수] 개인정보 수집 및 이용
+            </span>
+            <Link href="/privacy" className="text-gray-400 hover:text-gray-600">
+              <ChevronRight className="w-4 h-4" />
+            </Link>
+          </div>
+
+          {/* 마케팅 */}
+          <div className="flex items-center gap-3 py-3">
+            <span
+              onClick={() => toggle('marketing')}
+              className={cn(
+                'w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border transition-colors cursor-pointer',
+                agreed.marketing ? 'bg-[#3CBFB4] border-[#3CBFB4]' : 'border-gray-300 bg-white'
+              )}
+            >
+              {agreed.marketing && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+            </span>
+            <span className="text-[14px] text-gray-700 flex-1 cursor-pointer" onClick={() => toggle('marketing')}>
+              [선택] 이벤트•혜택 정보 수신 및 활용 동의
+            </span>
+            <ChevronRight className="w-4 h-4 text-gray-400" />
+          </div>
+        </div>
+
+        {/* 다음 버튼 */}
+        <div className="mt-10">
+          <button
+            onClick={onNext}
+            disabled={!allRequired}
+            className={cn(
+              'w-full py-[17px] rounded-xl text-[15px] font-semibold transition-colors',
+              allRequired
+                ? 'bg-gray-900 text-white hover:bg-gray-800'
+                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+            )}
+          >
+            다음
+          </button>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="mt-auto pt-12 pb-6 flex items-center gap-6 text-xs text-gray-400">
+        <Link href="/terms" className="hover:text-gray-600">이용약관</Link>
+        <Link href="/privacy" className="hover:text-gray-600">개인정보처리방침</Link>
+        <Link href="/youth-policy" className="hover:text-gray-600">청소년 보호정책</Link>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// REGISTER FORM (step 2)
+// ─────────────────────────────────────────────
 export function RegisterForm() {
+  const [step, setStep] = useState<'terms' | 'form'>('terms');
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -23,6 +177,10 @@ export function RegisterForm() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { login } = useAuthStore();
+
+  if (step === 'terms') {
+    return <TermsStep onNext={() => setStep('form')} />;
+  }
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
