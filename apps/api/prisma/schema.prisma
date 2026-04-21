@@ -173,6 +173,7 @@ model User {
   isActive         Boolean          @default(true)
   isBanned         Boolean          @default(false)
   banReason        String?
+  bannedUntil      DateTime?
   ageVerified      Boolean          @default(false)
   ageVerifiedAt    DateTime?
   lastLoginAt      DateTime?

@@ -30,3 +30,5 @@ adminApiClient.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+export const adminApi = adminApiClient;

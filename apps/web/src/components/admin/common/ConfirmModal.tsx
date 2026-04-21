@@ -13,6 +13,7 @@ interface ConfirmModalProps {
   isLoading?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  children?: React.ReactNode;
 }
 
 export function ConfirmModal({
@@ -25,6 +26,7 @@ export function ConfirmModal({
   isLoading = false,
   onConfirm,
   onCancel,
+  children,
 }: ConfirmModalProps) {
   if (!open) return null;
 
@@ -39,8 +41,9 @@ export function ConfirmModal({
           </div>
         )}
         <h3 className="text-[17px] font-bold text-gray-900 text-center mb-2">{title}</h3>
-        <p className="text-sm text-gray-500 text-center mb-6">{description}</p>
-        <div className="flex gap-2">
+        {description && <p className="text-sm text-gray-500 text-center mb-4">{description}</p>}
+        {children}
+        <div className="flex gap-2 mt-6">
           <button
             onClick={onCancel}
             disabled={isLoading}
