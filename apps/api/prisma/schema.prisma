@@ -594,6 +594,9 @@ model Report {
   status       String   @default("PENDING")
   resolvedAt   DateTime?
   resolvedBy   String?
+  reviewedAt   DateTime?
+  reviewedBy   String?
+  resolveNote  String?
   createdAt    DateTime @default(now())
 
   reporter     User      @relation("Reporter", fields: [reporterId], references: [id])
