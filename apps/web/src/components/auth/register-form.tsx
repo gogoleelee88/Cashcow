@@ -233,9 +233,9 @@ function TermsStep({ onNext }: { onNext: () => void }) {
     marketing: false,
   });
   const [warned, setWarned] = useState<string | null>(null);
-  const [openModal, setOpenModal] = useState<keyof typeof TERMS_CONTENT | null>(null);
+  const [openModal, setOpenModal] = useState<'service' | 'privacy' | 'marketing' | null>(null);
 
-  const openTerms = (key: keyof typeof TERMS_CONTENT) => {
+  const openTerms = (key: 'service' | 'privacy' | 'marketing') => {
     setOpenModal(key);
     markViewed(key);
   };

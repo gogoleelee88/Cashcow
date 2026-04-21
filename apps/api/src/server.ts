@@ -27,6 +27,7 @@ import { notificationRoutes } from './routes/notifications.routes';
 import { userRoutes } from './routes/users.routes';
 import { storyRoutes } from './routes/stories.routes';
 import { imageRoutes } from './routes/images.routes';
+import { adminRoutes } from './routes/admin/index';
 import { verifyAccessToken } from './services/auth.service';
 
 // ─────────────────────────────────────────────
@@ -116,6 +117,7 @@ async function registerRoutes(): Promise<void> {
   app.register(userRoutes, { prefix: '/api/users' });
   app.register(storyRoutes, { prefix: '/api/stories' });
   app.register(imageRoutes, { prefix: '/api/images' });
+  app.register(adminRoutes, { prefix: '/api/admin' });
 
   // 404 handler
   app.setNotFoundHandler((request, reply) => {
