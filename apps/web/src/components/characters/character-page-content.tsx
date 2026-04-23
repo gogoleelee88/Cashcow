@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useCallback, createContext, useContext } from 'react';
-import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
+import { useState, useCallback, createContext, useContext, useRef, useEffect } from 'react';
+import { useQuery, useInfiniteQuery, useQueries } from '@tanstack/react-query';
 import { useProfileStore } from '../../stores/profile.store';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
@@ -9,536 +9,208 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { CharacterPreviewModal } from './character-preview-modal';
 import {
-  MessageCircle,
-  Heart,
-  Star,
-  Crown,
-  ChevronDown,
-  LogIn,
-  UserPlus,
-  Flame,
-  Sparkles,
-  Users,
-  BookOpen,
-  TrendingUp,
-  Clock,
-  BarChart2,
+  MessageCircle, Heart, ChevronDown, MoreVertical,
+  Pencil, Info, BookOpen, X,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/auth.store';
-import { formatCount, getCharacterAvatarUrl, CATEGORY_LABELS } from '@characterverse/utils';
+import { formatCount, getCharacterAvatarUrl } from '@characterverse/utils';
 import type { CharacterListItem } from '@characterverse/types';
 
-// Context for opening the character preview modal from any card
+// ── Context ────────────────────────────────────────────────────────
 const PreviewContext = createContext<(id: string) => void>(() => {});
 const usePreview = () => useContext(PreviewContext);
 
-// ─────────────────────────────────────────────
-// TYPES
-// ─────────────────────────────────────────────
-type TabKey = 'recommended' | 'new-ranking' | 'male-popular' | 'female-popular' | 'fan-creation';
-type RankingPeriod = 'daily' | 'weekly' | 'monthly';
-type SortOption = 'chats' | 'likes' | 'newest';
+// ── Tab 정의 ───────────────────────────────────────────────────────
+type TabKey =
+  | 'recommended'
+  | 'new-ranking'
+  | 'all-ranking'
+  | 'today-new'
+  | 'female-popular'
+  | 'romance'
+  | 'rofan'
+  | 'sf-fantasy'
+  | 'martial'
+  | 'bl'
+  | 'simulation';
 
-interface Tab {
-  key: TabKey;
-  label: string;
-  icon: React.FC<{ className?: string }>;
-}
-
-const TABS: Tab[] = [
-  { key: 'recommended',    label: '추천',      icon: Sparkles },
-  { key: 'new-ranking',    label: '신작 랭킹',  icon: TrendingUp },
-  { key: 'male-popular',   label: '남성 인기',  icon: BarChart2 },
-  { key: 'female-popular', label: '여성 인기',  icon: Heart },
-  { key: 'fan-creation',   label: '2차 창작',  icon: BookOpen },
+const TABS: { key: TabKey; label: string }[] = [
+  { key: 'recommended',   label: '추천' },
+  { key: 'new-ranking',   label: '신규 랭킹' },
+  { key: 'all-ranking',   label: '전체 랭킹' },
+  { key: 'today-new',     label: '오늘 신작' },
+  { key: 'female-popular',label: '여성 인기' },
+  { key: 'romance',       label: '로맨스' },
+  { key: 'rofan',         label: '로판' },
+  { key: 'sf-fantasy',    label: 'SF/판타지' },
+  { key: 'martial',       label: '무협' },
+  { key: 'bl',            label: 'BL' },
+  { key: 'simulation',    label: '시뮬레이션' },
 ];
 
-const PERIOD_LABELS: Record<RankingPeriod, string> = {
-  daily: '일간',
-  weekly: '주간',
-  monthly: '월간',
-};
+type Period = 'daily' | 'weekly' | 'monthly';
+type SortOpt = 'popular' | 'newest' | 'chats';
 
-const SORT_LABELS: Record<SortOption, string> = {
-  chats: '대화 많은 순',
-  likes: '좋아요 순',
-  newest: '최신 순',
-};
+const PERIOD_LABELS: Record<Period, string> = { daily: '일간', weekly: '주간', monthly: '월간' };
+const SORT_LABELS: Record<SortOpt, string> = { popular: '추천 인기순', newest: '최신순', chats: '대화 많은 순' };
 
-// ─────────────────────────────────────────────
-// FEATURED HERO CARD  (추천 탭 상단 대형 카드)
-// ─────────────────────────────────────────────
-function FeaturedHeroCard({ character, index }: { character: CharacterListItem; index: number }) {
-  const [imgError, setImgError] = useState(false);
-  const router = useRouter();
+// ── 선호장르 ──────────────────────────────────────────────────────
+const GENRE_OPTIONS: { key: TabKey; label: string; category: string }[] = [
+  { key: 'romance',    label: '로맨스',     category: 'ROMANCE' },
+  { key: 'rofan',      label: '로판',       category: 'ROFAN' },
+  { key: 'sf-fantasy', label: 'SF/판타지',  category: 'SF_FANTASY' },
+  { key: 'martial',    label: '무협',       category: 'MARTIAL' },
+  { key: 'bl',         label: 'BL',         category: 'BL' },
+  { key: 'simulation', label: '시뮬레이션', category: 'SIMULATION' },
+];
+
+const LS_KEY = 'crack_preferred_genres';
+
+function usePreferredGenres() {
   const { isAuthenticated } = useAuthStore();
-  const openPreview = usePreview();
-  const src = imgError ? getCharacterAvatarUrl(null, character.name) : character.avatarUrl;
+  const [genres, setGenres] = useState<TabKey[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try { return JSON.parse(localStorage.getItem(LS_KEY) ?? '[]'); } catch { return []; }
+  });
+  const [syncing, setSyncing] = useState(false);
 
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, delay: index * 0.08 }}
-      className="group relative rounded-2xl overflow-hidden cursor-pointer"
-      style={{ aspectRatio: '2/3' }}
-      onClick={() => openPreview(character.id)}
-    >
-      {/* Image */}
-      <Image
-        src={src || getCharacterAvatarUrl(null, character.name)}
-        alt={character.name}
-        fill
-        className="object-cover transition-transform duration-500 group-hover:scale-105"
-        onError={() => setImgError(true)}
-        sizes="(max-width: 640px) 100vw, 33vw"
-      />
+  // 로그인 시 서버 값으로 동기화
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    api.users.getPreferences()
+      .then((res) => {
+        const serverGenres: TabKey[] = res?.data?.preferredGenres ?? [];
+        setGenres(serverGenres);
+        localStorage.setItem(LS_KEY, JSON.stringify(serverGenres));
+      })
+      .catch(() => {}); // 실패 시 localStorage 값 유지
+  }, [isAuthenticated]);
 
-      {/* Gradient overlay */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+  const save = async (next: TabKey[]) => {
+    // 즉각 UI 반영 (optimistic)
+    setGenres(next);
+    localStorage.setItem(LS_KEY, JSON.stringify(next));
 
-      {/* ★2025 ribbon badge */}
-      <div className="absolute top-0 right-0 z-20">
-        <div className="relative">
-          <div className="bg-brand text-white text-[10px] font-bold px-2.5 py-1 rounded-bl-xl flex items-center gap-0.5 shadow-lg">
-            <Star className="w-2.5 h-2.5 fill-white" />
-            2025
-          </div>
-        </div>
-      </div>
+    if (!isAuthenticated) return; // 비로그인: localStorage만
 
-      {/* Top badges */}
-      <div className="absolute top-2 left-2 z-20 flex flex-col gap-1">
-        {(character as any).isOfficial && (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/80 text-white shadow">
-            <Star className="w-2.5 h-2.5 fill-white" />
-            공식
-          </span>
-        )}
-        {(character as any).isFeatured && (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400/90 text-amber-900 shadow">
-            <Crown className="w-2.5 h-2.5" />
-            추천
-          </span>
-        )}
-      </div>
+    setSyncing(true);
+    try {
+      await api.users.updatePreferences(next);
+    } catch {
+      // 서버 저장 실패 시 롤백
+      const prev: TabKey[] = (() => {
+        try { return JSON.parse(localStorage.getItem(LS_KEY) ?? '[]'); } catch { return []; }
+      })();
+      setGenres(prev);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
-      {/* Bottom info */}
-      <div className="absolute bottom-0 left-0 right-0 z-20 p-3">
-        <h3 className="text-white font-bold text-sm leading-tight mb-0.5 truncate">{character.name}</h3>
-        <p className="text-white/70 text-[11px] line-clamp-2 mb-2 leading-relaxed">{character.description}</p>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1 text-white/60 text-[10px]">
-            <MessageCircle className="w-3 h-3" />
-            <span>{formatCount(character.chatCount)}</span>
-          </div>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!isAuthenticated) { router.push('/login'); return; }
-              router.push(`/chat?characterId=${character.id}`);
-            }}
-            className="px-2.5 py-1 rounded-lg bg-brand text-white text-[10px] font-semibold hover:bg-brand-hover transition-colors"
-          >
-            대화하기
-          </button>
-        </div>
-      </div>
-    </motion.div>
-  );
+  return { genres, save, syncing };
 }
 
-// ─────────────────────────────────────────────
-// RANKING CARD  (신작 랭킹 등 탭)
-// ─────────────────────────────────────────────
-function RankingCard({ character, rank, index }: { character: CharacterListItem; rank: number; index: number }) {
+// ── Ranking 그리드 카드 (스크린샷 디자인) ─────────────────────────
+function RankingGridCard({ character, rank, index, showRank = true }: { character: CharacterListItem; rank: number; index: number; showRank?: boolean }) {
   const [imgError, setImgError] = useState(false);
-  const router = useRouter();
-  const { isAuthenticated } = useAuthStore();
   const openPreview = usePreview();
   const src = imgError ? getCharacterAvatarUrl(null, character.name) : character.avatarUrl;
 
   return (
     <motion.div
-      initial={{ opacity: 0, x: -12 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.25, delay: index * 0.04 }}
-      className="flex items-center gap-3 p-3 rounded-xl hover:bg-background-secondary transition-all group cursor-pointer"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, delay: Math.min(index * 0.025, 0.4) }}
+      className="cursor-pointer group"
       onClick={() => openPreview(character.id)}
     >
-      {/* Rank number */}
-      <div className={cn(
-        'w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-lg text-sm font-bold',
-        rank === 1 ? 'bg-amber-400 text-white' :
-        rank === 2 ? 'bg-gray-300 text-gray-700' :
-        rank === 3 ? 'bg-amber-600/80 text-white' :
-        'bg-background-tertiary text-text-muted'
-      )}>
-        {rank}
-      </div>
-
-      {/* Avatar */}
-      <div className="relative w-12 h-12 flex-shrink-0 rounded-xl overflow-hidden ring-1 ring-border">
+      {/* 이미지 영역 */}
+      <div className="relative rounded-lg overflow-hidden bg-gray-100" style={{ aspectRatio: '3/4' }}>
         <Image
           src={src || getCharacterAvatarUrl(null, character.name)}
           alt={character.name}
           fill
-          className="object-cover"
+          className="object-cover transition-transform duration-300 group-hover:scale-105"
           onError={() => setImgError(true)}
+          sizes="(max-width: 640px) 50vw, 20vw"
         />
-        {/* ★2025 mini ribbon */}
-        <div className="absolute top-0 right-0 bg-brand text-white text-[8px] font-bold px-1 py-0.5 rounded-bl-md flex items-center gap-0.5">
-          <Star className="w-2 h-2 fill-white" />
-          25
-        </div>
-      </div>
-
-      {/* Info */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 mb-0.5">
-          <h3 className="text-text-primary font-semibold text-sm truncate">{character.name}</h3>
-          {(character as any).isFeatured && (
-            <Crown className="w-3 h-3 text-amber-400 flex-shrink-0" />
-          )}
-        </div>
-        <p className="text-text-muted text-xs truncate">{character.description}</p>
-        <div className="flex items-center gap-2 mt-1">
-          <span className="text-text-muted text-[10px] flex items-center gap-0.5">
-            <MessageCircle className="w-2.5 h-2.5" />
-            {formatCount(character.chatCount)}
-          </span>
-          {character.creator && (
-            <span className="text-text-muted text-[10px] truncate">
-              @{character.creator.username}
+        {/* ORIGINAL 배지 */}
+        {(character as any).isOfficial && (
+          <div className="absolute top-0 left-0 bg-brand text-white text-[9px] font-bold px-1.5 py-0.5 rounded-br-md">
+            ORIGINAL
+          </div>
+        )}
+        {/* 랭킹 번호 */}
+        {showRank && (
+          <div className="absolute bottom-1.5 left-2 z-10">
+            <span className="text-white font-black leading-none drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]"
+              style={{ fontSize: rank <= 9 ? '32px' : '26px', textShadow: '0 2px 6px rgba(0,0,0,0.7)' }}>
+              {rank}
             </span>
-          )}
+          </div>
+        )}
+        {/* 북마크 아이콘 */}
+        <div className="absolute bottom-2 right-2 z-10 w-6 h-6 rounded-sm bg-black/40 flex items-center justify-center">
+          <BookOpen className="w-3.5 h-3.5 text-white/90" strokeWidth={1.5} />
         </div>
       </div>
 
-      {/* Chat button */}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          if (!isAuthenticated) { router.push('/login'); return; }
-          router.push(`/chat?characterId=${character.id}`);
-        }}
-        className="flex-shrink-0 p-2 rounded-xl bg-brand/10 hover:bg-brand text-brand hover:text-white transition-all duration-200 opacity-0 group-hover:opacity-100"
-      >
-        <MessageCircle className="w-4 h-4" />
-      </button>
-    </motion.div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// GRID CHARACTER CARD  (기본 그리드 카드)
-// ─────────────────────────────────────────────
-function GridCharacterCard({ character, index }: { character: CharacterListItem; index: number }) {
-  const [imgError, setImgError] = useState(false);
-  const [liked, setLiked] = useState(character.isLiked ?? false);
-  const [likeCount, setLikeCount] = useState(character.likeCount);
-  const router = useRouter();
-  const { isAuthenticated } = useAuthStore();
-  const openPreview = usePreview();
-  const src = imgError ? getCharacterAvatarUrl(null, character.name) : character.avatarUrl;
-
-  const handleLike = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!isAuthenticated) { router.push('/login'); return; }
-    setLiked(p => !p);
-    setLikeCount(p => liked ? p - 1 : p + 1);
-    try { await api.characters.like(character.id); } catch {
-      setLiked(p => !p);
-      setLikeCount(p => liked ? p + 1 : p - 1);
-    }
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.96 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.25, delay: index * 0.03 }}
-      whileHover={{ y: -4 }}
-      className="character-card group"
-    >
-      <div onClick={() => openPreview(character.id)} className="block cursor-pointer">
-        {/* Image */}
-        <div className="relative aspect-[3/4] overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent z-10" />
-          <Image
-            src={src || getCharacterAvatarUrl(null, character.name)}
-            alt={character.name}
-            fill
-            className="object-cover transition-transform duration-500 group-hover:scale-105"
-            onError={() => setImgError(true)}
-            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 20vw"
-          />
-
-          {/* ★2025 ribbon */}
-          <div className="absolute top-0 right-0 z-20">
-            <div className="bg-brand text-white text-[9px] font-bold px-2 py-0.5 rounded-bl-lg flex items-center gap-0.5">
-              <Star className="w-2 h-2 fill-white" />
-              2025
-            </div>
-          </div>
-
-          {/* Chat count overlay bottom */}
-          <div className="absolute bottom-2 right-2 z-20 flex items-center gap-1 bg-black/60 backdrop-blur-sm rounded-full px-2 py-0.5 text-white text-[10px] font-medium">
-            <MessageCircle className="w-2.5 h-2.5" />
-            {formatCount(character.chatCount)}
-          </div>
-
-          {/* Like btn */}
-          <button
-            onClick={handleLike}
-            className={cn(
-              'absolute top-2.5 left-2.5 z-20 p-1.5 rounded-full backdrop-blur-sm transition-all duration-200',
-              'bg-black/40 hover:bg-black/60',
-              'opacity-0 group-hover:opacity-100',
-              liked && 'opacity-100'
-            )}
-          >
-            <Heart className={cn('w-3.5 h-3.5', liked ? 'fill-rose-500 text-rose-500' : 'text-white/80')} />
-          </button>
-        </div>
-
-        {/* Info */}
-        <div className="p-3">
-          <h3 className="text-text-primary font-semibold text-sm mb-0.5 truncate">{character.name}</h3>
-          <p className="text-text-muted text-xs line-clamp-2 mb-2 leading-relaxed min-h-[2rem]">{character.description}</p>
-
-          {/* Author */}
+      {/* 카드 아래 텍스트 */}
+      <div className="mt-1.5 px-0.5">
+        <h3 className="text-[13px] font-bold text-gray-900 leading-snug line-clamp-2 mb-0.5">
+          {character.name}
+        </h3>
+        <div className="flex items-center gap-1 text-[11px] text-gray-500">
+          <span>{formatCount(character.chatCount)}</span>
           {character.creator && (
-            <div className="flex items-center gap-1.5 mb-2">
-              <div className="w-4 h-4 rounded-full bg-background-tertiary overflow-hidden flex-shrink-0">
-                {character.creator.avatarUrl ? (
-                  <Image
-                    src={character.creator.avatarUrl}
-                    alt={character.creator.displayName}
-                    width={16}
-                    height={16}
-                    className="object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-brand/20 flex items-center justify-center">
-                    <span className="text-[8px] text-brand font-bold">
-                      {character.creator.displayName[0]}
-                    </span>
-                  </div>
-                )}
-              </div>
-              <span className="text-text-muted text-[11px] truncate">@{character.creator.username}</span>
-              <span className="w-1 h-1 rounded-full bg-brand flex-shrink-0" title="verified" />
-            </div>
+            <>
+              <span className="text-gray-300">·</span>
+              <span className="truncate">{character.creator.displayName ?? character.creator.username}</span>
+              <span className="w-2 h-2 rounded-full bg-brand flex-shrink-0" />
+            </>
           )}
-
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-text-muted text-xs">
-              <span className="flex items-center gap-0.5">
-                <Heart className={cn('w-3 h-3', liked && 'text-rose-400')} />
-                {formatCount(likeCount)}
-              </span>
-            </div>
-            <button
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (!isAuthenticated) { router.push('/login'); return; }
-                router.push(`/chat?characterId=${character.id}`);
-              }}
-              className="px-2.5 py-1 rounded-lg bg-brand/10 hover:bg-brand text-brand hover:text-white text-[11px] font-semibold transition-all duration-200"
-            >
-              대화하기
-            </button>
-          </div>
         </div>
       </div>
     </motion.div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// SKELETON LOADERS
-// ─────────────────────────────────────────────
-function HeroCardSkeleton() {
-  return (
-    <div className="rounded-2xl overflow-hidden" style={{ aspectRatio: '2/3' }}>
-      <div className="w-full h-full skeleton" />
-    </div>
-  );
-}
-
-function RankingCardSkeleton() {
-  return (
-    <div className="flex items-center gap-3 p-3">
-      <div className="w-7 h-7 skeleton rounded-lg flex-shrink-0" />
-      <div className="w-12 h-12 skeleton rounded-xl flex-shrink-0" />
-      <div className="flex-1 space-y-1.5">
-        <div className="h-3.5 skeleton rounded w-2/3" />
-        <div className="h-3 skeleton rounded w-full" />
-        <div className="h-2.5 skeleton rounded w-1/2" />
-      </div>
-    </div>
   );
 }
 
 function GridCardSkeleton() {
   return (
-    <div className="character-card overflow-hidden">
-      <div className="aspect-[3/4] skeleton" />
-      <div className="p-3 space-y-2">
-        <div className="h-4 skeleton rounded-lg w-3/4" />
-        <div className="h-3 skeleton rounded-lg w-full" />
-        <div className="h-3 skeleton rounded-lg w-2/3" />
-        <div className="h-3 skeleton rounded-lg w-1/2 mt-2" />
-        <div className="flex items-center justify-between mt-2">
-          <div className="h-3 skeleton rounded w-12" />
-          <div className="h-7 skeleton rounded-lg w-16" />
-        </div>
+    <div>
+      <div className="rounded-lg overflow-hidden aspect-[3/4] bg-gray-100 animate-pulse" />
+      <div className="mt-1.5 space-y-1 px-0.5">
+        <div className="h-3.5 bg-gray-100 rounded animate-pulse w-4/5" />
+        <div className="h-3 bg-gray-100 rounded animate-pulse w-1/2" />
       </div>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────
-// LEFT SIDEBAR  (로그인 패널)
-// ─────────────────────────────────────────────
-function LoginSidebar() {
-  const { isAuthenticated, user } = useAuthStore();
-  const router = useRouter();
-
-  if (isAuthenticated && user) {
-    return (
-      <aside className="hidden lg:flex flex-col w-60 xl:w-64 flex-shrink-0">
-        <div className="sticky top-20 space-y-3">
-          {/* User info card */}
-          <div className="rounded-2xl border border-border bg-background p-4">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl overflow-hidden bg-background-tertiary flex-shrink-0">
-                {user.avatarUrl ? (
-                  <Image src={user.avatarUrl} alt={user.displayName} width={40} height={40} className="object-cover" />
-                ) : (
-                  <div className="w-full h-full bg-brand/20 flex items-center justify-center">
-                    <span className="text-brand font-bold text-sm">{user.displayName[0]}</span>
-                  </div>
-                )}
-              </div>
-              <div className="min-w-0">
-                <p className="text-text-primary font-semibold text-sm truncate">{user.displayName}</p>
-                <p className="text-text-muted text-xs truncate">@{user.username}</p>
-              </div>
-            </div>
-            <Link
-              href="/chat"
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-hover transition-colors"
-            >
-              <MessageCircle className="w-4 h-4" />
-              내 대화 보기
-            </Link>
-          </div>
-
-          {/* Quick nav */}
-          <div className="rounded-2xl border border-border bg-background p-3 space-y-1">
-            <SidebarNavLink href="/" label="캐릭터 홈" icon={Users} />
-            <SidebarNavLink href="/story" label="스토리" icon={BookOpen} />
-            <SidebarNavLink href="/creator" label="내 작품" icon={Crown} />
-          </div>
-        </div>
-      </aside>
-    );
-  }
-
-  return (
-    <aside className="hidden lg:flex flex-col w-60 xl:w-64 flex-shrink-0">
-      <div className="sticky top-20 space-y-3">
-        {/* Login prompt card */}
-        <div className="rounded-2xl border border-border bg-background overflow-hidden">
-          {/* Brand top bar */}
-          <div className="bg-brand px-4 py-3">
-            <p className="text-white font-bold text-sm">CharacterVerse</p>
-            <p className="text-white/80 text-[11px]">AI 캐릭터와 대화하세요</p>
-          </div>
-
-          <div className="p-4 space-y-3">
-            <p className="text-text-secondary text-xs leading-relaxed">
-              로그인하면 좋아하는 캐릭터와 무제한 대화하고, 나만의 캐릭터를 만들 수 있어요.
-            </p>
-            <button
-              onClick={() => router.push('/login')}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-hover transition-colors"
-            >
-              <LogIn className="w-4 h-4" />
-              로그인
-            </button>
-            <button
-              onClick={() => router.push('/register')}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-brand text-brand text-sm font-semibold hover:bg-brand/5 transition-colors"
-            >
-              <UserPlus className="w-4 h-4" />
-              회원가입
-            </button>
-          </div>
-        </div>
-
-        {/* Stats teaser */}
-        <div className="rounded-2xl border border-border bg-background p-4">
-          <p className="text-text-muted text-[11px] mb-3 font-medium uppercase tracking-wider">플랫폼 현황</p>
-          <div className="space-y-2">
-            {[
-              { label: '등록된 캐릭터', value: '12,400+', icon: Users },
-              { label: '총 대화 수', value: '2.3M+', icon: MessageCircle },
-              { label: '활성 창작자', value: '48,000+', icon: Flame },
-            ].map(({ label, value, icon: Icon }) => (
-              <div key={label} className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-text-muted text-xs">
-                  <Icon className="w-3 h-3" />
-                  {label}
-                </div>
-                <span className="text-text-primary text-xs font-bold">{value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </aside>
-  );
-}
-
-function SidebarNavLink({ href, label, icon: Icon }: { href: string; label: string; icon: React.FC<{ className?: string }> }) {
-  return (
-    <Link
-      href={href}
-      className="flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-background-secondary text-text-secondary hover:text-text-primary transition-all text-sm"
-    >
-      <Icon className="w-4 h-4 text-brand" />
-      {label}
-    </Link>
-  );
-}
-
-// ─────────────────────────────────────────────
-// DROPDOWN SELECTOR
-// ─────────────────────────────────────────────
-function Dropdown<T extends string>({
-  value,
-  options,
-  labels,
-  onChange,
+// ── 드롭다운 ──────────────────────────────────────────────────────
+function SimpleDropdown<T extends string>({
+  value, options, labels, onChange,
 }: {
-  value: T;
-  options: T[];
-  labels: Record<T, string>;
-  onChange: (v: T) => void;
+  value: T; options: T[]; labels: Record<T, string>; onChange: (v: T) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
   return (
-    <div className="relative">
+    <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen(p => !p)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border bg-background hover:border-brand/50 text-text-secondary text-sm transition-all"
+        className="flex items-center gap-1 px-2.5 py-1.5 rounded text-[13px] text-gray-600 hover:bg-gray-100 transition-colors"
       >
         {labels[value]}
         <ChevronDown className={cn('w-3.5 h-3.5 transition-transform', open && 'rotate-180')} />
@@ -549,15 +221,16 @@ function Dropdown<T extends string>({
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
-            className="absolute top-full mt-1 right-0 z-50 bg-background border border-border rounded-xl shadow-lg overflow-hidden min-w-[120px]"
+            transition={{ duration: 0.12 }}
+            className="absolute top-full mt-1 left-0 z-50 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden min-w-[120px]"
           >
             {options.map((opt) => (
               <button
                 key={opt}
                 onClick={() => { onChange(opt); setOpen(false); }}
                 className={cn(
-                  'w-full text-left px-3 py-2 text-sm hover:bg-background-secondary transition-colors',
-                  opt === value ? 'text-brand font-semibold' : 'text-text-secondary'
+                  'w-full text-left px-3 py-2 text-[13px] hover:bg-gray-50 transition-colors',
+                  opt === value ? 'text-brand font-semibold' : 'text-gray-600'
                 )}
               >
                 {labels[opt]}
@@ -570,277 +243,477 @@ function Dropdown<T extends string>({
   );
 }
 
-// ─────────────────────────────────────────────
-// TAB PANELS
-// ─────────────────────────────────────────────
-
-// 추천 탭
-function RecommendedTab() {
+// ── 탭별 콘텐츠 ───────────────────────────────────────────────────
+function RankingTabContent({ tabKey }: { tabKey: TabKey }) {
   const { activeProfile } = useProfileStore();
   const kidsFilter = activeProfile?.isKids ? { ageRating: 'ALL' } : {};
+  const [period, setPeriod] = useState<Period>('daily');
+  const [sort, setSort] = useState<SortOpt>('popular');
 
-  const { data: featured, isLoading: featuredLoading } = useQuery({
-    queryKey: ['characters', 'featured', activeProfile?.isKids],
-    queryFn: () => api.characters.list({ limit: 3, sort: 'trending', ...kidsFilter }),
-    staleTime: 5 * 60 * 1000,
+  const isRankingTab = tabKey === 'new-ranking' || tabKey === 'all-ranking';
+
+  const queryParams = (): Record<string, unknown> => {
+    const base = { limit: 50, ...kidsFilter };
+    if (tabKey === 'recommended') return { ...base, sort: 'trending' };
+    if (tabKey === 'new-ranking') return { ...base, sort: sort === 'chats' ? 'trending' : sort === 'newest' ? 'newest' : 'trending', period };
+    if (tabKey === 'all-ranking') return { ...base, sort: 'trending', period };
+    if (tabKey === 'today-new') return { ...base, sort: 'newest' };
+    if (tabKey === 'female-popular') return { ...base, audienceTarget: 'FEMALE_ORIENTED', sort: 'trending' };
+    if (tabKey === 'romance') return { ...base, category: 'ROMANCE', sort: 'trending' };
+    if (tabKey === 'rofan') return { ...base, category: 'ROFAN', sort: 'trending' };
+    if (tabKey === 'sf-fantasy') return { ...base, category: 'SF_FANTASY', sort: 'trending' };
+    if (tabKey === 'martial') return { ...base, category: 'MARTIAL', sort: 'trending' };
+    if (tabKey === 'bl') return { ...base, category: 'BL', sort: 'trending' };
+    if (tabKey === 'simulation') return { ...base, category: 'SIMULATION', sort: 'trending' };
+    return base;
+  };
+
+  const useRankings = isRankingTab;
+
+  const rankQuery = useQuery({
+    queryKey: ['characters', 'rankings', tabKey, period, sort],
+    queryFn: () => api.characters.rankings({ period, sort: sort === 'chats' ? 'chats' : sort === 'newest' ? 'newest' : 'chats', limit: 50 }),
+    enabled: useRankings,
+    staleTime: 3 * 60 * 1000,
   });
 
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useInfiniteQuery({
-    queryKey: ['characters', 'recommended', activeProfile?.isKids],
-    queryFn: ({ pageParam = 1 }) => api.characters.list({ page: pageParam, limit: 20, sort: 'trending', ...kidsFilter }),
-    getNextPageParam: (last) => last?.meta?.hasMore ? (last.meta.page + 1) : undefined,
+  const listQuery = useInfiniteQuery({
+    queryKey: ['characters', tabKey, period, sort, activeProfile?.isKids],
+    queryFn: ({ pageParam = 1 }) => api.characters.list({ ...queryParams(), page: pageParam }),
+    getNextPageParam: (last: any) => last?.meta?.hasMore ? (last.meta.page + 1) : undefined,
     initialPageParam: 1,
-    staleTime: 2 * 60 * 1000,
+    enabled: !useRankings,
+    staleTime: 3 * 60 * 1000,
   });
 
-  const featuredChars: CharacterListItem[] = featured?.data?.slice(0, 3) ?? [];
-  const allChars: CharacterListItem[] = data?.pages.flatMap((p: any) => p.data ?? []) ?? [];
+  const rankingChars: CharacterListItem[] = useRankings
+    ? (rankQuery.data?.data ?? [])
+    : listQuery.data?.pages.flatMap((p: any) => p.data ?? []) ?? [];
+
+  const isLoading = useRankings ? rankQuery.isLoading : listQuery.isLoading;
+  const hasNextPage = !useRankings && listQuery.hasNextPage;
+  const isFetchingNextPage = !useRankings && listQuery.isFetchingNextPage;
 
   return (
-    <div className="space-y-8">
-      {/* Hero section */}
-      <section>
-        <div className="flex items-center gap-2 mb-4">
-          <Crown className="w-4 h-4 text-amber-400" />
-          <h2 className="text-text-primary font-bold text-base">에디터 추천</h2>
+    <div>
+      {/* 서브 필터 */}
+      <div className="flex items-center justify-between mb-4 py-2 border-b border-gray-100">
+        <div className="flex items-center gap-0.5">
+          {isRankingTab && (
+            <SimpleDropdown
+              value={period}
+              options={['daily', 'weekly', 'monthly']}
+              labels={PERIOD_LABELS}
+              onChange={setPeriod}
+            />
+          )}
+          <SimpleDropdown
+            value={sort}
+            options={['popular', 'newest', 'chats']}
+            labels={SORT_LABELS}
+            onChange={setSort}
+          />
         </div>
-        <div className="grid grid-cols-3 gap-3">
-          {featuredLoading
-            ? Array.from({ length: 3 }).map((_, i) => <HeroCardSkeleton key={i} />)
-            : featuredChars.map((c, i) => <FeaturedHeroCard key={c.id} character={c} index={i} />)
-          }
-        </div>
-      </section>
+        <button className="p-1.5 text-gray-400 hover:text-gray-600 transition-colors">
+          <Info className="w-4 h-4" />
+        </button>
+      </div>
 
-      {/* Main grid */}
-      <section>
-        <div className="flex items-center gap-2 mb-4">
-          <Sparkles className="w-4 h-4 text-brand" />
-          <h2 className="text-text-primary font-bold text-base">모든 캐릭터</h2>
+      {/* 그리드 */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-x-3 gap-y-5">
+        {isLoading
+          ? Array.from({ length: 20 }).map((_, i) => <GridCardSkeleton key={i} />)
+          : rankingChars.map((c, i) => (
+              <RankingGridCard key={c.id} character={c} rank={i + 1} index={i} showRank={isRankingTab} />
+            ))
+        }
+        {!isLoading && rankingChars.length === 0 && (
+          <p className="col-span-5 text-center text-gray-400 text-sm py-16">
+            아직 콘텐츠가 없습니다.
+          </p>
+        )}
+      </div>
+
+      {hasNextPage && (
+        <div className="mt-8 flex justify-center">
+          <button
+            onClick={() => listQuery.fetchNextPage()}
+            disabled={isFetchingNextPage}
+            className="px-8 py-2.5 rounded-full border border-gray-200 text-[13px] text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+          >
+            {isFetchingNextPage ? '불러오는 중...' : '더 보기'}
+          </button>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3">
-          {isLoading
-            ? Array.from({ length: 20 }).map((_, i) => <GridCardSkeleton key={i} />)
-            : allChars.map((c, i) => <GridCharacterCard key={c.id} character={c} index={i} />)
-          }
-        </div>
-        {hasNextPage && (
-          <div className="mt-8 flex justify-center">
+      )}
+    </div>
+  );
+}
+
+// ── 선호장르 팝업 패널 ────────────────────────────────────────────
+function GenrePreferencePanel({
+  current,
+  onSave,
+  onClose,
+}: {
+  current: TabKey[];
+  onSave: (genres: TabKey[]) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [selected, setSelected] = useState<TabKey[]>(current);
+
+  const toggle = (key: TabKey) =>
+    setSelected((prev) => prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]);
+
+  return (
+    <div className="absolute right-0 top-full mt-2 z-50 w-[300px] bg-white rounded-2xl border border-gray-200 shadow-2xl p-4">
+      <p className="text-[14px] font-bold text-gray-800 mb-3">선호장르 설정</p>
+
+      {/* 장르 토글 pills */}
+      <div className="flex flex-wrap gap-2 mb-3">
+        {GENRE_OPTIONS.map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => toggle(key)}
+            className={cn(
+              'px-3 py-1 rounded-full text-[12px] font-medium border transition-all',
+              selected.includes(key)
+                ? 'border-brand text-brand bg-brand/5'
+                : 'border-gray-200 text-gray-500 hover:border-gray-300'
+            )}
+          >
+            {label}
+          </button>
+        ))}
+        {selected.length === 0 && (
+          <span className="px-3 py-1 rounded-full text-[12px] font-medium border border-brand text-brand bg-brand/5">
+            설정안됨
+          </span>
+        )}
+      </div>
+
+      <p className="text-[11px] text-gray-400 leading-relaxed mb-4">
+        선호장르를 설정하시면 여러 장르가 혼합된 화면에서 원하는 장르의 캐릭터만 필터링하여 보실 수 있습니다.
+      </p>
+
+      {/* 하단 버튼 */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setSelected([])}
+          className="px-3 py-2 text-[12px] text-gray-500 hover:text-gray-700 transition-colors"
+        >
+          초기화
+        </button>
+        <button
+          onClick={async () => { await onSave(selected); onClose(); }}
+          className="flex-1 py-2 rounded-xl bg-gray-900 text-white text-[13px] font-semibold hover:bg-black transition-colors"
+        >
+          저장
+        </button>
+        <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 transition-colors">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── 선호장르 탭 콘텐츠 (병렬 쿼리로 선택된 장르 합산) ─────────────
+function PreferredGenreContent({ genres }: { genres: TabKey[] }) {
+  const { activeProfile } = useProfileStore();
+  const kidsFilter = activeProfile?.isKids ? { ageRating: 'ALL' } : {};
+  const openPreview = usePreview();
+
+  const categoryMap: Record<string, string> = {
+    romance: 'ROMANCE', rofan: 'ROFAN', 'sf-fantasy': 'SF_FANTASY',
+    martial: 'MARTIAL', bl: 'BL', simulation: 'SIMULATION',
+  };
+
+  const results = useQueries({
+    queries: genres.map((g) => ({
+      queryKey: ['characters', 'preferred', g, activeProfile?.isKids],
+      queryFn: () => api.characters.list({ category: categoryMap[g], limit: 20, sort: 'trending', ...kidsFilter }),
+      staleTime: 3 * 60 * 1000,
+    })),
+  });
+
+  const isLoading = results.some((r) => r.isLoading);
+  const characters: CharacterListItem[] = results
+    .flatMap((r: any) => r.data?.data ?? [])
+    .filter((c: CharacterListItem, i: number, arr: CharacterListItem[]) => arr.findIndex((x) => x.id === c.id) === i)
+    .sort((a: CharacterListItem, b: CharacterListItem) => (b.chatCount ?? 0) - (a.chatCount ?? 0));
+
+  if (genres.length === 0) return (
+    <div className="flex items-center justify-center py-20 text-gray-400 text-sm">
+      선호장르를 설정해 주세요.
+    </div>
+  );
+
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-x-3 gap-y-5 mt-4">
+      {isLoading
+        ? Array.from({ length: 10 }).map((_, i) => <GridCardSkeleton key={i} />)
+        : characters.map((c, i) => (
+            <RankingGridCard key={c.id} character={c} rank={i + 1} index={i} showRank={false} />
+          ))
+      }
+      {!isLoading && characters.length === 0 && (
+        <p className="col-span-5 text-center text-gray-400 text-sm py-16">
+          해당 장르의 캐릭터가 없습니다.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── 채팅 내역 사이드바 ────────────────────────────────────────────
+function ChatHistorySidebar() {
+  const { isAuthenticated, user } = useAuthStore();
+  const router = useRouter();
+  const [sidebarTab, setSidebarTab] = useState<'episode' | 'party'>('episode');
+
+  const { data: convData } = useQuery({
+    queryKey: ['conversations', 'recent'],
+    queryFn: () => api.chat.conversations({ limit: 20 }),
+    enabled: isAuthenticated,
+    staleTime: 60 * 1000,
+  });
+
+  const conversations: any[] = convData?.data ?? [];
+
+  return (
+    <aside className="hidden lg:flex flex-col w-[215px] flex-shrink-0 border-r border-gray-200 bg-white">
+      {/* 에피소드 / 파티챗 탭 */}
+      <div className="flex border-b border-gray-200">
+        {(['episode', 'party'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setSidebarTab(t)}
+            className={cn(
+              'flex-1 py-3 text-[13px] font-semibold transition-colors relative',
+              sidebarTab === t ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'
+            )}
+          >
+            {t === 'episode' ? '에피소드' : '파티챗'}
+            {sidebarTab === t && (
+              <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-gray-900 rounded-t" />
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* 채팅 내역 헤더 */}
+      <div className="flex items-center justify-between px-3 py-2.5">
+        <span className="text-[12px] font-semibold text-gray-700">채팅 내역</span>
+        {isAuthenticated && (
+          <button className="flex items-center gap-0.5 text-[12px] text-gray-500 hover:text-gray-700 transition-colors">
+            <Pencil className="w-3 h-3" />
+            편집
+          </button>
+        )}
+      </div>
+
+      {/* 채팅 목록 */}
+      <div className="flex-1 overflow-y-auto hide-scrollbar">
+        {!isAuthenticated ? (
+          <div className="px-3 py-6 text-center">
+            <p className="text-[12px] text-gray-400 mb-3">로그인하면 채팅 내역을 볼 수 있어요</p>
             <button
-              onClick={() => fetchNextPage()}
-              disabled={isFetchingNextPage}
-              className="px-8 py-3 rounded-2xl bg-background-secondary hover:bg-background-tertiary border border-border text-text-secondary text-sm font-medium transition-all disabled:opacity-50"
+              onClick={() => router.push('/login')}
+              className="w-full py-2 rounded-lg bg-brand text-white text-[12px] font-semibold hover:bg-brand-hover transition-colors"
             >
-              {isFetchingNextPage ? '불러오는 중...' : '더 보기'}
+              로그인
             </button>
           </div>
+        ) : conversations.length === 0 ? (
+          <div className="px-3 py-6 text-center">
+            <MessageCircle className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+            <p className="text-[12px] text-gray-400">아직 채팅 내역이 없어요</p>
+          </div>
+        ) : (
+          conversations.map((conv) => (
+            <ConvItem key={conv.id} conv={conv} />
+          ))
         )}
-      </section>
-    </div>
+      </div>
+    </aside>
   );
 }
 
-// 신작 랭킹 탭
-function NewRankingTab() {
-  const [period, setPeriod] = useState<RankingPeriod>('weekly');
-  const [sort, setSort] = useState<SortOption>('chats');
+function ConvItem({ conv }: { conv: any }) {
+  const [imgErr, setImgErr] = useState(false);
+  const router = useRouter();
+  const character = conv.character;
+  const src = imgErr ? getCharacterAvatarUrl(null, character?.name ?? '?') : character?.avatarUrl;
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['characters', 'rankings', period, sort],
-    queryFn: () => api.characters.rankings({ period, sort, limit: 50 }),
-    staleTime: 3 * 60 * 1000,
-  });
-
-  const characters: CharacterListItem[] = data?.data ?? [];
+  const formatRelativeTime = (dateStr: string) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    const now = new Date();
+    const diff = now.getTime() - d.getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return `${mins}분 전`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}시간 전`;
+    return `${Math.floor(hours / 24)}일 전`;
+  };
 
   return (
-    <div>
-      {/* Filter bar */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex gap-1.5">
-          {(['daily', 'weekly', 'monthly'] as RankingPeriod[]).map((p) => (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className={cn(
-                'px-3 py-1.5 rounded-xl text-sm font-medium transition-all',
-                period === p
-                  ? 'bg-brand text-white shadow-sm'
-                  : 'bg-background-secondary text-text-muted hover:text-text-primary'
-              )}
-            >
-              {PERIOD_LABELS[p]}
-            </button>
-          ))}
-        </div>
-        <Dropdown value={sort} options={['chats', 'likes', 'newest']} labels={SORT_LABELS} onChange={setSort} />
-      </div>
-
-      {/* Ranking list */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-1">
-        {isLoading
-          ? Array.from({ length: 20 }).map((_, i) => <RankingCardSkeleton key={i} />)
-          : characters.map((c, i) => <RankingCard key={c.id} character={c} rank={i + 1} index={i} />)
+    <div
+      className="flex items-start gap-2.5 px-3 py-2.5 hover:bg-gray-50 cursor-pointer group transition-colors"
+      onClick={() => router.push(`/chat?conversationId=${conv.id}`)}
+    >
+      {/* 아바타 */}
+      <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 bg-gray-100">
+        {src
+          ? <Image src={src} alt={character?.name ?? ''} width={36} height={36} className="object-cover" onError={() => setImgErr(true)} />
+          : <div className="w-full h-full bg-brand/10 flex items-center justify-center text-brand text-xs font-bold">
+              {character?.name?.[0] ?? '?'}
+            </div>
         }
-        {!isLoading && characters.length === 0 && (
-          <p className="col-span-2 text-text-muted text-sm text-center py-16">아직 랭킹 데이터가 없습니다.</p>
-        )}
       </div>
-    </div>
-  );
-}
 
-// 남성/여성 인기 탭 (공통)
-function AudienceTab({ target }: { target: 'MALE_ORIENTED' | 'FEMALE_ORIENTED' }) {
-  const [sort, setSort] = useState<SortOption>('chats');
-
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useInfiniteQuery({
-    queryKey: ['characters', 'audience', target, sort],
-    queryFn: ({ pageParam = 1 }) =>
-      api.characters.list({ page: pageParam, limit: 24, audienceTarget: target, sort }),
-    getNextPageParam: (last) => last?.meta?.hasMore ? (last.meta.page + 1) : undefined,
-    initialPageParam: 1,
-    staleTime: 3 * 60 * 1000,
-  });
-
-  const characters: CharacterListItem[] = data?.pages.flatMap((p: any) => p.data ?? []) ?? [];
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-text-muted text-sm">
-          {target === 'MALE_ORIENTED' ? '남성향 인기' : '여성향 인기'} 캐릭터
+      {/* 텍스트 */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between mb-0.5">
+          <p className="text-[12px] font-semibold text-gray-800 truncate pr-1">{character?.name ?? '알 수 없음'}</p>
+          <span className="text-[10px] text-gray-400 flex-shrink-0">{formatRelativeTime(conv.updatedAt)}</span>
+        </div>
+        <p className="text-[11px] text-gray-400 truncate leading-snug">
+          {conv.lastMessage?.content ?? '대화를 시작해보세요'}
         </p>
-        <Dropdown value={sort} options={['chats', 'likes', 'newest']} labels={SORT_LABELS} onChange={setSort} />
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3">
-        {isLoading
-          ? Array.from({ length: 20 }).map((_, i) => <GridCardSkeleton key={i} />)
-          : characters.map((c, i) => <GridCharacterCard key={c.id} character={c} index={i} />)
-        }
-      </div>
-      {!isLoading && characters.length === 0 && (
-        <p className="text-text-muted text-sm text-center py-16">아직 해당 카테고리의 캐릭터가 없습니다.</p>
-      )}
-      {hasNextPage && (
-        <div className="mt-8 flex justify-center">
-          <button
-            onClick={() => fetchNextPage()}
-            disabled={isFetchingNextPage}
-            className="px-8 py-3 rounded-2xl bg-background-secondary hover:bg-background-tertiary border border-border text-text-secondary text-sm font-medium transition-all disabled:opacity-50"
-          >
-            {isFetchingNextPage ? '불러오는 중...' : '더 보기'}
-          </button>
-        </div>
-      )}
+
+      {/* 더보기 */}
+      <button
+        className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 text-gray-400 hover:text-gray-600"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <MoreVertical className="w-3.5 h-3.5" />
+      </button>
     </div>
   );
 }
 
-// 2차 창작 탭
-function FanCreationTab() {
-  const [sort, setSort] = useState<SortOption>('chats');
-
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useInfiniteQuery({
-    queryKey: ['characters', 'fan-creation', sort],
-    queryFn: ({ pageParam = 1 }) =>
-      api.characters.list({ page: pageParam, limit: 24, isFanCreation: 'true', sort }),
-    getNextPageParam: (last) => last?.meta?.hasMore ? (last.meta.page + 1) : undefined,
-    initialPageParam: 1,
-    staleTime: 3 * 60 * 1000,
-  });
-
-  const characters: CharacterListItem[] = data?.pages.flatMap((p: any) => p.data ?? []) ?? [];
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-text-muted text-sm">팬이 만든 2차 창작 캐릭터</p>
-        <Dropdown value={sort} options={['chats', 'likes', 'newest']} labels={SORT_LABELS} onChange={setSort} />
-      </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3">
-        {isLoading
-          ? Array.from({ length: 20 }).map((_, i) => <GridCardSkeleton key={i} />)
-          : characters.map((c, i) => <GridCharacterCard key={c.id} character={c} index={i} />)
-        }
-      </div>
-      {!isLoading && characters.length === 0 && (
-        <p className="text-text-muted text-sm text-center py-16">아직 2차 창작 캐릭터가 없습니다.</p>
-      )}
-      {hasNextPage && (
-        <div className="mt-8 flex justify-center">
-          <button
-            onClick={() => fetchNextPage()}
-            disabled={isFetchingNextPage}
-            className="px-8 py-3 rounded-2xl bg-background-secondary hover:bg-background-tertiary border border-border text-text-secondary text-sm font-medium transition-all disabled:opacity-50"
-          >
-            {isFetchingNextPage ? '불러오는 중...' : '더 보기'}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// MAIN CHARACTER PAGE CONTENT
-// ─────────────────────────────────────────────
+// ── 메인 컴포넌트 ─────────────────────────────────────────────────
 export function CharacterPageContent() {
-  const [activeTab, setActiveTab] = useState<TabKey>('recommended');
+  const [activeTab, setActiveTab] = useState<TabKey | 'preferred'>('new-ranking');
   const [previewId, setPreviewId] = useState<string | null>(null);
+  const [genrePanelOpen, setGenrePanelOpen] = useState(false);
+  const { genres: preferredGenres, save: saveGenres, syncing } = usePreferredGenres();
+  const panelRef = useRef<HTMLDivElement>(null);
 
-  const renderTab = useCallback(() => {
-    switch (activeTab) {
-      case 'recommended':    return <RecommendedTab />;
-      case 'new-ranking':    return <NewRankingTab />;
-      case 'male-popular':   return <AudienceTab target="MALE_ORIENTED" />;
-      case 'female-popular': return <AudienceTab target="FEMALE_ORIENTED" />;
-      case 'fan-creation':   return <FanCreationTab />;
-    }
-  }, [activeTab]);
+  // 패널 외부 클릭 시 닫기
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        setGenrePanelOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const handleSaveGenres = async (next: TabKey[]) => {
+    await saveGenres(next);
+    if (next.length > 0) setActiveTab('preferred');
+  };
+
+  const renderContent = useCallback(() => {
+    if (activeTab === 'preferred') return <PreferredGenreContent genres={preferredGenres} />;
+    return <RankingTabContent key={activeTab} tabKey={activeTab as TabKey} />;
+  }, [activeTab, preferredGenres]);
 
   return (
     <PreviewContext.Provider value={setPreviewId}>
-    <CharacterPreviewModal characterId={previewId} onClose={() => setPreviewId(null)} />
-    <div className="flex gap-6 min-h-[calc(100vh-4rem)] px-4 md:px-6 lg:px-8 max-w-[1400px] mx-auto py-6">
-      {/* Left sidebar */}
-      <LoginSidebar />
+      <CharacterPreviewModal characterId={previewId} onClose={() => setPreviewId(null)} />
 
-      {/* Main content */}
-      <main className="flex-1 min-w-0">
-        {/* Tab navigation */}
-        <div className="flex items-center gap-1 border-b border-border mb-6 overflow-x-auto scrollbar-hide">
-          {TABS.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              onClick={() => setActiveTab(key)}
-              className={cn(
-                'flex items-center gap-1.5 px-4 py-3 text-sm font-semibold whitespace-nowrap transition-all border-b-2 -mb-px',
-                activeTab === key
-                  ? 'text-brand border-brand'
-                  : 'text-text-muted border-transparent hover:text-text-primary hover:border-border'
+      <div className="flex min-h-[calc(100vh-56px)] bg-white">
+        {/* 왼쪽 채팅 내역 사이드바 */}
+        <ChatHistorySidebar />
+
+        {/* 메인 콘텐츠 */}
+        <main className="flex-1 min-w-0 px-6 py-4">
+          {/* 가로 스크롤 필터 탭 + 선호장르 버튼 */}
+          <div className="flex items-center gap-1.5 mb-0 pb-3 border-b border-gray-100">
+            <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-1 min-w-0">
+              {/* 선호장르 탭 (설정 시 표시) */}
+              {preferredGenres.length > 0 && (
+                <button
+                  onClick={() => setActiveTab('preferred')}
+                  className={cn(
+                    'flex-shrink-0 px-4 py-1.5 rounded-full text-[13px] font-semibold transition-all whitespace-nowrap',
+                    activeTab === 'preferred'
+                      ? 'bg-brand text-white'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  )}
+                >
+                  선호장르
+                </button>
               )}
-            >
-              <Icon className="w-4 h-4" />
-              {label}
-            </button>
-          ))}
-        </div>
+              {TABS.map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setActiveTab(key)}
+                  className={cn(
+                    'flex-shrink-0 px-4 py-1.5 rounded-full text-[13px] font-semibold transition-all whitespace-nowrap',
+                    activeTab === key
+                      ? 'bg-brand text-white'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
 
-        {/* Tab content */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.2 }}
-          >
-            {renderTab()}
-          </motion.div>
-        </AnimatePresence>
-      </main>
-    </div>
+            {/* 선호장르 설정 버튼 */}
+            <div className="relative flex-shrink-0 ml-2" ref={panelRef}>
+              <button
+                onClick={() => setGenrePanelOpen((v) => !v)}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[13px] font-medium transition-all whitespace-nowrap',
+                  preferredGenres.length > 0
+                    ? 'border-brand text-brand bg-brand/5'
+                    : 'border-gray-300 text-gray-600 hover:border-gray-400'
+                )}
+              >
+                선호장르
+                <Heart className={cn('w-3.5 h-3.5', preferredGenres.length > 0 ? 'fill-brand text-brand' : '')} />
+              </button>
+
+              <AnimatePresence>
+                {genrePanelOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    <GenrePreferencePanel
+                      current={preferredGenres}
+                      onSave={handleSaveGenres}
+                      onClose={() => setGenrePanelOpen(false)}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
+
+          {/* 탭 콘텐츠 */}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+            >
+              {renderContent()}
+            </motion.div>
+          </AnimatePresence>
+        </main>
+      </div>
     </PreviewContext.Provider>
   );
 }

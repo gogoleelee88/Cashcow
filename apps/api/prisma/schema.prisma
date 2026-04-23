@@ -177,6 +177,7 @@ model User {
   ageVerified      Boolean          @default(false)
   ageVerifiedAt    DateTime?
   lastLoginAt      DateTime?
+  preferredGenres  String           @default("[]") @db.Text
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 

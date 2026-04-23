@@ -477,6 +477,14 @@ export const api = {
     /** 인증 완료 여부 폴링 */
     ageVerifyStatus: () =>
       apiClient.get('/api/users/me/age-verify/status').then((r) => r.data),
+
+    /** 선호장르 조회 */
+    getPreferences: () =>
+      apiClient.get('/api/users/me/preferences').then((r) => r.data),
+
+    /** 선호장르 저장 */
+    updatePreferences: (preferredGenres: string[]) =>
+      apiClient.put('/api/users/me/preferences', { preferredGenres }).then((r) => r.data),
   },
 
   images: {

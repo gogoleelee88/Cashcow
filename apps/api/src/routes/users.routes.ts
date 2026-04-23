@@ -609,4 +609,51 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
       });
     },
   });
+
+  // ─────────────────────────────────────────────
+  // GET PREFERRED GENRES
+  // ─────────────────────────────────────────────
+  fastify.get('/me/preferences', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const userId = request.userId!;
+      const user = await prismaRead.user.findUnique({
+        where: { id: userId },
+        select: { preferredGenres: true },
+      });
+      if (!user) return reply.code(404).send({ success: false });
+      let genres: string[] = [];
+      try { genres = JSON.parse(user.preferredGenres ?? '[]'); } catch { genres = []; }
+      return reply.send({ success: true, data: { preferredGenres: genres } });
+    },
+  });
+
+  // ─────────────────────────────────────────────
+  // UPDATE PREFERRED GENRES
+  // ─────────────────────────────────────────────
+  fastify.put('/me/preferences', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const userId = request.userId!;
+      const VALID_GENRES = ['romance', 'rofan', 'sf-fantasy', 'martial', 'bl', 'simulation'];
+      const schema = z.object({
+        preferredGenres: z.array(z.string()).max(6).refine(
+          (arr) => arr.every((g) => VALID_GENRES.includes(g)),
+          { message: '유효하지 않은 장르가 포함되어 있습니다.' }
+        ),
+      });
+      const body = schema.safeParse(request.body);
+      if (!body.success) {
+        return reply.code(400).send({ success: false, error: { code: 'INVALID_GENRES', message: body.error.issues[0]?.message } });
+      }
+      const updated = await prisma.user.update({
+        where: { id: userId },
+        data: { preferredGenres: JSON.stringify(body.data.preferredGenres) },
+        select: { preferredGenres: true },
+      });
+      let genres: string[] = [];
+      try { genres = JSON.parse(updated.preferredGenres ?? '[]'); } catch { genres = []; }
+      return reply.send({ success: true, data: { preferredGenres: genres } });
+    },
+  });
 };
