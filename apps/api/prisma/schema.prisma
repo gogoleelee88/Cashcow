@@ -204,6 +204,8 @@ model User {
   generatedImages  GeneratedImage[]
   characterDraft   CharacterDraft?
   profiles         Profile[]
+  characterComments CharacterComment[]
+  commentReactions  CharacterCommentReaction[]
 
   @@index([email])
   @@index([username])
@@ -344,6 +346,7 @@ model Character {
   reports              Report[]
   memories             CharacterMemory[]
   storyCharacters      StoryCharacter[]
+  comments             CharacterComment[]
 
   @@index([creatorId])
   @@index([category])
@@ -1038,4 +1041,36 @@ model GeneratedImage {
   @@index([userId, createdAt(sort: Desc)])
   @@index([userId, isLiked])
   @@map("generated_images")
+}
+
+model CharacterComment {
+  id          String   @id @default(cuid())
+  characterId String
+  userId      String
+  content     String   @db.VarChar(500)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reactions   CharacterCommentReaction[]
+
+  @@index([characterId, createdAt(sort: Desc)])
+  @@index([userId])
+  @@map("character_comments")
+}
+
+model CharacterCommentReaction {
+  id        String       @id @default(cuid())
+  commentId String
+  userId    String
+  type      String       // "LIKE" | "DISLIKE"
+  createdAt DateTime     @default(now())
+
+  comment   CharacterComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, userId])
+  @@index([commentId])
+  @@map("character_comment_reactions")
 }

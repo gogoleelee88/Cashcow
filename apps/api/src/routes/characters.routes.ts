@@ -816,4 +816,135 @@ JSON만 응답하고, 다른 텍스트는 포함하지 마세요.`,
       return reply.code(200).send({ success: true });
     },
   });
+
+  // ── COMMENTS ──────────────────────────────────────────────
+
+  fastify.get('/:id/comments', {
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const { page = '1', limit = '10' } = request.query as any;
+      const pageNum = Math.max(1, parseInt(page));
+      const limitNum = Math.min(50, parseInt(limit));
+      const skip = (pageNum - 1) * limitNum;
+
+      const userId = request.userId;
+
+      const [comments, total] = await Promise.all([
+        prismaRead.characterComment.findMany({
+          where: { characterId: id },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limitNum,
+          include: {
+            user: { select: { id: true, displayName: true, username: true, avatarUrl: true } },
+            reactions: { select: { type: true, userId: true } },
+          },
+        }),
+        prismaRead.characterComment.count({ where: { characterId: id } }),
+      ]);
+
+      const enriched = comments.map((c) => ({
+        ...c,
+        likeCount: c.reactions.filter((r) => r.type === 'LIKE').length,
+        dislikeCount: c.reactions.filter((r) => r.type === 'DISLIKE').length,
+        myReaction: userId ? (c.reactions.find((r) => r.userId === userId)?.type ?? null) : null,
+        reactions: undefined,
+      }));
+
+      return reply.send({ success: true, data: enriched, meta: { total, page: pageNum, limit: limitNum } });
+    },
+  });
+
+  fastify.post('/:id/comments', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const userId = request.userId!;
+      const body = z.object({ content: z.string().min(1).max(500) }).parse(request.body);
+
+      const character = await prismaRead.character.findUnique({ where: { id }, select: { id: true, commentDisabled: true } });
+      if (!character) return reply.code(404).send({ success: false, error: { message: '캐릭터를 찾을 수 없습니다.' } });
+      if (character.commentDisabled) return reply.code(403).send({ success: false, error: { message: '댓글이 비활성화된 캐릭터입니다.' } });
+
+      const comment = await prisma.characterComment.create({
+        data: { characterId: id, userId, content: body.content },
+        include: { user: { select: { id: true, displayName: true, username: true, avatarUrl: true } } },
+      });
+
+      return reply.code(201).send({ success: true, data: comment });
+    },
+  });
+
+  fastify.delete('/:id/comments/:commentId', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { id, commentId } = request.params as { id: string; commentId: string };
+      const userId = request.userId!;
+
+      const comment = await prismaRead.characterComment.findUnique({ where: { id: commentId } });
+      if (!comment || comment.characterId !== id) return reply.code(404).send({ success: false });
+
+      const user = await prismaRead.user.findUnique({ where: { id: userId }, select: { role: true } });
+      if (comment.userId !== userId && user?.role !== 'ADMIN') {
+        return reply.code(403).send({ success: false, error: { message: '권한이 없습니다.' } });
+      }
+
+      await prisma.characterComment.delete({ where: { id: commentId } });
+      return reply.send({ success: true });
+    },
+  });
+
+  // 댓글 좋아요/싫어요 토글
+  fastify.post('/:id/comments/:commentId/react', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { commentId } = request.params as { id: string; commentId: string };
+      const userId = request.userId!;
+      const { type } = z.object({ type: z.enum(['LIKE', 'DISLIKE']) }).parse(request.body);
+
+      const existing = await prismaRead.characterCommentReaction.findUnique({
+        where: { commentId_userId: { commentId, userId } },
+      });
+
+      if (existing) {
+        if (existing.type === type) {
+          // 같은 타입 → 취소
+          await prisma.characterCommentReaction.delete({ where: { id: existing.id } });
+          return reply.send({ success: true, action: 'removed', type });
+        } else {
+          // 다른 타입 → 전환
+          await prisma.characterCommentReaction.update({ where: { id: existing.id }, data: { type } });
+          return reply.send({ success: true, action: 'switched', type });
+        }
+      }
+
+      await prisma.characterCommentReaction.create({ data: { commentId, userId, type } });
+      return reply.send({ success: true, action: 'added', type });
+    },
+  });
+
+  // 댓글 신고
+  fastify.post('/:id/comments/:commentId/report', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { id, commentId } = request.params as { id: string; commentId: string };
+      const userId = request.userId!;
+      const { reason } = z.object({ reason: z.string().min(1).max(200) }).parse(request.body);
+
+      const comment = await prismaRead.characterComment.findUnique({ where: { id: commentId } });
+      if (!comment || comment.characterId !== id) return reply.code(404).send({ success: false });
+
+      await prisma.report.create({
+        data: {
+          reporterId: userId,
+          reportedId: comment.userId,
+          characterId: id,
+          reason,
+          description: `댓글 신고: ${commentId}`,
+        },
+      });
+
+      return reply.send({ success: true });
+    },
+  });
 };

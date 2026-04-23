@@ -17,9 +17,10 @@ interface CharacterCardProps {
   character: CharacterListItem;
   variant?: 'default' | 'compact' | 'wide';
   index?: number;
+  onPreview?: (id: string) => void;
 }
 
-export function CharacterCard({ character, variant = 'default', index = 0 }: CharacterCardProps) {
+export function CharacterCard({ character, variant = 'default', index = 0, onPreview }: CharacterCardProps) {
   const [isLiked, setIsLiked] = useState(character.isLiked ?? false);
   const [likeCount, setLikeCount] = useState(character.likeCount);
   const [imageError, setImageError] = useState(false);
@@ -72,7 +73,10 @@ export function CharacterCard({ character, variant = 'default', index = 0 }: Cha
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2, delay: index * 0.03 }}
       >
-        <Link href={`/characters/${character.id}`} className="flex items-center gap-3 p-3 rounded-xl hover:bg-surface transition-all duration-150 group">
+        <div
+          onClick={() => onPreview ? onPreview(character.id) : router.push(`/characters/${character.id}`)}
+          className="flex items-center gap-3 p-3 rounded-xl hover:bg-surface transition-all duration-150 group cursor-pointer"
+        >
           <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 ring-1 ring-border group-hover:ring-brand/30 transition-all">
             <Image
               src={avatarSrc || fallbackSrc}
@@ -93,7 +97,7 @@ export function CharacterCard({ character, variant = 'default', index = 0 }: Cha
           >
             <MessageCircle className="w-4 h-4" />
           </button>
-        </Link>
+        </div>
       </motion.div>
     );
   }
@@ -106,7 +110,10 @@ export function CharacterCard({ character, variant = 'default', index = 0 }: Cha
       whileHover={{ y: -4 }}
       className="character-card group"
     >
-      <Link href={`/characters/${character.id}`} className="block">
+      <div
+        onClick={() => onPreview ? onPreview(character.id) : router.push(`/characters/${character.id}`)}
+        className="block cursor-pointer"
+      >
         {/* Image area */}
         <div className="relative aspect-[3/4] overflow-hidden">
           {/* Background gradient overlay */}
@@ -199,7 +206,7 @@ export function CharacterCard({ character, variant = 'default', index = 0 }: Cha
             </button>
           </div>
         </div>
-      </Link>
+      </div>
     </motion.div>
   );
 }

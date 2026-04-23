@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, createContext, useContext } from 'react';
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import { useProfileStore } from '../../stores/profile.store';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { CharacterPreviewModal } from './character-preview-modal';
 import {
   MessageCircle,
   Heart,
@@ -28,6 +29,10 @@ import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/auth.store';
 import { formatCount, getCharacterAvatarUrl, CATEGORY_LABELS } from '@characterverse/utils';
 import type { CharacterListItem } from '@characterverse/types';
+
+// Context for opening the character preview modal from any card
+const PreviewContext = createContext<(id: string) => void>(() => {});
+const usePreview = () => useContext(PreviewContext);
 
 // ─────────────────────────────────────────────
 // TYPES
@@ -69,6 +74,7 @@ function FeaturedHeroCard({ character, index }: { character: CharacterListItem; 
   const [imgError, setImgError] = useState(false);
   const router = useRouter();
   const { isAuthenticated } = useAuthStore();
+  const openPreview = usePreview();
   const src = imgError ? getCharacterAvatarUrl(null, character.name) : character.avatarUrl;
 
   return (
@@ -78,7 +84,7 @@ function FeaturedHeroCard({ character, index }: { character: CharacterListItem; 
       transition={{ duration: 0.3, delay: index * 0.08 }}
       className="group relative rounded-2xl overflow-hidden cursor-pointer"
       style={{ aspectRatio: '2/3' }}
-      onClick={() => router.push(`/characters/${character.id}`)}
+      onClick={() => openPreview(character.id)}
     >
       {/* Image */}
       <Image
@@ -151,6 +157,7 @@ function RankingCard({ character, rank, index }: { character: CharacterListItem;
   const [imgError, setImgError] = useState(false);
   const router = useRouter();
   const { isAuthenticated } = useAuthStore();
+  const openPreview = usePreview();
   const src = imgError ? getCharacterAvatarUrl(null, character.name) : character.avatarUrl;
 
   return (
@@ -159,7 +166,7 @@ function RankingCard({ character, rank, index }: { character: CharacterListItem;
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.25, delay: index * 0.04 }}
       className="flex items-center gap-3 p-3 rounded-xl hover:bg-background-secondary transition-all group cursor-pointer"
-      onClick={() => router.push(`/characters/${character.id}`)}
+      onClick={() => openPreview(character.id)}
     >
       {/* Rank number */}
       <div className={cn(
@@ -234,6 +241,7 @@ function GridCharacterCard({ character, index }: { character: CharacterListItem;
   const [likeCount, setLikeCount] = useState(character.likeCount);
   const router = useRouter();
   const { isAuthenticated } = useAuthStore();
+  const openPreview = usePreview();
   const src = imgError ? getCharacterAvatarUrl(null, character.name) : character.avatarUrl;
 
   const handleLike = async (e: React.MouseEvent) => {
@@ -256,7 +264,7 @@ function GridCharacterCard({ character, index }: { character: CharacterListItem;
       whileHover={{ y: -4 }}
       className="character-card group"
     >
-      <Link href={`/characters/${character.id}`} className="block">
+      <div onClick={() => openPreview(character.id)} className="block cursor-pointer">
         {/* Image */}
         <div className="relative aspect-[3/4] overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent z-10" />
@@ -347,7 +355,7 @@ function GridCharacterCard({ character, index }: { character: CharacterListItem;
             </button>
           </div>
         </div>
-      </Link>
+      </div>
     </motion.div>
   );
 }
@@ -779,6 +787,7 @@ function FanCreationTab() {
 // ─────────────────────────────────────────────
 export function CharacterPageContent() {
   const [activeTab, setActiveTab] = useState<TabKey>('recommended');
+  const [previewId, setPreviewId] = useState<string | null>(null);
 
   const renderTab = useCallback(() => {
     switch (activeTab) {
@@ -791,6 +800,8 @@ export function CharacterPageContent() {
   }, [activeTab]);
 
   return (
+    <PreviewContext.Provider value={setPreviewId}>
+    <CharacterPreviewModal characterId={previewId} onClose={() => setPreviewId(null)} />
     <div className="flex gap-6 min-h-[calc(100vh-4rem)] px-4 md:px-6 lg:px-8 max-w-[1400px] mx-auto py-6">
       {/* Left sidebar */}
       <LoginSidebar />
@@ -830,5 +841,6 @@ export function CharacterPageContent() {
         </AnimatePresence>
       </main>
     </div>
+    </PreviewContext.Provider>
   );
 }

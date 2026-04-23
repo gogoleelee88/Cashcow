@@ -382,6 +382,21 @@ export const api = {
 
     deleteDraft: () =>
       apiClient.delete('/api/characters/draft').then((r) => r.data),
+
+    listComments: (id: string, params?: { page?: number; limit?: number }) =>
+      apiClient.get(`/api/characters/${id}/comments`, { params }).then((r) => r.data),
+
+    createComment: (id: string, content: string) =>
+      apiClient.post(`/api/characters/${id}/comments`, { content }).then((r) => r.data),
+
+    deleteComment: (id: string, commentId: string) =>
+      apiClient.delete(`/api/characters/${id}/comments/${commentId}`).then((r) => r.data),
+
+    reactComment: (id: string, commentId: string, type: 'LIKE' | 'DISLIKE') =>
+      apiClient.post(`/api/characters/${id}/comments/${commentId}/react`, { type }).then((r) => r.data),
+
+    reportComment: (id: string, commentId: string, reason: string) =>
+      apiClient.post(`/api/characters/${id}/comments/${commentId}/report`, { reason }).then((r) => r.data),
   },
 
   chat: {
