@@ -83,6 +83,17 @@ apiClient.interceptors.response.use(
 // API FUNCTIONS
 // ─────────────────────────────────────────────
 export const api = {
+  profiles: {
+    list: () => apiClient.get('/api/profiles').then((r) => r.data),
+    create: (data: { name: string; isKids: boolean; pin?: string; avatarEmoji?: string; avatarColor?: string }) =>
+      apiClient.post('/api/profiles', data).then((r) => r.data),
+    update: (id: string, data: { name?: string; isKids?: boolean; pin?: string | null; avatarEmoji?: string; avatarColor?: string }) =>
+      apiClient.put(`/api/profiles/${id}`, data).then((r) => r.data),
+    delete: (id: string) => apiClient.delete(`/api/profiles/${id}`).then((r) => r.data),
+    verifyPin: (id: string, pin: string) =>
+      apiClient.post(`/api/profiles/${id}/verify-pin`, { pin }).then((r) => r.data),
+  },
+
   auth: {
     register: (data: { email: string; password: string; username: string; displayName: string }) =>
       apiClient.post('/api/auth/register', data).then((r) => r.data),

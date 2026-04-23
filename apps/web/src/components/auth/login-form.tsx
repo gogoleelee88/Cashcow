@@ -28,7 +28,7 @@ export function LoginForm() {
       const res = await api.auth.login({ email, password });
       if (res.success) {
         login(res.data.user, res.data.accessToken, res.data.refreshToken);
-        router.push(redirect);
+        router.push('/profiles');
       } else {
         setError(res.error?.message || '로그인에 실패했습니다.');
       }

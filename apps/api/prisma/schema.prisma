@@ -203,12 +203,30 @@ model User {
   storyFavorites   StoryFavorite[]
   generatedImages  GeneratedImage[]
   characterDraft   CharacterDraft?
+  profiles         Profile[]
 
   @@index([email])
   @@index([username])
   @@index([role])
   @@index([createdAt])
   @@map("users")
+}
+
+model Profile {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String   @db.VarChar(20)
+  isKids      Boolean  @default(false)
+  pinHash     String?
+  avatarEmoji String   @default("😊")
+  avatarColor String   @default("#E63325")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("profiles")
 }
 
 model OAuthAccount {

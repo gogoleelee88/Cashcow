@@ -27,6 +27,18 @@ export interface UserProfile extends User {
 }
 
 // ─────────────────────────────────────────────
+// PROFILE TYPES
+// ─────────────────────────────────────────────
+export interface Profile {
+  id: string;
+  name: string;
+  isKids: boolean;
+  avatarEmoji: string;
+  avatarColor: string;
+  createdAt: string;
+}
+
+// ─────────────────────────────────────────────
 // CHARACTER TYPES
 // ─────────────────────────────────────────────
 export type CharacterVisibility = 'PUBLIC' | 'PRIVATE' | 'UNLISTED';

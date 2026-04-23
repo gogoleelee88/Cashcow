@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Search, Bell, X, Menu, ChevronDown, BookOpen, Users, Image as ImageIcon, Bookmark, Plus, LogOut, Settings, User, ShieldCheck } from 'lucide-react';
+import { Search, Bell, X, Menu, ChevronDown, BookOpen, Users, Image as ImageIcon, Bookmark, Plus, LogOut, Settings, User, ShieldCheck, Baby } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { cn } from '../../lib/utils';
 import { useAuthStore } from '../../stores/auth.store';
+import { useProfileStore } from '../../stores/profile.store';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -14,11 +15,16 @@ interface MainLayoutProps {
   showSearch?: boolean;
 }
 
-const NAV_ITEMS = [
+const NAV_ITEMS_DEFAULT = [
   { href: '/story', label: '스토리', icon: BookOpen },
   { href: '/', label: '캐릭터', icon: Users },
   { href: '/creator', label: '내 작품', icon: Bookmark },
   { href: '/images', label: '이미지', icon: ImageIcon },
+];
+
+const NAV_ITEMS_KIDS = [
+  { href: '/story', label: '스토리', icon: BookOpen },
+  { href: '/', label: '캐릭터', icon: Users },
 ];
 
 export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
@@ -29,7 +35,21 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { user, isAuthenticated, logout, accessToken } = useAuthStore();
+  const { activeProfile, clearProfile } = useProfileStore();
   const userMenuRef = useRef<HTMLDivElement>(null);
+
+  const isKids = activeProfile?.isKids ?? false;
+  const NAV_ITEMS = isKids ? NAV_ITEMS_KIDS : NAV_ITEMS_DEFAULT;
+
+  // 키즈 모드 body 클래스
+  useEffect(() => {
+    if (isKids) {
+      document.documentElement.classList.add('kids-mode');
+    } else {
+      document.documentElement.classList.remove('kids-mode');
+    }
+    return () => document.documentElement.classList.remove('kids-mode');
+  }, [isKids]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,6 +89,20 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      {/* 키즈 모드 배너 */}
+      {isKids && (
+        <div className="kids-mode-banner flex items-center justify-center gap-2 sticky top-0 z-50">
+          <Baby className="w-3.5 h-3.5" />
+          키즈 모드 — 전체 이용가 콘텐츠만 표시됩니다
+          <button
+            onClick={() => { clearProfile(); router.push('/profiles'); }}
+            className="ml-3 underline underline-offset-2 opacity-80 hover:opacity-100"
+          >
+            프로필 변경
+          </button>
+        </div>
+      )}
+
       {/* ─── TOP NAVIGATION ─── */}
       <header className="sticky top-0 z-40 bg-white border-b border-border shadow-nav">
         <div className="max-w-[1400px] mx-auto px-4 h-14 flex items-center gap-4">
@@ -183,7 +217,18 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
                         <div className="px-4 py-3 border-b border-border mb-1">
                           <p className="text-text-primary font-semibold text-sm truncate">{user.displayName}</p>
                           <p className="text-text-muted text-xs truncate">@{(user as any).username}</p>
+                          {activeProfile && (
+                            <div className="flex items-center gap-1.5 mt-1.5">
+                              <span className="text-base">{activeProfile.avatarEmoji}</span>
+                              <span className="text-xs text-text-muted">{activeProfile.name}</span>
+                              {activeProfile.isKids && <Baby className="w-3 h-3 text-sky-400" />}
+                            </div>
+                          )}
                         </div>
+                        <button onClick={() => { setUserMenuOpen(false); clearProfile(); router.push('/profiles'); }}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface transition-all">
+                          <span className="text-base">{activeProfile?.avatarEmoji ?? '👤'}</span>프로필 전환
+                        </button>
                         <Link href={`/profile/${(user as any).username}`} onClick={() => setUserMenuOpen(false)}
                           className="flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface transition-all">
                           <User className="w-4 h-4" />프로필

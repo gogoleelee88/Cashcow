@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
+import { useProfileStore } from '../../stores/profile.store';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -567,15 +568,18 @@ function Dropdown<T extends string>({
 
 // 추천 탭
 function RecommendedTab() {
+  const { activeProfile } = useProfileStore();
+  const kidsFilter = activeProfile?.isKids ? { ageRating: 'ALL' } : {};
+
   const { data: featured, isLoading: featuredLoading } = useQuery({
-    queryKey: ['characters', 'featured'],
-    queryFn: () => api.characters.list({ limit: 3, sort: 'trending' }),
+    queryKey: ['characters', 'featured', activeProfile?.isKids],
+    queryFn: () => api.characters.list({ limit: 3, sort: 'trending', ...kidsFilter }),
     staleTime: 5 * 60 * 1000,
   });
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useInfiniteQuery({
-    queryKey: ['characters', 'recommended'],
-    queryFn: ({ pageParam = 1 }) => api.characters.list({ page: pageParam, limit: 20, sort: 'trending' }),
+    queryKey: ['characters', 'recommended', activeProfile?.isKids],
+    queryFn: ({ pageParam = 1 }) => api.characters.list({ page: pageParam, limit: 20, sort: 'trending', ...kidsFilter }),
     getNextPageParam: (last) => last?.meta?.hasMore ? (last.meta.page + 1) : undefined,
     initialPageParam: 1,
     staleTime: 2 * 60 * 1000,
