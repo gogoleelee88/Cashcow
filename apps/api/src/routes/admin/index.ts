@@ -4,6 +4,8 @@ import { adminRateLimit } from '../../plugins/rate-limit.plugin';
 import { dashboardRoutes } from './dashboard.routes';
 import { usersRoutes } from './users.routes';
 import { moderationRoutes } from './moderation.routes';
+import { paymentsRoutes } from './payments.routes';
+import { officialRoutes } from './official.routes';
 
 export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('preHandler', adminRateLimit);
@@ -14,4 +16,6 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.register(dashboardRoutes, { prefix: '/dashboard' });
   fastify.register(usersRoutes, { prefix: '/users' });
   fastify.register(moderationRoutes, { prefix: '/moderation' });
+  fastify.register(paymentsRoutes, { prefix: '/payments' });
+  fastify.register(officialRoutes, { prefix: '/official' });
 };

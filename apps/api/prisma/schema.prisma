@@ -313,6 +313,7 @@ model Character {
   monthlyChats         Int                 @default(0)
   isActive             Boolean             @default(true)
   isFeatured           Boolean             @default(false)
+  isOfficial           Boolean             @default(false)
   revenuePerChat       Int                 @default(1)   // Creator credits per chat
   creatorId            String
   createdAt            DateTime            @default(now())
@@ -338,6 +339,7 @@ model Character {
   @@index([audienceTarget])
   @@index([isFanCreation])
   @@index([gender])
+  @@index([isOfficial])
   @@map("characters")
 }
 
@@ -655,6 +657,7 @@ model Story {
   trendingScore    Float         @default(0)
   isActive         Boolean       @default(true)
   isFeatured       Boolean       @default(false)
+  isOfficial       Boolean       @default(false)
   authorId         String
   systemPromptEncrypted String   @db.Text
   systemPromptIv   String
@@ -682,6 +685,7 @@ model Story {
   @@index([trendingScore(sort: Desc)])
   @@index([chatCount(sort: Desc)])
   @@index([createdAt(sort: Desc)])
+  @@index([isOfficial])
   @@map("stories")
 }
 
@@ -701,18 +705,21 @@ model StoryExample {
 }
 
 model StoryChapter {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   storyId     String
   title       String
-  content     String   @db.Text
+  content     String    @db.Text
   order       Int
-  isPublished Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isPublished Boolean   @default(false)
+  scheduledAt DateTime?
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  story       Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  story       Story     @relation(fields: [storyId], references: [id], onDelete: Cascade)
 
   @@index([storyId])
+  @@index([scheduledAt])
   @@map("story_chapters")
 }
 
@@ -972,6 +979,23 @@ enum ImageGenStatus {
   PROCESSING
   COMPLETED
   FAILED
+}
+
+model Terms {
+  id          String   @id @default(cuid())
+  type        String   // TERMS_OF_SERVICE, PRIVACY_POLICY, etc.
+  version     String   // e.g. "1.0", "2.0"
+  title       String
+  content     String   @db.Text
+  isActive    Boolean  @default(false) // 현재 적용중인 버전
+  effectiveAt DateTime
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([type, isActive])
+  @@index([type, effectiveAt(sort: Desc)])
+  @@map("terms")
 }
 
 model GeneratedImage {

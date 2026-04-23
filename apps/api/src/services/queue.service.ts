@@ -1,5 +1,5 @@
 import { Queue, Worker, Job, QueueEvents } from 'bullmq';
-import { getBullRedis } from '../lib/redis';
+import { getBullRedis, cache } from '../lib/redis';
 import { logger } from '../lib/logger';
 import { alertCritical } from '../lib/slack';
 import { queueDepth, queueJobDuration } from '../lib/metrics';
@@ -383,8 +383,21 @@ let settlementWorker: Worker | null = null;
 let notificationWorker: Worker | null = null;
 let memoryWorker: Worker | null = null;
 let imageWorker: Worker | null = null;
+let chapterPublishWorker: Worker | null = null;
 
 export function startWorkers(): void {
+  chapterPublishWorker = new Worker(
+    'chapter-publish',
+    async (job: Job) => {
+      await processChapterPublish(job as Job<ChapterPublishJobData>);
+    },
+    { connection: getBullRedis(), concurrency: 5 }
+  );
+
+  chapterPublishWorker.on('failed', async (job, err) => {
+    logger.error({ jobId: job?.id, err }, 'Chapter publish job failed');
+  });
+
   settlementWorker = new Worker(
     'settlement',
     async (job: Job) => {
@@ -449,6 +462,7 @@ export function startWorkers(): void {
 
 export async function stopWorkers(): Promise<void> {
   await Promise.all([
+    chapterPublishWorker?.close(),
     settlementWorker?.close(),
     notificationWorker?.close(),
     memoryWorker?.close(),
@@ -495,6 +509,58 @@ async function scheduleMonthlyCron(): Promise<void> {
   } catch (err) {
     logger.error({ err }, 'Failed to schedule monthly settlement cron');
   }
+}
+
+// ─────────────────────────────────────────────
+// CHAPTER PUBLISH QUEUE
+// ─────────────────────────────────────────────
+export const chapterPublishQueue = new Queue('chapter-publish', {
+  connection: getBullRedis(),
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: { type: 'exponential', delay: 2000 },
+    removeOnComplete: { count: 200 },
+    removeOnFail: { count: 100 },
+  },
+});
+
+export interface ChapterPublishJobData {
+  chapterId: string;
+  storyId: string;
+}
+
+export async function scheduleChapterPublish(
+  chapterId: string,
+  storyId: string,
+  scheduledAt: Date
+): Promise<string> {
+  const delay = Math.max(0, scheduledAt.getTime() - Date.now());
+  const job = await chapterPublishQueue.add(
+    'publish-chapter',
+    { chapterId, storyId } as ChapterPublishJobData,
+    {
+      jobId: `chapter-publish-${chapterId}`,
+      delay,
+    }
+  );
+  return job.id!;
+}
+
+export async function cancelScheduledChapter(chapterId: string): Promise<void> {
+  const job = await chapterPublishQueue.getJob(`chapter-publish-${chapterId}`);
+  if (job) await job.remove();
+}
+
+async function processChapterPublish(job: Job<ChapterPublishJobData>): Promise<void> {
+  const { chapterId, storyId } = job.data;
+
+  await prisma.storyChapter.update({
+    where: { id: chapterId },
+    data: { isPublished: true, publishedAt: new Date(), scheduledAt: null },
+  });
+
+  await cache.del(`story:detail:${storyId}`);
+  logger.info({ chapterId, storyId }, 'Chapter published via scheduled job');
 }
 
 // ─────────────────────────────────────────────

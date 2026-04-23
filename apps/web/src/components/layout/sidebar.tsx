@@ -8,7 +8,7 @@ import {
   Home, Compass, Heart, MessageCircle, PlusCircle,
   Settings, Crown, ChevronRight, Zap, Star,
   Gamepad2, Film, Book, Sparkles, Music, History, Globe, TvMinimal,
-  CreditCard, Bell, LogOut, User
+  CreditCard, Bell, LogOut, User, ShieldCheck
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/auth.store';
 import { api } from '../../lib/api';
@@ -207,6 +207,19 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
                   </Link>
                 </div>
               </div>
+
+              {user.role === 'ADMIN' && (
+                <Link
+                  href="/admin"
+                  onClick={() => onClose?.()}
+                  className="mt-1 w-full flex items-center gap-2.5 px-3 py-2 rounded-xl
+                             text-amber-400 hover:text-amber-300 hover:bg-amber-500/10
+                             text-sm transition-all duration-150"
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>관리자 패널</span>
+                </Link>
+              )}
 
               <button
                 onClick={handleLogout}

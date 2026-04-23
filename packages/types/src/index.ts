@@ -66,6 +66,7 @@ export interface Character {
   isLiked?: boolean;
   isFavorited?: boolean;
   isFeatured?: boolean;
+  isOfficial?: boolean;
   isFanCreation?: boolean;
   gender?: CharacterGender;
   audienceTarget?: AudienceTarget;

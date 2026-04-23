@@ -142,6 +142,7 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
             monthlyChats: true,
             trendingScore: true,
             isFeatured: true,
+            isOfficial: true,
             isFanCreation: true,
             gender: true,
             audienceTarget: true,
@@ -207,6 +208,7 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
         select: {
           id: true, name: true, description: true, avatarUrl: true,
           category: true, chatCount: true, likeCount: true, greeting: true,
+          isFeatured: true, isOfficial: true, model: true,
           creator: { select: { id: true, username: true, displayName: true } },
         },
       });
@@ -275,6 +277,7 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
           monthlyChats: true,
           trendingScore: true,
           isFeatured: true,
+          isOfficial: true,
           isFanCreation: true,
           gender: true,
           audienceTarget: true,

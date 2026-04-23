@@ -299,6 +299,28 @@ export const api = {
 
     publish: (id: string) =>
       apiClient.post(`/api/stories/${id}/publish`).then((r) => r.data),
+
+    // Chapters
+    listChapters: (storyId: string) =>
+      apiClient.get(`/api/stories/${storyId}/chapters`).then((r) => r.data),
+
+    createChapter: (storyId: string, data: { title: string; content: string; order?: number; scheduledAt?: string }) =>
+      apiClient.post(`/api/stories/${storyId}/chapters`, data).then((r) => r.data),
+
+    updateChapter: (storyId: string, chapterId: string, data: { title?: string; content?: string; order?: number; scheduledAt?: string | null }) =>
+      apiClient.put(`/api/stories/${storyId}/chapters/${chapterId}`, data).then((r) => r.data),
+
+    deleteChapter: (storyId: string, chapterId: string) =>
+      apiClient.delete(`/api/stories/${storyId}/chapters/${chapterId}`).then((r) => r.data),
+
+    publishChapter: (storyId: string, chapterId: string) =>
+      apiClient.post(`/api/stories/${storyId}/chapters/${chapterId}/publish`).then((r) => r.data),
+
+    scheduleChapter: (storyId: string, chapterId: string, scheduledAt: string) =>
+      apiClient.post(`/api/stories/${storyId}/chapters/${chapterId}/schedule`, { scheduledAt }).then((r) => r.data),
+
+    cancelChapterSchedule: (storyId: string, chapterId: string) =>
+      apiClient.delete(`/api/stories/${storyId}/chapters/${chapterId}/schedule`).then((r) => r.data),
   },
 
   characters: {

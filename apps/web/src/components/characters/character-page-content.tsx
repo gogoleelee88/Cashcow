@@ -103,14 +103,20 @@ function FeaturedHeroCard({ character, index }: { character: CharacterListItem; 
       </div>
 
       {/* Top badges */}
-      {(character as any).isFeatured && (
-        <div className="absolute top-2 left-2 z-20">
+      <div className="absolute top-2 left-2 z-20 flex flex-col gap-1">
+        {(character as any).isOfficial && (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/80 text-white shadow">
+            <Star className="w-2.5 h-2.5 fill-white" />
+            공식
+          </span>
+        )}
+        {(character as any).isFeatured && (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400/90 text-amber-900 shadow">
             <Crown className="w-2.5 h-2.5" />
             추천
           </span>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Bottom info */}
       <div className="absolute bottom-0 left-0 right-0 z-20 p-3">

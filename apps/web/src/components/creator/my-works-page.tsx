@@ -8,9 +8,10 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
   ChevronDown, X, Settings, ArrowRight, MessageCircle, Heart,
-  Eye, EyeOff, Lock, AlertTriangle, MoreVertical, Trash2, Pencil, ExternalLink,
+  Eye, EyeOff, Lock, AlertTriangle, MoreVertical, Trash2, Pencil, ExternalLink, BookOpen,
 } from 'lucide-react';
 import { api } from '../../lib/api';
+import { ChapterPublishModal } from './chapter-publish-modal';
 import { useAuthStore } from '../../stores/auth.store';
 import { useEffect } from 'react';
 import { cn } from '../../lib/utils';
@@ -198,10 +199,12 @@ function KebabMenu({
   editHref,
   viewHref,
   onDelete,
+  onChapters,
 }: {
   editHref: string;
   viewHref?: string;
   onDelete: () => void;
+  onChapters?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -251,6 +254,15 @@ function KebabMenu({
                 <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
                 미리보기
               </Link>
+            )}
+            {onChapters && (
+              <button
+                onClick={() => { setOpen(false); onChapters(); }}
+                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                <BookOpen className="w-3.5 h-3.5 text-gray-400" />
+                챕터 관리
+              </button>
             )}
             <div className="h-px bg-gray-100 mx-2" />
             <button
@@ -361,6 +373,7 @@ function WorkItem({
   onDeleteRequest: (item: any) => void;
 }) {
   const isStory = item._type === 'story';
+  const [showChapterModal, setShowChapterModal] = useState(false);
 
   const visIcon = item.visibility === 'PUBLIC'
     ? <Eye className="w-3 h-3 text-emerald-500" />
@@ -456,7 +469,16 @@ function WorkItem({
         editHref={editHref}
         viewHref={viewHref}
         onDelete={() => onDeleteRequest(item)}
+        onChapters={isStory ? () => setShowChapterModal(true) : undefined}
       />
+
+      {showChapterModal && (
+        <ChapterPublishModal
+          storyId={item.id}
+          storyTitle={item.title || '제목 없음'}
+          onClose={() => setShowChapterModal(false)}
+        />
+      )}
     </motion.div>
   );
 }

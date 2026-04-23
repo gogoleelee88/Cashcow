@@ -124,6 +124,12 @@ export function CharacterCard({ character, variant = 'default', index = 0 }: Cha
 
           {/* Top badges */}
           <div className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1.5">
+            {character.isOfficial && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-500/20 text-white border border-blue-400/50">
+                <Star className="w-3 h-3 fill-current" />
+                공식
+              </span>
+            )}
             {(character as any).isFeatured && (
               <span className="badge-featured">
                 <Crown className="w-3 h-3" />

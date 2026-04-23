@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Search, Bell, X, Menu, ChevronDown, BookOpen, Users, Image as ImageIcon, Bookmark, Plus, LogOut, Settings, User } from 'lucide-react';
+import { Search, Bell, X, Menu, ChevronDown, BookOpen, Users, Image as ImageIcon, Bookmark, Plus, LogOut, Settings, User, ShieldCheck } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { cn } from '../../lib/utils';
 import { useAuthStore } from '../../stores/auth.store';
@@ -197,6 +197,12 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
                           <span className="w-4 h-4 text-center text-xs font-bold text-amber-500">₩</span>
                           크레딧 충전
                         </Link>
+                        {(user as any).role === 'ADMIN' && (
+                          <Link href="/admin" onClick={() => setUserMenuOpen(false)}
+                            className="flex items-center gap-3 px-4 py-2.5 text-sm text-amber-500 hover:bg-amber-50 transition-all font-medium">
+                            <ShieldCheck className="w-4 h-4" />관리자 패널
+                          </Link>
+                        )}
                         <div className="border-t border-border mt-1 pt-1">
                           <button onClick={handleLogout}
                             className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-all">
@@ -287,6 +293,12 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
                       <p className="text-text-muted text-xs">@{(user as any).username}</p>
                     </div>
                   </div>
+                  {(user as any).role === 'ADMIN' && (
+                    <Link href="/admin" onClick={() => setMobileMenuOpen(false)}
+                      className="w-full flex items-center gap-2 text-sm text-amber-500 py-2 px-3 rounded-xl hover:bg-amber-50 font-medium mb-1">
+                      <ShieldCheck className="w-4 h-4" /> 관리자 패널
+                    </Link>
+                  )}
                   <button onClick={handleLogout} className="w-full flex items-center gap-2 text-sm text-red-500 py-2 px-3 rounded-xl hover:bg-red-50">
                     <LogOut className="w-4 h-4" /> 로그아웃
                   </button>

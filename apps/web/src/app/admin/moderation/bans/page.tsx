@@ -41,7 +41,6 @@ export default function BansPage() {
     } catch { /* silent */ } finally { setLoading(false); }
   }, [search]);
 
-  useEffect(() => { load(1); }, []);
   useEffect(() => { load(page); }, [page]);
 
   async function handleUnban() {
