@@ -112,9 +112,16 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
             <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center">
               <span className="text-white font-black text-sm">C</span>
             </div>
-            <span className="font-black text-lg text-text-primary tracking-tight hidden sm:block">
-              crack<span className="text-brand">.</span>
-            </span>
+            <div className="hidden sm:flex items-baseline gap-1.5">
+              <span className="font-black text-lg text-text-primary tracking-tight">
+                crack<span className="text-brand">.</span>
+              </span>
+              {isKids && (
+                <span className="text-xs font-bold text-sky-500 tracking-tight">
+                  키즈&amp;패밀리
+                </span>
+              )}
+            </div>
           </Link>
 
           {/* Desktop nav tabs */}
