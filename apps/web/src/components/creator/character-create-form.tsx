@@ -8,6 +8,7 @@ import {
   ArrowLeft, HelpCircle, History, AlertCircle,
   Loader2, Sparkles, X, ChevronRight, Upload, CheckCircle2,
   Pencil, Trash2, ImagePlus, Send, Check, BookOpen,
+  ChevronUp, GripVertical,
 } from 'lucide-react';
 import { api, streamPreviewChat } from '../../lib/api';
 import { apiClient } from '../../lib/api';
@@ -861,8 +862,10 @@ export function CharacterCreateForm() {
   const [editingContext, setEditingContext] = useState(false);
   const [showIntroSetup, setShowIntroSetup] = useState(false);
   // ── 고급 기능 탭 전용 state ──
-  const [situationImages, setSituationImages] = useState<{ id: string; url: string; name: string }[]>([]);
+  const [situationImages, setSituationImages] = useState<{ id: string; url: string; name: string; situation: string; hint: string; collapsed: boolean }[]>([]);
   const situationImageInputRef = useRef<HTMLInputElement>(null);
+  const [changingSituationImageId, setChangingSituationImageId] = useState<string | null>(null);
+  const [deleteConfirmSituationId, setDeleteConfirmSituationId] = useState<string | null>(null);
   // ── 상황별 이미지 추가 모달 state ──
   const [showSituationImageModal, setShowSituationImageModal] = useState(false);
   const [showGoToAdvancedDialog, setShowGoToAdvancedDialog] = useState(false);
@@ -1581,6 +1584,36 @@ export function CharacterCreateForm() {
         </div>
       )}
 
+      {/* ── 상황 이미지 삭제 확인 다이얼로그 ── */}
+      {deleteConfirmSituationId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-2xl shadow-2xl w-[320px] p-6 text-center">
+            <h3 className="text-gray-900 font-bold text-base mb-2">이미지를 삭제하시겠어요?</h3>
+            <p className="text-gray-400 text-sm mb-6">
+              입력하신 내용과 이미지가 모두 삭제되며<br />
+              <span className="text-red-500 font-semibold">삭제는 되돌릴 수 없어요</span>
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteConfirmSituationId(null)}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={() => {
+                  setSituationImages((prev) => prev.filter((i) => i.id !== deleteConfirmSituationId));
+                  setDeleteConfirmSituationId(null);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors"
+              >
+                삭제
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── 뒤로가기 확인 다이얼로그 ── */}
       {showLeaveDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -2092,18 +2125,113 @@ export function CharacterCreateForm() {
                     <span className="text-gray-400">(최대 50개)</span>
                   </p>
 
-                  {/* 이미지 목록 */}
+                  {/* 이미지 카드 목록 */}
                   {situationImages.length > 0 && (
-                    <div className="grid grid-cols-4 gap-2 mb-3">
-                      {situationImages.map((img) => (
-                        <div key={img.id} className="relative aspect-square rounded-xl overflow-hidden group">
-                          <Image src={img.url} alt={img.name} fill className="object-cover" unoptimized />
-                          <button
-                            onClick={() => setSituationImages((prev) => prev.filter((i) => i.id !== img.id))}
-                            className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 hover:bg-black/80 transition-colors opacity-0 group-hover:opacity-100 flex items-center justify-center"
-                          >
-                            <X className="w-3 h-3 text-white" />
-                          </button>
+                    <div className="flex flex-col gap-3 mb-3">
+                      {situationImages.map((img, idx) => (
+                        <div key={img.id} className="border border-gray-200 rounded-2xl overflow-hidden">
+                          {/* 카드 헤더 */}
+                          <div className="flex items-center gap-3 px-4 py-3">
+                            <GripVertical className="w-4 h-4 text-gray-300 flex-shrink-0 cursor-grab" />
+                            <div className="w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 relative bg-gray-100">
+                              <Image src={img.url} alt={img.name} fill className="object-cover" unoptimized />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-gray-900 font-semibold text-sm mb-1.5">{idx + 1}</div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => { setChangingSituationImageId(img.id); situationImageInputRef.current?.click(); }}
+                                  className="text-gray-400 text-xs hover:text-gray-600 transition-colors"
+                                >
+                                  이미지 변경
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(`{image:${idx + 1}}`);
+                                    toast.success('코드가 복사됐어요');
+                                  }}
+                                  className="px-2.5 py-0.5 rounded-lg bg-gray-900 text-white text-xs font-semibold hover:bg-gray-700 transition-colors"
+                                >
+                                  코드 복사
+                                </button>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => { setChangingSituationImageId(img.id); situationImageInputRef.current?.click(); }}
+                                className="text-gray-400 hover:text-gray-600 transition-colors"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeleteConfirmSituationId(img.id)}
+                                className="text-gray-400 hover:text-red-500 transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSituationImages((prev) => prev.map((i) => i.id === img.id ? { ...i, collapsed: !i.collapsed } : i))}
+                                className="text-gray-400 hover:text-gray-600 transition-colors"
+                              >
+                                <ChevronUp className={cn('w-4 h-4 transition-transform', img.collapsed && 'rotate-180')} />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* 상황 / 이미지 힌트 필드 */}
+                          {!img.collapsed && (
+                            <div className="px-4 pb-4 space-y-4 border-t border-gray-100 pt-4">
+                              {/* 상황 */}
+                              <div>
+                                <div className="flex items-center gap-0.5 mb-1">
+                                  <span className="text-gray-900 font-semibold text-sm">상황</span>
+                                  <span className="text-red-500 text-sm">*</span>
+                                </div>
+                                <p className="text-gray-400 text-xs mb-2">작성하신 상황이 되면 AI가 자동으로 이미지를 띄워드려요</p>
+                                <div className="relative border border-gray-200 rounded-xl focus-within:border-gray-400 transition-colors">
+                                  <textarea
+                                    value={img.situation}
+                                    onChange={(e) => {
+                                      if (e.target.value.length <= 50)
+                                        setSituationImages((prev) => prev.map((i) => i.id === img.id ? { ...i, situation: e.target.value } : i));
+                                    }}
+                                    placeholder="예) 고양이 미뉴가 놀라는 상황"
+                                    rows={2}
+                                    className="w-full px-4 pt-3 pb-6 text-sm text-gray-900 placeholder:text-gray-300 bg-transparent resize-none focus:outline-none rounded-xl"
+                                  />
+                                  <span className="absolute bottom-2 right-3 text-xs text-gray-300 pointer-events-none">
+                                    {img.situation.length} / 50
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* 이미지 힌트 */}
+                              <div>
+                                <p className="text-gray-900 font-semibold text-sm mb-1">이미지 힌트</p>
+                                <p className="text-gray-400 text-xs mb-2">유저에게 보여질 이미지 해금 힌트를 작성해주세요</p>
+                                <div className="relative border border-gray-200 rounded-xl focus-within:border-gray-400 transition-colors">
+                                  <textarea
+                                    value={img.hint}
+                                    onChange={(e) => {
+                                      if (e.target.value.length <= 20)
+                                        setSituationImages((prev) => prev.map((i) => i.id === img.id ? { ...i, hint: e.target.value } : i));
+                                    }}
+                                    placeholder="예) 뭐... 뭐냥?!"
+                                    rows={2}
+                                    className="w-full px-4 pt-3 pb-6 text-sm text-gray-900 placeholder:text-gray-300 bg-transparent resize-none focus:outline-none rounded-xl"
+                                  />
+                                  <span className="absolute bottom-2 right-3 text-xs text-gray-300 pointer-events-none">
+                                    {img.hint.length} / 20
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -2125,11 +2253,20 @@ export function CharacterCreateForm() {
                     className="hidden"
                     onChange={(e) => {
                       const files = Array.from(e.target.files ?? []);
-                      const remaining = 50 - situationImages.length;
-                      files.slice(0, remaining).forEach((file) => {
-                        const url = URL.createObjectURL(file);
-                        setSituationImages((prev) => [...prev, { id: Date.now().toString() + Math.random(), url, name: file.name }]);
-                      });
+                      if (changingSituationImageId) {
+                        const file = files[0];
+                        if (file) {
+                          const url = URL.createObjectURL(file);
+                          setSituationImages((prev) => prev.map((i) => i.id === changingSituationImageId ? { ...i, url, name: file.name } : i));
+                        }
+                        setChangingSituationImageId(null);
+                      } else {
+                        const remaining = 50 - situationImages.length;
+                        files.slice(0, remaining).forEach((file) => {
+                          const url = URL.createObjectURL(file);
+                          setSituationImages((prev) => [...prev, { id: Date.now().toString() + Math.random(), url, name: file.name, situation: '', hint: '', collapsed: false }]);
+                        });
+                      }
                       e.target.value = '';
                     }}
                   />
