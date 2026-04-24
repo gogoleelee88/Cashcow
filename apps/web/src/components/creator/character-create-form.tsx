@@ -1362,9 +1362,12 @@ export function CharacterCreateForm() {
               {/* 기기에서 가져오기 */}
               <button
                 onClick={() => {
+                  const ctx = imageUploadContext;
                   setShowImageUploadModal(false);
-                  if (imageUploadContext === 'profile') fileInputRef.current?.click();
-                  else situationImageInputRef.current?.click();
+                  setTimeout(() => {
+                    if (ctx === 'profile') fileInputRef.current?.click();
+                    else situationImageInputRef.current?.click();
+                  }, 50);
                 }}
                 className="flex-1 flex flex-col items-start gap-3 border border-gray-200 rounded-2xl p-5 hover:border-brand hover:bg-brand/5 transition-all text-left group"
               >
@@ -2239,7 +2242,7 @@ export function CharacterCreateForm() {
 
                   {/* + 이미지 추가 버튼 */}
                   <button
-                    onClick={() => setShowImageUploadModal(true)}
+                    onClick={() => { setImageUploadContext('situation'); setShowImageUploadModal(true); }}
                     disabled={situationImages.length >= 50}
                     className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-xl text-gray-600 text-sm font-medium transition-colors disabled:opacity-40"
                   >
