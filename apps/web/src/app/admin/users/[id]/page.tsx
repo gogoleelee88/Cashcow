@@ -28,7 +28,8 @@ const roleVariant: Record<string, 'purple' | 'info' | 'default'> = {
 type Tab = 'overview' | 'transactions' | 'reports' | 'characters';
 
 export default function UserDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  const params = useParams<{ id: string }>();
+  const id = params?.id ?? '';
   const router = useRouter();
   const [user, setUser] = useState<UserDetail | null>(null);
   const [loading, setLoading] = useState(true);

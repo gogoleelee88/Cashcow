@@ -46,7 +46,7 @@ export function ActivityChart({ data, dataKey, title, color, formatter }: Props)
             tickFormatter={formatter}
           />
           <Tooltip
-            formatter={(v: number) => [formatter ? formatter(v) : v.toLocaleString(), title]}
+            formatter={(v) => [formatter ? formatter(v as number) : (v as number).toLocaleString(), title]}
             labelFormatter={(label) => {
               const d = new Date(label);
               return d.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });

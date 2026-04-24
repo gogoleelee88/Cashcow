@@ -22,7 +22,8 @@ interface Chapter {
 type Tab = 'info' | 'chapters';
 
 export default function EditOfficialStoryPage() {
-  const { id } = useParams<{ id: string }>();
+  const params = useParams<{ id: string }>();
+  const id = params?.id ?? '';
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('info');
   const [loading, setLoading] = useState(true);
