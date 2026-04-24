@@ -420,14 +420,14 @@ export const officialRoutes: FastifyPluginAsync = async (fastify) => {
       const { id } = request.params;
       const { status } = request.body;
 
-      const validStatuses = ['DRAFT', 'PUBLISHED', 'HIDDEN', 'DELETED'];
+      const validStatuses = ['DRAFT', 'ONGOING', 'COMPLETED', 'HIATUS'];
       if (!validStatuses.includes(status)) {
         return reply.status(400).send({ success: false, error: '유효하지 않은 상태입니다' });
       }
 
       const updated = await prisma.story.update({
         where: { id },
-        data: { status: status as 'DRAFT' | 'PUBLISHED' | 'HIDDEN' | 'DELETED' },
+        data: { status: status as 'DRAFT' | 'ONGOING' | 'COMPLETED' | 'HIATUS' },
         select: { id: true, title: true, status: true },
       });
 

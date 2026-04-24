@@ -192,6 +192,25 @@ export async function streamChatResponse(options: StreamOptions): Promise<void> 
     const summary = conversation.summary || undefined;
     const fullSystem = buildSystemPrompt(systemPrompt, character.name, summary);
 
+    // Build few-shot messages from creator's example dialogues
+    // Format stored in DB: [{id, messages:[{id, role:'character'|'user', content}]}]
+    type ExampleMsg = { role: 'character' | 'user'; content: string };
+    type ExampleDialogue = { id: string; messages: ExampleMsg[] };
+    const exampleDialogues = character.exampleDialogues as ExampleDialogue[] | null;
+    const fewShotMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+    if (exampleDialogues && exampleDialogues.length > 0) {
+      for (const example of exampleDialogues.slice(0, 3)) {
+        for (const msg of example.messages) {
+          if (msg.content?.trim()) {
+            fewShotMessages.push({
+              role: msg.role === 'user' ? 'user' : 'assistant',
+              content: msg.content,
+            });
+          }
+        }
+      }
+    }
+
     // Convert to Anthropic format, respecting context window
     const formattedHistory = selectContextMessages(
       historyMessages.map((m) => ({ role: m.role.toLowerCase(), content: m.content }))
@@ -217,6 +236,7 @@ export async function streamChatResponse(options: StreamOptions): Promise<void> 
         stream_options: { include_usage: true },
         messages: [
           { role: 'system', content: fullSystem },
+          ...fewShotMessages,
           ...formattedHistory,
         ],
       },

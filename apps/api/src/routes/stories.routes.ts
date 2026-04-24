@@ -1269,6 +1269,18 @@ export const storyRoutes: FastifyPluginAsync = async (fastify) => {
       reply.raw.setHeader('X-Accel-Buffering', 'no');
       reply.raw.flushHeaders();
 
+      // Few-shot: inject creator's story examples before conversation history
+      const storyExamples = await prismaRead.storyExample.findMany({
+        where: { storyId: conversation.storyId },
+        orderBy: { order: 'asc' },
+        take: 3,
+      });
+      const fewShotMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+      for (const ex of storyExamples) {
+        if (ex.userMessage?.trim()) fewShotMessages.push({ role: 'user', content: ex.userMessage });
+        if (ex.assistantMessage?.trim()) fewShotMessages.push({ role: 'assistant', content: ex.assistantMessage });
+      }
+
       const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [
         ...recentMessages.reverse().map((m: any) => ({
           role: (m.role === 'USER' ? 'user' : 'assistant') as 'user' | 'assistant',
@@ -1290,6 +1302,7 @@ export const storyRoutes: FastifyPluginAsync = async (fastify) => {
           stream_options: { include_usage: true },
           messages: [
             { role: 'system', content: systemPrompt },
+            ...fewShotMessages,
             ...messages,
           ],
         });

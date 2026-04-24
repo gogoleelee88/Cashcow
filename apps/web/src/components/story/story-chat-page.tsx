@@ -320,6 +320,12 @@ export function StoryChatPage({ storyId }: { storyId: string }) {
   const suggestedReplies: string[] = (startSettingsData?.data?.[0]?.suggestedReplies ?? [])
     .map((r: any) => (typeof r === 'string' ? r : r.text))
     .filter((r: string) => r.trim());
+  const playGuide: string = (startSettingsData?.data?.[0]?.playGuide ?? '').trim();
+
+  const [playGuideOpen, setPlayGuideOpen] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return localStorage.getItem(`playGuide-closed-${storyId}`) !== '1';
+  });
 
   // Messages
   const { data: msgData } = useQuery({
@@ -439,6 +445,36 @@ export function StoryChatPage({ storyId }: { storyId: string }) {
         <div className="flex-shrink-0 text-center py-3 border-b border-gray-100">
           <p className="text-[12px]" style={{ color: '#9ca3af' }}>이 대화는 AI로 생성된 가상의 이야기입니다</p>
         </div>
+
+        {/* 플레이 가이드 패널 */}
+        {playGuide && (
+          <div className="flex-shrink-0 border-b border-amber-100 bg-amber-50">
+            <button
+              onClick={() => {
+                const next = !playGuideOpen;
+                setPlayGuideOpen(next);
+                if (!next) localStorage.setItem(`playGuide-closed-${storyId}`, '1');
+                else localStorage.removeItem(`playGuide-closed-${storyId}`);
+              }}
+              className="w-full flex items-center justify-between px-6 py-2 text-amber-700 hover:bg-amber-100 transition-colors"
+            >
+              <span className="text-[12px] font-semibold flex items-center gap-1.5">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/>
+                </svg>
+                플레이 가이드
+              </span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d={playGuideOpen ? 'M4.5 15.75l7.5-7.5 7.5 7.5' : 'M19.5 8.25l-7.5 7.5-7.5-7.5'} />
+              </svg>
+            </button>
+            {playGuideOpen && (
+              <div className="px-6 pb-3">
+                <p className="text-[13px] text-amber-800 leading-relaxed whitespace-pre-wrap">{playGuide}</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 스크롤 영역 */}
         <div className="flex-1 overflow-y-auto">
