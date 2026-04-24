@@ -243,56 +243,89 @@ function SimpleDropdown<T extends string>({
   );
 }
 
+// 장르 탭 key 목록
+const GENRE_TAB_KEYS: TabKey[] = ['romance', 'rofan', 'sf-fantasy', 'martial', 'bl', 'simulation'];
+
+const GENRE_CATEGORY_MAP: Partial<Record<TabKey, string>> = {
+  romance: 'ROMANCE', rofan: 'ROFAN', 'sf-fantasy': 'SF_FANTASY',
+  martial: 'MARTIAL', bl: 'BL', simulation: 'SIMULATION',
+};
+
 // ── 탭별 콘텐츠 ───────────────────────────────────────────────────
-function RankingTabContent({ tabKey }: { tabKey: TabKey }) {
+function RankingTabContent({ tabKey, preferredGenres }: { tabKey: TabKey; preferredGenres: TabKey[] }) {
   const { activeProfile } = useProfileStore();
   const kidsFilter = activeProfile?.isKids ? { ageRating: 'ALL' } : {};
   const [period, setPeriod] = useState<Period>('daily');
   const [sort, setSort] = useState<SortOpt>('popular');
 
   const isRankingTab = tabKey === 'new-ranking' || tabKey === 'all-ranking';
+  const isGenreTab = GENRE_TAB_KEYS.includes(tabKey);
 
-  const queryParams = (): Record<string, unknown> => {
-    const base = { limit: 50, ...kidsFilter };
-    if (tabKey === 'recommended') return { ...base, sort: 'trending' };
-    if (tabKey === 'new-ranking') return { ...base, sort: sort === 'chats' ? 'trending' : sort === 'newest' ? 'newest' : 'trending', period };
-    if (tabKey === 'all-ranking') return { ...base, sort: 'trending', period };
-    if (tabKey === 'today-new') return { ...base, sort: 'newest' };
-    if (tabKey === 'female-popular') return { ...base, audienceTarget: 'FEMALE_ORIENTED', sort: 'trending' };
-    if (tabKey === 'romance') return { ...base, category: 'ROMANCE', sort: 'trending' };
-    if (tabKey === 'rofan') return { ...base, category: 'ROFAN', sort: 'trending' };
-    if (tabKey === 'sf-fantasy') return { ...base, category: 'SF_FANTASY', sort: 'trending' };
-    if (tabKey === 'martial') return { ...base, category: 'MARTIAL', sort: 'trending' };
-    if (tabKey === 'bl') return { ...base, category: 'BL', sort: 'trending' };
-    if (tabKey === 'simulation') return { ...base, category: 'SIMULATION', sort: 'trending' };
+  // 비장르 탭에서 선호장르가 설정된 경우 → 선호장르 병렬 쿼리로 필터링
+  const usePreferredFilter = preferredGenres.length > 0 && !isGenreTab;
+
+  const baseParams = (category?: string): Record<string, unknown> => {
+    const base: Record<string, unknown> = { limit: 50, ...kidsFilter };
+    if (category) base.category = category;
+    if (tabKey === 'today-new') base.sort = 'newest';
+    else if (tabKey === 'female-popular') { base.audienceTarget = 'FEMALE_ORIENTED'; base.sort = 'trending'; }
+    else base.sort = sort === 'newest' ? 'newest' : 'trending';
     return base;
   };
 
-  const useRankings = isRankingTab;
+  // 선호장르 병렬 쿼리 (비장르 탭 + 선호장르 설정 시)
+  const preferredResults = useQueries({
+    queries: usePreferredFilter
+      ? preferredGenres.map((g) => ({
+          queryKey: ['characters', tabKey, 'preferred', g, period, sort, activeProfile?.isKids],
+          queryFn: () => api.characters.list({ ...baseParams(GENRE_CATEGORY_MAP[g]), page: 1 }),
+          staleTime: 3 * 60 * 1000,
+        }))
+      : [],
+  });
 
+  // 일반 랭킹 쿼리 (랭킹 탭 + 선호장르 없을 때)
   const rankQuery = useQuery({
     queryKey: ['characters', 'rankings', tabKey, period, sort],
     queryFn: () => api.characters.rankings({ period, sort: sort === 'chats' ? 'chats' : sort === 'newest' ? 'newest' : 'chats', limit: 50 }),
-    enabled: useRankings,
+    enabled: isRankingTab && !usePreferredFilter,
     staleTime: 3 * 60 * 1000,
   });
 
+  // 일반 리스트 쿼리 (장르 탭 or 선호장르 없는 비장르 탭)
   const listQuery = useInfiniteQuery({
     queryKey: ['characters', tabKey, period, sort, activeProfile?.isKids],
-    queryFn: ({ pageParam = 1 }) => api.characters.list({ ...queryParams(), page: pageParam }),
+    queryFn: ({ pageParam = 1 }) => api.characters.list({
+      ...baseParams(GENRE_CATEGORY_MAP[tabKey]),
+      page: pageParam,
+    }),
     getNextPageParam: (last: any) => last?.meta?.hasMore ? (last.meta.page + 1) : undefined,
     initialPageParam: 1,
-    enabled: !useRankings,
+    enabled: !usePreferredFilter && !(isRankingTab),
     staleTime: 3 * 60 * 1000,
   });
 
-  const rankingChars: CharacterListItem[] = useRankings
-    ? (rankQuery.data?.data ?? [])
-    : listQuery.data?.pages.flatMap((p: any) => p.data ?? []) ?? [];
+  // 최종 캐릭터 목록 결정
+  let characters: CharacterListItem[] = [];
+  let isLoading = false;
+  let hasNextPage = false;
+  let isFetchingNextPage = false;
 
-  const isLoading = useRankings ? rankQuery.isLoading : listQuery.isLoading;
-  const hasNextPage = !useRankings && listQuery.hasNextPage;
-  const isFetchingNextPage = !useRankings && listQuery.isFetchingNextPage;
+  if (usePreferredFilter) {
+    isLoading = preferredResults.some((r) => r.isLoading);
+    characters = preferredResults
+      .flatMap((r: any) => r.data?.data ?? [])
+      .filter((c: CharacterListItem, i: number, arr: CharacterListItem[]) => arr.findIndex((x) => x.id === c.id) === i)
+      .sort((a: CharacterListItem, b: CharacterListItem) => (b.chatCount ?? 0) - (a.chatCount ?? 0));
+  } else if (isRankingTab) {
+    isLoading = rankQuery.isLoading;
+    characters = rankQuery.data?.data ?? [];
+  } else {
+    isLoading = listQuery.isLoading;
+    characters = listQuery.data?.pages.flatMap((p: any) => p.data ?? []) ?? [];
+    hasNextPage = !!listQuery.hasNextPage;
+    isFetchingNextPage = listQuery.isFetchingNextPage;
+  }
 
   return (
     <div>
@@ -300,19 +333,9 @@ function RankingTabContent({ tabKey }: { tabKey: TabKey }) {
       <div className="flex items-center justify-between mb-4 py-2 border-b border-gray-100">
         <div className="flex items-center gap-0.5">
           {isRankingTab && (
-            <SimpleDropdown
-              value={period}
-              options={['daily', 'weekly', 'monthly']}
-              labels={PERIOD_LABELS}
-              onChange={setPeriod}
-            />
+            <SimpleDropdown value={period} options={['daily', 'weekly', 'monthly']} labels={PERIOD_LABELS} onChange={setPeriod} />
           )}
-          <SimpleDropdown
-            value={sort}
-            options={['popular', 'newest', 'chats']}
-            labels={SORT_LABELS}
-            onChange={setSort}
-          />
+          <SimpleDropdown value={sort} options={['popular', 'newest', 'chats']} labels={SORT_LABELS} onChange={setSort} />
         </div>
         <button className="p-1.5 text-gray-400 hover:text-gray-600 transition-colors">
           <Info className="w-4 h-4" />
@@ -323,14 +346,12 @@ function RankingTabContent({ tabKey }: { tabKey: TabKey }) {
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-x-3 gap-y-5">
         {isLoading
           ? Array.from({ length: 20 }).map((_, i) => <GridCardSkeleton key={i} />)
-          : rankingChars.map((c, i) => (
-              <RankingGridCard key={c.id} character={c} rank={i + 1} index={i} showRank={isRankingTab} />
+          : characters.map((c, i) => (
+              <RankingGridCard key={c.id} character={c} rank={i + 1} index={i} showRank={isRankingTab && !usePreferredFilter} />
             ))
         }
-        {!isLoading && rankingChars.length === 0 && (
-          <p className="col-span-5 text-center text-gray-400 text-sm py-16">
-            아직 콘텐츠가 없습니다.
-          </p>
+        {!isLoading && characters.length === 0 && (
+          <p className="col-span-5 text-center text-gray-400 text-sm py-16">아직 콘텐츠가 없습니다.</p>
         )}
       </div>
 
@@ -413,54 +434,6 @@ function GenrePreferencePanel({
           <X className="w-4 h-4" />
         </button>
       </div>
-    </div>
-  );
-}
-
-// ── 선호장르 탭 콘텐츠 (병렬 쿼리로 선택된 장르 합산) ─────────────
-function PreferredGenreContent({ genres }: { genres: TabKey[] }) {
-  const { activeProfile } = useProfileStore();
-  const kidsFilter = activeProfile?.isKids ? { ageRating: 'ALL' } : {};
-  const openPreview = usePreview();
-
-  const categoryMap: Record<string, string> = {
-    romance: 'ROMANCE', rofan: 'ROFAN', 'sf-fantasy': 'SF_FANTASY',
-    martial: 'MARTIAL', bl: 'BL', simulation: 'SIMULATION',
-  };
-
-  const results = useQueries({
-    queries: genres.map((g) => ({
-      queryKey: ['characters', 'preferred', g, activeProfile?.isKids],
-      queryFn: () => api.characters.list({ category: categoryMap[g], limit: 20, sort: 'trending', ...kidsFilter }),
-      staleTime: 3 * 60 * 1000,
-    })),
-  });
-
-  const isLoading = results.some((r) => r.isLoading);
-  const characters: CharacterListItem[] = results
-    .flatMap((r: any) => r.data?.data ?? [])
-    .filter((c: CharacterListItem, i: number, arr: CharacterListItem[]) => arr.findIndex((x) => x.id === c.id) === i)
-    .sort((a: CharacterListItem, b: CharacterListItem) => (b.chatCount ?? 0) - (a.chatCount ?? 0));
-
-  if (genres.length === 0) return (
-    <div className="flex items-center justify-center py-20 text-gray-400 text-sm">
-      선호장르를 설정해 주세요.
-    </div>
-  );
-
-  return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-x-3 gap-y-5 mt-4">
-      {isLoading
-        ? Array.from({ length: 10 }).map((_, i) => <GridCardSkeleton key={i} />)
-        : characters.map((c, i) => (
-            <RankingGridCard key={c.id} character={c} rank={i + 1} index={i} showRank={false} />
-          ))
-      }
-      {!isLoading && characters.length === 0 && (
-        <p className="col-span-5 text-center text-gray-400 text-sm py-16">
-          해당 장르의 캐릭터가 없습니다.
-        </p>
-      )}
     </div>
   );
 }
@@ -596,10 +569,10 @@ function ConvItem({ conv }: { conv: any }) {
 
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────
 export function CharacterPageContent() {
-  const [activeTab, setActiveTab] = useState<TabKey | 'preferred'>('new-ranking');
+  const [activeTab, setActiveTab] = useState<TabKey>('new-ranking');
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [genrePanelOpen, setGenrePanelOpen] = useState(false);
-  const { genres: preferredGenres, save: saveGenres, syncing } = usePreferredGenres();
+  const { genres: preferredGenres, save: saveGenres } = usePreferredGenres();
   const panelRef = useRef<HTMLDivElement>(null);
 
   // 패널 외부 클릭 시 닫기
@@ -615,50 +588,39 @@ export function CharacterPageContent() {
 
   const handleSaveGenres = async (next: TabKey[]) => {
     await saveGenres(next);
-    if (next.length > 0) setActiveTab('preferred');
+    // 현재 탭이 장르 탭인데 선호장르에서 빠졌으면 기본 탭으로
+    if (GENRE_TAB_KEYS.includes(activeTab) && next.length > 0 && !next.includes(activeTab)) {
+      setActiveTab('new-ranking');
+    }
   };
 
-  const renderContent = useCallback(() => {
-    if (activeTab === 'preferred') return <PreferredGenreContent genres={preferredGenres} />;
-    return <RankingTabContent key={activeTab} tabKey={activeTab as TabKey} />;
-  }, [activeTab, preferredGenres]);
+  // 표시할 탭: 선호장르 설정 시 → 장르 탭은 선호장르만 표시
+  const visibleTabs = preferredGenres.length > 0
+    ? TABS.filter((t) => !GENRE_TAB_KEYS.includes(t.key) || preferredGenres.includes(t.key))
+    : TABS;
+
+  const renderContent = useCallback(() => (
+    <RankingTabContent key={activeTab} tabKey={activeTab} preferredGenres={preferredGenres} />
+  ), [activeTab, preferredGenres]);
 
   return (
     <PreviewContext.Provider value={setPreviewId}>
       <CharacterPreviewModal characterId={previewId} onClose={() => setPreviewId(null)} />
 
       <div className="flex min-h-[calc(100vh-56px)] bg-white">
-        {/* 왼쪽 채팅 내역 사이드바 */}
         <ChatHistorySidebar />
 
-        {/* 메인 콘텐츠 */}
         <main className="flex-1 min-w-0 px-6 py-4">
-          {/* 가로 스크롤 필터 탭 + 선호장르 버튼 */}
+          {/* 탭 + 선호장르 버튼 */}
           <div className="flex items-center gap-1.5 mb-0 pb-3 border-b border-gray-100">
             <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-1 min-w-0">
-              {/* 선호장르 탭 (설정 시 표시) */}
-              {preferredGenres.length > 0 && (
-                <button
-                  onClick={() => setActiveTab('preferred')}
-                  className={cn(
-                    'flex-shrink-0 px-4 py-1.5 rounded-full text-[13px] font-semibold transition-all whitespace-nowrap',
-                    activeTab === 'preferred'
-                      ? 'bg-brand text-white'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  )}
-                >
-                  선호장르
-                </button>
-              )}
-              {TABS.map(({ key, label }) => (
+              {visibleTabs.map(({ key, label }) => (
                 <button
                   key={key}
                   onClick={() => setActiveTab(key)}
                   className={cn(
                     'flex-shrink-0 px-4 py-1.5 rounded-full text-[13px] font-semibold transition-all whitespace-nowrap',
-                    activeTab === key
-                      ? 'bg-brand text-white'
-                      : 'text-gray-600 hover:bg-gray-100'
+                    activeTab === key ? 'bg-brand text-white' : 'text-gray-600 hover:bg-gray-100'
                   )}
                 >
                   {label}
@@ -700,7 +662,6 @@ export function CharacterPageContent() {
             </div>
           </div>
 
-          {/* 탭 콘텐츠 */}
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
