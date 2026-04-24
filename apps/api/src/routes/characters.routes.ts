@@ -596,7 +596,17 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
       const filename = `${userId}/${randomBytes(16).toString('hex')}.${ext}`;
       const key = `${folder}/${filename}`;
 
-      const url = await uploadBufferToStorage(fileBuffer, folder as any, filename, mimetype);
+      let url: string;
+      try {
+        url = await uploadBufferToStorage(fileBuffer, folder as any, filename, mimetype);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error({ err, userId, key, size: fileBuffer.length }, 'Character image upload to storage failed');
+        return reply.code(500).send({
+          success: false,
+          error: { code: 'STORAGE_ERROR', message: msg },
+        });
+      }
 
       logger.info({ userId, key, size: fileBuffer.length }, 'Character image uploaded to Supabase');
       return reply.send({ success: true, data: { url, key } });

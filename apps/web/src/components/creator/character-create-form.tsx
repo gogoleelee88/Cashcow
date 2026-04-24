@@ -14,6 +14,7 @@ import { apiClient } from '../../lib/api';
 import { cn } from '../../lib/utils';
 import { toast } from '../ui/toaster';
 import { useAuthStore } from '../../stores/auth.store';
+import { ImageCropModal } from '../ui/image-crop-modal';
 
 // ─────────────────────────────────────────────
 // TABS
@@ -827,6 +828,8 @@ export function CharacterCreateForm() {
   const [uploadDone, setUploadDone] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [imageKey, setImageKey] = useState<string | null>(null);
+  const [rawAvatarSrc, setRawAvatarSrc] = useState<string | null>(null);
+  const [showAvatarCropper, setShowAvatarCropper] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const xhrRef = useRef<{ abort: () => void } | null>(null);
@@ -922,8 +925,10 @@ export function CharacterCreateForm() {
 
   // ── 페이지 진입 시 초안 확인 ──
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  const checkedDraftRef = useRef(false);
   useEffect(() => {
-    if (!user) return;
+    if (!user || checkedDraftRef.current) return;
+    checkedDraftRef.current = true;
     api.characters.getDraft()
       .then((res: any) => {
         if (res?.data?.data) {
@@ -932,7 +937,7 @@ export function CharacterCreateForm() {
         }
       })
       .catch(() => {}); // 초안 없으면 404 — 무시
-  }, []);
+  }, [user]);
 
   // ── 초안 저장 함수 ──
   const saveDraft = useCallback(async () => {
@@ -948,7 +953,10 @@ export function CharacterCreateForm() {
         previewImage,
         imageKey,
       });
-    } catch { /* 실패해도 무시 */ } finally {
+      toast.success('임시저장 되었습니다');
+    } catch {
+      toast.error('임시저장에 실패했습니다');
+    } finally {
       setIsSavingDraft(false);
     }
   }, [formData, systemContext, introMsgs, examples, playGuide, previewImage, imageKey, user]);
@@ -1031,7 +1039,7 @@ export function CharacterCreateForm() {
     (xhrRef as any).current = { abort: () => controller.abort() };
 
     apiClient.post('/api/characters/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 'Content-Type': undefined },
       signal: controller.signal,
       onUploadProgress: (e) => {
         if (e.total) setUploadProgress(Math.round((e.loaded / e.total) * 100));
@@ -1072,7 +1080,18 @@ export function CharacterCreateForm() {
     e.preventDefault(); e.stopPropagation();
     setIsDragging(false);
     const file = e.dataTransfer.files?.[0];
-    if (file) handleImageUpload(file);
+    if (file) {
+      setRawAvatarSrc(URL.createObjectURL(file));
+      setShowAvatarCropper(true);
+    }
+  }, []);
+
+  const handleAvatarCropConfirm = useCallback((_blobUrl: string, _dataUrl: string, blob: Blob) => {
+    setShowAvatarCropper(false);
+    setRawAvatarSrc(null);
+    setPreviewImage(URL.createObjectURL(blob));
+    const file = new File([blob], 'avatar.jpg', { type: 'image/jpeg' });
+    handleImageUpload(file);
   }, [handleImageUpload]);
 
   // Tag handling
@@ -1565,16 +1584,16 @@ export function CharacterCreateForm() {
       {/* ── 뒤로가기 확인 다이얼로그 ── */}
       {showLeaveDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-2xl shadow-2xl w-[340px] p-7">
-            <h3 className="text-gray-900 font-bold text-base text-center mb-2">저장하지 않은 변경사항이 있어요</h3>
-            <p className="text-gray-400 text-sm text-center mb-6">이전에 저장하지 않은 변경사항을<br />불러올까요?</p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowLeaveDialog(false)}
-                className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50 transition-colors"
-              >
-                취소
-              </button>
+          <div className="relative bg-white rounded-2xl shadow-2xl w-[340px] p-7">
+            <button
+              onClick={() => setShowLeaveDialog(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-gray-900 font-bold text-base text-center mb-2">지금 나가면 내용이 사라져요</h3>
+            <p className="text-gray-400 text-sm text-center mb-6">임시저장하면 나중에 이어서<br />캐릭터를 만들 수 있어요</p>
+            <div className="flex flex-col gap-2">
               <button
                 onClick={async () => {
                   await saveDraft();
@@ -1582,10 +1601,16 @@ export function CharacterCreateForm() {
                   router.back();
                 }}
                 disabled={isSavingDraft}
-                className="flex-1 py-3 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                className="w-full py-3 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
               >
                 {isSavingDraft ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                불러오기
+                임시저장 후 나가기
+              </button>
+              <button
+                onClick={() => { setShowLeaveDialog(false); router.back(); }}
+                className="w-full py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50 transition-colors"
+              >
+                그냥 나가기
               </button>
             </div>
           </div>
@@ -1596,8 +1621,8 @@ export function CharacterCreateForm() {
       {showRestoreDraftDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-2xl shadow-2xl w-[320px] p-6">
-            <h3 className="text-gray-900 font-bold text-base text-center mb-2">저장하지 않은 변경사항이 있어요</h3>
-            <p className="text-gray-400 text-sm text-center mb-6">이전에 저장하지 않은 변경사항을<br />불러올까요?</p>
+            <h3 className="text-gray-900 font-bold text-base text-center mb-2">임시저장된 내용이 있어요</h3>
+            <p className="text-gray-400 text-sm text-center mb-6">이전에 작성하다 저장한 내용을<br />이어서 작성하시겠어요?</p>
             <div className="flex gap-3">
               <button
                 onClick={async () => {
@@ -1607,7 +1632,7 @@ export function CharacterCreateForm() {
                 }}
                 className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors"
               >
-                취소
+                새로 시작
               </button>
               <button
                 onClick={async () => {
@@ -1617,7 +1642,7 @@ export function CharacterCreateForm() {
                 }}
                 className="flex-1 py-2.5 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors"
               >
-                불러오기
+                이어서 작성
               </button>
             </div>
           </div>
@@ -1639,7 +1664,12 @@ export function CharacterCreateForm() {
           </button>
         </div>
         <div className="flex items-center gap-2">
-          <button className="px-4 py-1.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors">
+          <button
+            onClick={saveDraft}
+            disabled={isSavingDraft}
+            className="px-4 py-1.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50 flex items-center gap-1"
+          >
+            {isSavingDraft && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             임시저장
           </button>
           <button className="p-2 rounded-xl border border-gray-200 text-gray-400 hover:bg-gray-50 transition-colors">
@@ -1772,7 +1802,7 @@ export function CharacterCreateForm() {
                         type="file"
                         accept="image/jpeg,image/png,image/webp,image/gif"
                         className="hidden"
-                        onChange={(e) => { const f = e.target.files?.[0]; if (f) { handleImageUpload(f); e.target.value = ''; } }}
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) { setRawAvatarSrc(URL.createObjectURL(f)); setShowAvatarCropper(true); e.target.value = ''; } }}
                       />
 
                       {/* 우측 설명 + 버튼 */}
@@ -3041,6 +3071,16 @@ export function CharacterCreateForm() {
           previewImage={previewImage}
           characterName={formData.name}
           messages={previewMessages}
+        />
+      )}
+
+      {/* 아바타 이미지 크롭 모달 */}
+      {showAvatarCropper && rawAvatarSrc && (
+        <ImageCropModal
+          imageSrc={rawAvatarSrc}
+          aspect={1}
+          onConfirm={handleAvatarCropConfirm}
+          onCancel={() => { setShowAvatarCropper(false); setRawAvatarSrc(null); }}
         />
       )}
     </div>
