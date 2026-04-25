@@ -230,7 +230,7 @@ export async function extractEpisodicMemory(conversationId: string): Promise<voi
   ]);
   if (!conversation || messages.length < 10) return;
 
-  const existing = (conversation.episodicMemory as EpisodicMemory | null) ?? {
+  const existing = (conversation.episodicMemory as unknown as EpisodicMemory | null) ?? {
     userFacts: {}, keyEvents: [], relationshipMilestones: [],
   };
 
@@ -446,7 +446,7 @@ export async function streamChatResponse(options: StreamOptions): Promise<void> 
 
     const fullSystem = buildSystemPrompt(systemPrompt, character.name, {
       conversationSummary: conversation.summary ?? undefined,
-      episodicMemory: (conversation.episodicMemory as EpisodicMemory | null) ?? null,
+      episodicMemory: (conversation.episodicMemory as unknown as EpisodicMemory | null) ?? null,
       relationshipLevel: (conversation as any).relationshipLevel ?? 0,
       emotionalTone: (conversation as any).emotionalTone ?? null,
       lastSessionSummary: (conversation as any).lastSessionSummary ?? null,
