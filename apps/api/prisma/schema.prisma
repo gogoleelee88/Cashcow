@@ -305,7 +305,11 @@ model Character {
   systemPromptEncrypted String             @db.Text  // AES-256-GCM encrypted
   systemPromptIv       String              // IV for decryption
   greeting             String              @db.Text
+  prologue             String?             @db.Text  // 채팅 시작 시 SceneOpening에 표시되는 프롤로그
   exampleDialogues     Json?               // [{id, messages:[{id,role,content}]}]
+  playGuide            String?             @db.Text
+  suggestedReplies     Json?               // string[]
+  situationImages      Json?               // [{id, url, triggerKeywords:string[], description}] 최대 50개
   avatarUrl            String?
   avatarKey            String?             // S3 key
   backgroundUrl        String?
@@ -412,20 +416,25 @@ model CharacterFavorite {
 // CONVERSATIONS & MESSAGES
 // ─────────────────────────────────────────────
 model Conversation {
-  id           String    @id @default(cuid())
-  characterId  String
-  userId       String
-  title        String?
-  isPinned     Boolean   @default(false)
-  messageCount Int       @default(0)
-  tokenCount   Int       @default(0)
-  summary      String?   @db.Text   // Compressed memory summary
-  summaryAt    DateTime?
-  lastMessageAt DateTime?
-  isActive     Boolean   @default(true)
-  metadata     Json?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id                  String    @id @default(cuid())
+  characterId         String
+  userId              String
+  title               String?
+  isPinned            Boolean   @default(false)
+  messageCount        Int       @default(0)
+  tokenCount          Int       @default(0)
+  summary             String?   @db.Text   // 단기 압축 요약
+  summaryAt           DateTime?
+  episodicMemory      Json?               // 중기 기억: {userFacts, keyEvents, relationshipMilestones}
+  episodicUpdatedAt   DateTime?
+  relationshipLevel   Int       @default(0)  // 친밀도 0~100
+  emotionalTone       String?              // "따뜻함", "긴장", "설렘" 등
+  lastSessionSummary  String?   @db.Text  // 지난 세션 요약 (재진입 시 인사에 활용)
+  lastMessageAt       DateTime?
+  isActive            Boolean   @default(true)
+  metadata            Json?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   character    Character @relation(fields: [characterId], references: [id])
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -472,6 +481,23 @@ model CharacterMemory {
 
   @@index([characterId, userId])
   @@map("character_memories")
+}
+
+// 다중 대화 간 기억 공유 — 같은 (유저 × 캐릭터) 쌍의 기억은 새 대화방을 만들어도 이어짐
+model UserCharacterMemory {
+  id                  String    @id @default(cuid())
+  userId              String
+  characterId         String
+  cumulativeSummary   String?   @db.Text   // 누적 기억
+  userProfile         Json?               // 유저 팩트 JSON {name, age, likes, dislikes}
+  totalInteractions   Int       @default(0)
+  firstMetAt          DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([userId, characterId])
+  @@index([userId])
+  @@index([characterId])
+  @@map("user_character_memories")
 }
 
 // ─────────────────────────────────────────────

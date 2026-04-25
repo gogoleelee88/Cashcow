@@ -339,6 +339,7 @@ function ChatWindow({
   });
 
   const [localMessages, setLocalMessages] = useState<ChatMessage[]>([]);
+  const [situationImage, setSituationImage] = useState<{ imageId: string; imageUrl: string } | null>(null);
   useEffect(() => { if (messagesData?.data) setLocalMessages(messagesData.data); }, [messagesData?.data]);
 
   const scrollToBottom = useCallback((smooth = true) => {
@@ -382,9 +383,11 @@ function ChatWindow({
         queryClient.invalidateQueries({ queryKey: ['conversations'] });
         queryClient.setQueryData(['user'], (old: any) => old ? { ...old, creditBalance: remainingCredits } : old);
       },
+      onImage: (data) => { setSituationImage(data); },
       onError: (message) => {
         setIsStreaming(false);
         setStreamingContent('');
+        setSituationImage(null);
         setLocalMessages((prev) => [
           ...prev,
           { id: `error-${Date.now()}`, conversationId, role: 'ASSISTANT', content: message, status: 'ERROR', createdAt: new Date().toISOString() },
@@ -487,6 +490,9 @@ function ChatWindow({
         </div>
       )}
 
+      {/* ── 플레이 가이드 패널 ── */}
+      {character?.playGuide && <PlayGuidePanel text={character.playGuide as string} characterId={character.id} />}
+
       {/* ── 메시지 영역 ── */}
       <div
         className={cn(
@@ -530,6 +536,15 @@ function ChatWindow({
                       ? <StoryBlock content={streamingContent} characterName={character?.name} isStreaming />
                       : <TypingIndicator />
                     }
+                  </motion.div>
+                )}
+                {situationImage && !isStreaming && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.97 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="mb-8"
+                  >
+                    <SituationImageCard imageUrl={situationImage.imageUrl} onClose={() => setSituationImage(null)} />
                   </motion.div>
                 )}
               </>
@@ -600,6 +615,7 @@ function ChatWindow({
           sendMessage={sendMessage}
           stopStreaming={stopStreaming}
           insertNarration={insertNarration}
+          suggestOptions={Array.isArray(character?.suggestedReplies) ? character.suggestedReplies as string[] : undefined}
         />
       ) : (
         <KakaoInputBar
@@ -613,6 +629,7 @@ function ChatWindow({
           sendMessage={sendMessage}
           stopStreaming={stopStreaming}
           insertNarration={insertNarration}
+          suggestOptions={Array.isArray(character?.suggestedReplies) ? character.suggestedReplies as string[] : undefined}
         />
       )}
     </div>
@@ -636,6 +653,11 @@ function SceneOpening({ character, greeting }: { character: any; greeting: strin
       {character.avatarUrl && (
         <div className="relative w-full rounded-xl overflow-hidden mb-6 bg-gray-50" style={{ aspectRatio: '3/4', maxHeight: '420px' }}>
           <Image src={character.avatarUrl} alt={character.name} fill className="object-cover" sizes="640px" />
+        </div>
+      )}
+      {character.prologue && (
+        <div className="mb-6 px-4 py-3 rounded-xl bg-gray-50 border border-gray-100">
+          <p className="text-[13px] text-gray-500 leading-[1.9] whitespace-pre-wrap italic">{character.prologue}</p>
         </div>
       )}
       <StoryBlock content={greeting} characterName={character.name} />
@@ -837,8 +859,9 @@ function KakaoTypingIndicator() {
 // ── 스토리 입력바 ─────────────────────────────────────────────────
 function StoryInputBar({
   inputValue, setInputValue, isStreaming, showSuggest, setShowSuggest,
-  inputRef, handleKeyDown, sendMessage, stopStreaming, insertNarration,
+  inputRef, handleKeyDown, sendMessage, stopStreaming, insertNarration, suggestOptions,
 }: InputBarProps) {
+  const options = (suggestOptions && suggestOptions.length > 0) ? suggestOptions : DEFAULT_SUGGEST_OPTIONS;
   return (
     <div className="flex-shrink-0 bg-white border-t border-gray-100 px-5 py-3">
       <div className="max-w-[640px] mx-auto">
@@ -848,7 +871,7 @@ function StoryInputBar({
               initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }}
               className="mb-2 flex flex-wrap gap-1.5"
             >
-              {SUGGEST_OPTIONS.map((s) => (
+              {options.map((s) => (
                 <button
                   key={s}
                   onClick={() => { setInputValue(s); setShowSuggest(false); inputRef.current?.focus(); }}
@@ -922,8 +945,9 @@ function StoryInputBar({
 // ── 카카오 입력바 ─────────────────────────────────────────────────
 function KakaoInputBar({
   inputValue, setInputValue, isStreaming, showSuggest, setShowSuggest,
-  inputRef, handleKeyDown, sendMessage, stopStreaming, insertNarration,
+  inputRef, handleKeyDown, sendMessage, stopStreaming, insertNarration, suggestOptions,
 }: InputBarProps) {
+  const options = (suggestOptions && suggestOptions.length > 0) ? suggestOptions : DEFAULT_SUGGEST_OPTIONS;
   return (
     <div className="flex-shrink-0 bg-white" style={{ borderTop: '1px solid #e5e5e5' }}>
       {/* 추천답변 pills */}
@@ -933,7 +957,7 @@ function KakaoInputBar({
             initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }}
             className="px-4 pt-2.5 flex flex-wrap gap-1.5"
           >
-            {SUGGEST_OPTIONS.map((s) => (
+            {options.map((s) => (
               <button
                 key={s}
                 onClick={() => { setInputValue(s); setShowSuggest(false); inputRef.current?.focus(); }}
@@ -1019,7 +1043,7 @@ function KakaoInputBar({
 }
 
 // ── 공통 타입 ─────────────────────────────────────────────────────
-const SUGGEST_OPTIONS = ['네, 맞아요.', '계속 이야기해 주세요.', '흥미롭네요!', '더 자세히 알려주세요.'];
+const DEFAULT_SUGGEST_OPTIONS = ['네, 맞아요.', '계속 이야기해 주세요.', '흥미롭네요!', '더 자세히 알려주세요.'];
 
 interface InputBarProps {
   inputValue: string;
@@ -1032,6 +1056,64 @@ interface InputBarProps {
   sendMessage: () => void;
   stopStreaming: () => void;
   insertNarration: () => void;
+  suggestOptions?: string[];
+}
+
+// ── 플레이 가이드 패널 ───────────────────────────────────────────────
+function PlayGuidePanel({ text, characterId }: { text: string; characterId?: string }) {
+  const lsKey = characterId ? `playGuide-closed-${characterId}` : null;
+  const [open, setOpen] = useState(() => {
+    if (!lsKey || typeof window === 'undefined') return true;
+    return localStorage.getItem(lsKey) !== 'true';
+  });
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (lsKey) localStorage.setItem(lsKey, next ? 'false' : 'true');
+  };
+
+  return (
+    <div className="flex-shrink-0 border-b border-blue-100 bg-blue-50">
+      <button
+        type="button"
+        onClick={toggle}
+        className="w-full flex items-center gap-2 px-4 py-2.5 text-left"
+      >
+        <BookOpen className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
+        <span className="text-[12px] font-semibold text-blue-600 flex-1">플레이 가이드</span>
+        <ChevronDown className={cn('w-3.5 h-3.5 text-blue-400 transition-transform', open ? '' : '-rotate-90')} />
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <p className="px-4 pb-3 text-[12px] text-blue-700 leading-relaxed whitespace-pre-wrap">{text}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ── 상황 이미지 카드 (Phase 3 킬러 기능) ───────────────────────────
+function SituationImageCard({ imageUrl, onClose }: { imageUrl: string; onClose: () => void }) {
+  return (
+    <div className="relative rounded-xl overflow-hidden bg-gray-50 border border-gray-100" style={{ aspectRatio: '3/4', maxHeight: '400px' }}>
+      <Image src={imageUrl} alt="상황 이미지" fill className="object-cover" sizes="640px" />
+      <button
+        onClick={onClose}
+        className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/40 flex items-center justify-center text-white text-[12px] hover:bg-black/60 transition-colors"
+      >
+        ✕
+      </button>
+    </div>
+  );
 }
 
 // ── 빈 상태 ───────────────────────────────────────────────────────

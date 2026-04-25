@@ -894,7 +894,9 @@ export function CharacterCreateForm() {
   const [editingExMsgId, setEditingExMsgId] = useState<string | null>(null);
   const [editingExMsgContent, setEditingExMsgContent] = useState('');
   const [isAutoCompleting, setIsAutoCompleting] = useState(false);
+  const [prologue, setPrologue] = useState('');
   const [playGuide, setPlayGuide] = useState('');
+  const [suggestedReplies, setSuggestedReplies] = useState<string[]>(['', '', '', '']);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -952,7 +954,9 @@ export function CharacterCreateForm() {
         systemContext,
         introMsgs,
         examples,
+        prologue,
         playGuide,
+        suggestedReplies,
         previewImage,
         imageKey,
       });
@@ -962,7 +966,7 @@ export function CharacterCreateForm() {
     } finally {
       setIsSavingDraft(false);
     }
-  }, [formData, systemContext, introMsgs, examples, playGuide, previewImage, imageKey, user]);
+  }, [formData, systemContext, introMsgs, examples, prologue, playGuide, suggestedReplies, previewImage, imageKey, user]);
 
   // ── 초안 복원 함수 ──
   const restoreDraft = useCallback(async () => {
@@ -974,7 +978,9 @@ export function CharacterCreateForm() {
       if (d.systemContext) setSystemContext(d.systemContext);
       if (d.introMsgs) setIntroMsgs(d.introMsgs);
       if (d.examples) setExamples(d.examples);
+      if (d.prologue) setPrologue(d.prologue);
       if (d.playGuide) setPlayGuide(d.playGuide);
+      if (d.suggestedReplies) setSuggestedReplies(d.suggestedReplies);
       if (d.previewImage) setPreviewImage(d.previewImage);
       if (d.imageKey) setImageKey(d.imageKey);
     } catch { /* 무시 */ }
@@ -1114,7 +1120,20 @@ export function CharacterCreateForm() {
         detailDescription: formData.detailDescription || undefined,
         systemPrompt: formData.systemPrompt,
         greeting: formData.greeting,
+        prologue: prologue.trim() || undefined,
         exampleDialogues: examples.filter(e => e.messages.length > 0),
+        playGuide: playGuide || undefined,
+        suggestedReplies: suggestedReplies.filter(r => r.trim()).length > 0
+          ? suggestedReplies.filter(r => r.trim())
+          : undefined,
+        situationImages: situationImages
+          .filter(img => img.url && img.situation.trim())
+          .map(img => ({
+            id: img.id,
+            url: img.url,
+            description: img.situation,
+            triggerKeywords: img.situation.split(/[\s,]+/).filter(Boolean).slice(0, 10),
+          })),
         category: formData.category,
         tags: formData.tags,
         visibility: formData.visibility,
@@ -1477,7 +1496,7 @@ export function CharacterCreateForm() {
                     setPreviewImage(selected.urls[0]);
                   } else {
                     if (situationImages.length >= 50) { toast.error('최대 50개까지 추가할 수 있어요.'); return; }
-                    setSituationImages((prev) => [...prev, { id: selected.id, url: selected.urls[0], name: selected.prompt || '라이브러리 이미지' }]);
+                    setSituationImages((prev) => [...prev, { id: selected.id, url: selected.urls[0], name: selected.prompt || '라이브러리 이미지', situation: '', hint: '', collapsed: false }]);
                   }
                   setShowLibraryModal(false);
                   setSelectedLibraryId(null);
@@ -1977,6 +1996,29 @@ export function CharacterCreateForm() {
 
                   <div className="border-t border-gray-100" />
 
+                  {/* 프롤로그 섹션 */}
+                  <div className="p-6">
+                    <span className="text-gray-900 font-semibold text-sm block mb-1">프롤로그</span>
+                    <p className="text-gray-400 text-xs mb-3">
+                      채팅 시작 전 화면에 표시되는{' '}
+                      <span className="text-blue-400">배경 설명 텍스트</span>입니다. 세계관·상황을 간략히 소개해 보세요.
+                    </p>
+                    <div className="relative">
+                      <textarea
+                        value={prologue}
+                        onChange={(e) => setPrologue(e.target.value.slice(0, 2000))}
+                        placeholder="예) 어두운 왕궁의 복도, 낯선 자가 당신 앞에 나타납니다..."
+                        rows={3}
+                        className="w-full px-4 py-3 rounded-xl border border-gray-200 text-gray-900 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 resize-none"
+                      />
+                      <span className="absolute right-4 bottom-3 text-gray-300 text-xs">
+                        {prologue.length} / 2000
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-gray-100" />
+
                   {/* 예시 섹션 */}
                   <div className="p-6">
                     <div className="flex items-center gap-2 mb-1">
@@ -2049,6 +2091,40 @@ export function CharacterCreateForm() {
                       <span className="absolute right-4 bottom-3 text-gray-300 text-xs">
                         {playGuide.length} / 1000
                       </span>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-gray-100" />
+
+                  {/* 추천 답변 섹션 */}
+                  <div className="p-6">
+                    <span className="text-gray-900 font-semibold text-sm block mb-1">추천 답변</span>
+                    <p className="text-gray-400 text-xs mb-3">
+                      채팅창에 표시되는 <span className="text-blue-400">빠른 답변 버튼</span>을 설정하세요. 비워두면 기본 버튼이 사용됩니다.
+                    </p>
+                    <div className="flex flex-col gap-2">
+                      {suggestedReplies.map((reply, idx) => (
+                        <div key={idx} className="relative">
+                          <input
+                            type="text"
+                            value={reply}
+                            maxLength={100}
+                            onChange={(e) => setSuggestedReplies(prev => prev.map((r, i) => i === idx ? e.target.value : r))}
+                            placeholder={`추천 답변 ${idx + 1}`}
+                            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-gray-900 text-sm placeholder:text-gray-300 focus:outline-none focus:border-gray-400 pr-16"
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 text-xs">{reply.length}/100</span>
+                        </div>
+                      ))}
+                      {suggestedReplies.length < 10 && (
+                        <button
+                          type="button"
+                          onClick={() => setSuggestedReplies(prev => [...prev, ''])}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-50 hover:bg-gray-100 rounded-xl text-gray-500 text-sm font-medium transition-colors"
+                        >
+                          + 추천 답변 추가
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>

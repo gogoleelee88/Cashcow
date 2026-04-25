@@ -522,6 +522,7 @@ export function streamChatMessage(
     onDelta: (text: string) => void;
     onDone: (data: { messageId: string; creditCost: number; remainingCredits: number }) => void;
     onError: (message: string) => void;
+    onImage?: (data: { imageId: string; imageUrl: string }) => void;
     signal?: AbortSignal;
   }
 ): void {
@@ -605,6 +606,8 @@ export function streamChatMessage(
                 callbacks.onDelta(data.text);
               } else if (eventType === 'done') {
                 callbacks.onDone(data);
+              } else if (eventType === 'image') {
+                callbacks.onImage?.(data);
               } else if (eventType === 'error') {
                 callbacks.onError(data.message || '오류가 발생했습니다.');
               }

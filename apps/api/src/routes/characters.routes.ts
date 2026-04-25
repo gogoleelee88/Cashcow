@@ -25,13 +25,24 @@ const exampleDialogueSchema = z.object({
   messages: z.array(exampleMessageSchema).max(50),
 });
 
+const situationImageSchema = z.object({
+  id: z.string(),
+  url: z.string().url(),
+  description: z.string().max(200),
+  triggerKeywords: z.array(z.string().max(50)).max(20),
+});
+
 const createCharacterSchema = z.object({
   name: z.string().min(1).max(50),
   description: z.string().min(10).max(500),
   detailDescription: z.string().max(1000).optional(),
   systemPrompt: z.string().min(20).max(10000),
   greeting: z.string().min(1).max(1000),
+  prologue: z.string().max(2000).optional(),
   exampleDialogues: z.array(exampleDialogueSchema).max(20).optional(),
+  playGuide: z.string().max(2000).optional(),
+  suggestedReplies: z.array(z.string().max(100)).max(10).optional(),
+  situationImages: z.array(situationImageSchema).max(50).optional(),
   category: z.enum(['ANIME', 'GAME', 'MOVIE', 'BOOK', 'ORIGINAL', 'CELEBRITY', 'HISTORICAL', 'VTUBER', 'OTHER']),
   tags: z.array(z.string().max(30)).max(10).default([]),
   visibility: z.enum(['PUBLIC', 'PRIVATE', 'UNLISTED']).default('PUBLIC'),
@@ -393,7 +404,11 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
           systemPromptEncrypted: encrypted,
           systemPromptIv: iv,
           greeting: body.data.greeting,
+          prologue: body.data.prologue ?? null,
           exampleDialogues: body.data.exampleDialogues as any ?? [],
+          playGuide: body.data.playGuide ?? null,
+          suggestedReplies: body.data.suggestedReplies as any ?? null,
+          situationImages: body.data.situationImages as any ?? null,
           category: body.data.category,
           tags: body.data.tags,
           visibility: body.data.visibility,
@@ -443,6 +458,12 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
       }
       if (body.data.exampleDialogues !== undefined) {
         updateData.exampleDialogues = body.data.exampleDialogues as any;
+      }
+      if (body.data.playGuide !== undefined) {
+        updateData.playGuide = body.data.playGuide;
+      }
+      if (body.data.suggestedReplies !== undefined) {
+        updateData.suggestedReplies = body.data.suggestedReplies as any;
       }
 
       const updated = await prisma.character.update({
