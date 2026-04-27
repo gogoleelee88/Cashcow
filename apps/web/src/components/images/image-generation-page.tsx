@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '../../lib/utils';
 import { MainLayout } from '../layout/main-layout';
@@ -159,8 +159,14 @@ function CrackerPaymentModal({ onClose }: { onClose: () => void }) {
 // ── 메인 페이지 컴포넌트 ────────────────────────────────────────────────────
 export function ImageGenerationPage() {
   const router = useRouter();
-  const { user } = useAuthStore();
+  const { user, isAuthenticated } = useAuthStore();
   const credits = user?.creditBalance ?? 0;
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      router.replace('/login');
+    }
+  }, [isAuthenticated, router]);
 
   const [activeTab, setActiveTab] = useState('신규 생성');
   const [prompt, setPrompt] = useState('');

@@ -7,7 +7,8 @@ import { api } from '../../../../lib/api';
 import { useAuthStore } from '../../../../stores/auth.store';
 
 export default function EditCharacterPage() {
-  const { id } = useParams<{ id: string }>();
+  const params = useParams();
+  const id = params.id as string;
   const router = useRouter();
   const { isAuthenticated } = useAuthStore();
   const [initialData, setInitialData] = useState<Record<string, any> | null>(null);
