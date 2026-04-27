@@ -374,6 +374,9 @@ export const api = {
     my: (params?: Record<string, unknown>) =>
       apiClient.get('/api/characters/my', { params }).then((r) => r.data),
 
+    getMyOne: (id: string) =>
+      apiClient.get(`/api/characters/my/${id}`).then((r) => r.data),
+
     getDraft: () =>
       apiClient.get('/api/characters/draft').then((r) => r.data),
 

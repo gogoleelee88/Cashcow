@@ -471,6 +471,8 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const updateData: any = { ...body.data };
+      delete updateData.imageKey;
+
       if (body.data.systemPrompt) {
         const { encrypted, iv } = encrypt(body.data.systemPrompt);
         updateData.systemPromptEncrypted = encrypted;
@@ -485,6 +487,11 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
       }
       if (body.data.suggestedReplies !== undefined) {
         updateData.suggestedReplies = body.data.suggestedReplies as any;
+      }
+      if (body.data.imageKey) {
+        const { config: cfgPatch } = await import('../config');
+        updateData.avatarKey = body.data.imageKey;
+        updateData.avatarUrl = `${cfgPatch.SUPABASE_URL}/storage/v1/object/public/characterverse/${body.data.imageKey}`;
       }
 
       const updated = await prisma.character.update({
@@ -675,6 +682,23 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
   // ─────────────────────────────────────────────
   // MY CHARACTERS
   // ─────────────────────────────────────────────
+  // GET /my/:id — 소유자용 캐릭터 상세 (시스템 프롬프트 포함)
+  fastify.get('/my/:id', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const character = await prisma.character.findFirst({
+        where: { id, creatorId: request.userId! },
+      });
+      if (!character) {
+        return reply.code(404).send({ success: false, error: { code: 'NOT_FOUND', message: '캐릭터를 찾을 수 없습니다.' } });
+      }
+      const { systemPromptEncrypted, systemPromptIv, ...rest } = character;
+      const systemPrompt = decrypt(systemPromptEncrypted, systemPromptIv);
+      return reply.send({ success: true, data: { ...rest, systemPrompt } });
+    },
+  });
+
   fastify.get('/my', {
     preHandler: [requireAuth],
     handler: async (request, reply) => {

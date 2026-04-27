@@ -820,16 +820,20 @@ function MobileChatPreviewSheet({
 
 // MAIN FORM
 // ─────────────────────────────────────────────
-export function CharacterCreateForm() {
+export function CharacterCreateForm({ characterId, initialData }: {
+  characterId?: string;
+  initialData?: Record<string, any>;
+} = {}) {
+  const isEditMode = !!characterId;
   const router = useRouter();
   const { user, accessToken } = useAuthStore();
   const [activeTab, setActiveTab] = useState<CharacterTab>('settings');
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(initialData?.avatarUrl ?? null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadDone, setUploadDone] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [imageKey, setImageKey] = useState<string | null>(null);
+  const [imageKey, setImageKey] = useState<string | null>(initialData?.avatarKey ?? null);
   const [rawAvatarSrc, setRawAvatarSrc] = useState<string | null>(null);
   const [showAvatarCropper, setShowAvatarCropper] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -900,26 +904,26 @@ export function CharacterCreateForm() {
   const [suggestedReplies, setSuggestedReplies] = useState<string[]>(['', '', '', '']);
 
   const [formData, setFormData] = useState({
-    name: '',
-    description: '',
+    name: initialData?.name ?? '',
+    description: initialData?.description ?? '',
     concept: '',
-    systemPrompt: '',
-    greeting: '',
-    category: 'ORIGINAL' as string,
-    tags: [] as string[],
+    systemPrompt: initialData?.systemPrompt ?? '',
+    greeting: initialData?.greeting ?? '',
+    category: (initialData?.category ?? 'ORIGINAL') as string,
+    tags: (initialData?.tags ?? []) as string[],
     tagInput: '',
-    visibility: 'PRIVATE' as 'PUBLIC' | 'PRIVATE' | 'UNLISTED',
-    ageRating: 'ALL' as 'ALL' | 'TEEN' | 'MATURE',
-    audienceTarget: 'ALL' as 'ALL' | 'MALE_ORIENTED' | 'FEMALE_ORIENTED',
-    detailDescription: '',
-    commentDisabled: false,
-    language: 'ko',
-    model: 'claude-haiku-3' as string,
-    temperature: 0.8,
-    maxTokens: 1024,
-    voiceProvider: null as 'elevenlabs' | null,
-    voiceId: null as string | null,
-    voiceSettings: { stability: 0.5, similarity_boost: 0.8, style: 0.3, speed: 1.0 },
+    visibility: (initialData?.visibility ?? 'PRIVATE') as 'PUBLIC' | 'PRIVATE' | 'UNLISTED',
+    ageRating: (initialData?.ageRating ?? 'ALL') as 'ALL' | 'TEEN' | 'MATURE',
+    audienceTarget: (initialData?.audienceTarget ?? 'ALL') as 'ALL' | 'MALE_ORIENTED' | 'FEMALE_ORIENTED',
+    detailDescription: initialData?.detailDescription ?? '',
+    commentDisabled: initialData?.commentDisabled ?? false,
+    language: initialData?.language ?? 'ko',
+    model: (initialData?.model ?? 'claude-haiku-3') as string,
+    temperature: initialData?.temperature ?? 0.8,
+    maxTokens: initialData?.maxTokens ?? 1024,
+    voiceProvider: (initialData?.voiceProvider ?? null) as 'elevenlabs' | null,
+    voiceId: (initialData?.voiceId ?? null) as string | null,
+    voiceSettings: initialData?.voiceSettings ?? { stability: 0.5, similarity_boost: 0.8, style: 0.3, speed: 1.0 },
   });
 
   // ── 음성 탭 전용 state ──
@@ -1169,20 +1173,59 @@ export function CharacterCreateForm() {
         voiceSettings: formData.voiceId ? formData.voiceSettings : undefined,
       }),
     onSuccess: async (res) => {
-      const characterId = res.data.id;
-      // 선택된 스토리에 캐릭터 연결 (병렬 처리, 실패해도 무시)
+      const newCharacterId = res.data.id;
       if (linkedStories.length > 0) {
         await Promise.allSettled(
           linkedStories.map((story) =>
-            api.stories.addCharacter(story.id, { characterId, role: '등장인물' }).catch(() => {}),
+            api.stories.addCharacter(story.id, { characterId: newCharacterId, role: '등장인물' }).catch(() => {}),
           ),
         );
       }
       toast.success('캐릭터가 생성되었습니다!', '이제 대화해보세요');
-      router.push(`/characters/${characterId}`);
+      router.push(`/characters/${newCharacterId}`);
     },
     onError: (err: any) => {
       toast.error('생성 실패', err.response?.data?.error?.message || '다시 시도해주세요');
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: () =>
+      api.characters.update(characterId!, {
+        name: formData.name,
+        description: formData.description,
+        detailDescription: formData.detailDescription || undefined,
+        imageKey: imageKey ?? undefined,
+        systemPrompt: formData.systemPrompt,
+        greeting: formData.greeting,
+        prologue: prologue.trim() || undefined,
+        exampleDialogues: examples.filter(e => e.messages.length > 0),
+        playGuide: playGuide || undefined,
+        suggestedReplies: suggestedReplies.filter(r => r.trim()).length > 0 ? suggestedReplies.filter(r => r.trim()) : undefined,
+        situationImages: situationImages.filter(img => img.url && img.situation.trim()).map(img => ({
+          id: img.id, url: img.url, description: img.situation,
+          triggerKeywords: img.situation.split(/[\s,]+/).filter(Boolean).slice(0, 10),
+        })),
+        category: formData.category,
+        tags: formData.tags,
+        visibility: formData.visibility,
+        ageRating: formData.ageRating,
+        audienceTarget: formData.audienceTarget,
+        commentDisabled: formData.commentDisabled,
+        language: formData.language,
+        model: formData.model,
+        temperature: formData.temperature,
+        maxTokens: formData.maxTokens,
+        voiceProvider: formData.voiceProvider ?? undefined,
+        voiceId: formData.voiceId ?? undefined,
+        voiceSettings: formData.voiceId ? formData.voiceSettings : undefined,
+      }),
+    onSuccess: () => {
+      toast.success('캐릭터가 수정되었습니다!');
+      router.push(`/characters/${characterId}`);
+    },
+    onError: (err: any) => {
+      toast.error('수정 실패', err.response?.data?.error?.message || '다시 시도해주세요');
     },
   });
 
@@ -1196,7 +1239,8 @@ export function CharacterCreateForm() {
     if (formData.description.trim().length < 10) { toast.error('한 줄 소개를 10자 이상 입력해주세요'); setActiveTab('settings'); return; }
     if (formData.systemPrompt.trim().length < 20) { toast.error('캐릭터 프롬프트를 20자 이상 입력해주세요'); setActiveTab('prompt'); return; }
     if (!formData.greeting.trim()) { toast.error('인트로 탭에서 캐릭터의 첫 인사말을 입력해주세요'); setActiveTab('intro'); return; }
-    createMutation.mutate();
+    if (isEditMode) updateMutation.mutate();
+    else createMutation.mutate();
   };
 
   const handleNext = () => {
@@ -1763,10 +1807,10 @@ export function CharacterCreateForm() {
           </button>
           <button
             onClick={handleRegister}
-            disabled={createMutation.isPending}
+            disabled={createMutation.isPending || updateMutation.isPending}
             className="px-5 py-1.5 rounded-xl bg-gray-900 text-white text-sm font-bold hover:bg-gray-800 transition-colors disabled:opacity-40"
           >
-            등록하기
+            {isEditMode ? '저장하기' : '등록하기'}
           </button>
         </div>
       </div>
