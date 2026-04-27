@@ -57,6 +57,7 @@ const createCharacterSchema = z.object({
     style: z.number().min(0).max(1).optional(),
     speed: z.number().min(0.5).max(2).optional(),
   }).optional(),
+  imageKey: z.string().optional(),
   language: z.string().default('ko'),
   model: z.enum(['claude-haiku-3', 'claude-sonnet-4']).default('claude-haiku-3'),
   temperature: z.number().min(0).max(1).default(0.8),
@@ -404,11 +405,20 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
       // Encrypt system prompt at rest
       const { encrypted, iv } = encrypt(body.data.systemPrompt);
 
+      // imageKey → avatarUrl / avatarKey
+      const { config: cfg } = await import('../config');
+      const avatarKey = body.data.imageKey ?? null;
+      const avatarUrl = avatarKey
+        ? `${cfg.SUPABASE_URL}/storage/v1/object/public/characterverse/${avatarKey}`
+        : null;
+
       const character = await prisma.character.create({
         data: {
           name: body.data.name,
           description: body.data.description,
           detailDescription: body.data.detailDescription ?? null,
+          avatarUrl,
+          avatarKey,
           systemPromptEncrypted: encrypted,
           systemPromptIv: iv,
           greeting: body.data.greeting,

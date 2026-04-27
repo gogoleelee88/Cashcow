@@ -1137,6 +1137,7 @@ export function CharacterCreateForm() {
         name: formData.name,
         description: formData.description,
         detailDescription: formData.detailDescription || undefined,
+        imageKey: imageKey ?? undefined,
         systemPrompt: formData.systemPrompt,
         greeting: formData.greeting,
         prologue: prologue.trim() || undefined,
