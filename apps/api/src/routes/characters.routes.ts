@@ -29,7 +29,7 @@ const situationImageSchema = z.object({
   id: z.string(),
   url: z.string().url(),
   description: z.string().max(200),
-  triggerKeywords: z.array(z.string().max(50)).max(20),
+  triggerKeywords: z.array(z.string().max(50)).max(20).optional().default([]),
 });
 
 const createCharacterSchema = z.object({

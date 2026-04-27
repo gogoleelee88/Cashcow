@@ -1156,7 +1156,6 @@ export function CharacterCreateForm({ characterId, initialData }: {
             id: img.id,
             url: img.url,
             description: img.situation,
-            triggerKeywords: img.situation.split(/[\s,]+/).filter(Boolean).slice(0, 10),
           })),
         category: formData.category,
         tags: formData.tags,
@@ -1204,7 +1203,6 @@ export function CharacterCreateForm({ characterId, initialData }: {
         suggestedReplies: suggestedReplies.filter(r => r.trim()).length > 0 ? suggestedReplies.filter(r => r.trim()) : undefined,
         situationImages: situationImages.filter(img => img.url && img.situation.trim()).map(img => ({
           id: img.id, url: img.url, description: img.situation,
-          triggerKeywords: img.situation.split(/[\s,]+/).filter(Boolean).slice(0, 10),
         })),
         category: formData.category,
         tags: formData.tags,
@@ -2351,15 +2349,15 @@ export function CharacterCreateForm({ characterId, initialData }: {
                                   <textarea
                                     value={img.situation}
                                     onChange={(e) => {
-                                      if (e.target.value.length <= 50)
+                                      if (e.target.value.length <= 100)
                                         setSituationImages((prev) => prev.map((i) => i.id === img.id ? { ...i, situation: e.target.value } : i));
                                     }}
-                                    placeholder="예) 고양이 미뉴가 놀라는 상황"
+                                    placeholder="예) 사용자가 말썽을 부렸다고 할 때"
                                     rows={2}
                                     className="w-full px-4 pt-3 pb-6 text-sm text-gray-900 placeholder:text-gray-300 bg-transparent resize-none focus:outline-none rounded-xl"
                                   />
                                   <span className="absolute bottom-2 right-3 text-xs text-gray-300 pointer-events-none">
-                                    {img.situation.length} / 50
+                                    {img.situation.length} / 100
                                   </span>
                                 </div>
                               </div>
