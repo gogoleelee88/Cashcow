@@ -204,12 +204,14 @@ export function buildSystemPrompt(
   }
 
   if (opts?.situationImages && opts.situationImages.length > 0) {
-    parts.push('', `[상황 이미지 트리거 안내]`);
-    parts.push(`- 아래 상황에 해당하는 장면이 펼쳐질 때, 응답 끝에 [IMAGE:이미지ID] 태그를 정확히 한 번 삽입하세요.`);
-    parts.push(`- 태그는 응답 마지막 줄에 단독으로 위치해야 합니다. 예: [IMAGE:abc123]`);
-    opts.situationImages.forEach((img) => {
-      parts.push(`  ID:${img.id} | ${img.description} | 키워드: ${img.triggerKeywords.join(', ')}`);
+    parts.push('', `[이미지 자동 출력 규칙 — 반드시 준수]`);
+    parts.push(`아래 각 상황이 대화에서 발생하면, 응답 본문을 모두 작성한 뒤 맨 마지막 줄에 해당 태그를 단독으로 출력하세요.`);
+    parts.push(`형식: [IMAGE:이미지ID] (대괄호 포함, 해당 줄에 이 태그만 위치, 다른 텍스트 금지)`);
+    parts.push(`태그를 출력해야 하는 상황 목록:`);
+    opts.situationImages.forEach((img, idx) => {
+      parts.push(`  ${idx + 1}. 상황: "${img.description}" → 출력할 태그: [IMAGE:${img.id}]`);
     });
+    parts.push(`중요: 상황이 해당되면 반드시 태그를 출력해야 합니다. 생략하면 안 됩니다.`);
   }
 
   return parts.join('\n');
