@@ -425,15 +425,17 @@ function ChatWindow({
 
     abortControllerRef.current = new AbortController();
     let accumulated = '';
+    const stripImageTag = (text: string) => text.replace(/\[IMAGE:[^\]]+\]\s*$/g, '').trimEnd();
 
     streamChatMessage(conversationId, content, accessToken, {
       signal: abortControllerRef.current.signal,
-      onDelta: (text) => { accumulated += text; setStreamingContent(accumulated); },
+      onDelta: (text) => { accumulated += text; setStreamingContent(stripImageTag(accumulated)); },
       onDone: ({ messageId, remainingCredits }) => {
+        const cleanContent = stripImageTag(accumulated);
         setIsStreaming(false);
         setLocalMessages((prev) => [
           ...prev,
-          { id: messageId, conversationId, role: 'ASSISTANT', content: accumulated, status: 'SENT', createdAt: new Date().toISOString() },
+          { id: messageId, conversationId, role: 'ASSISTANT', content: cleanContent, status: 'SENT', createdAt: new Date().toISOString() },
         ]);
         setStreamingContent('');
         queryClient.invalidateQueries({ queryKey: ['conversations'] });
@@ -756,7 +758,8 @@ function StoryBlock({
   isError?: boolean;
 }) {
   const [imgErr, setImgErr] = useState(false);
-  const lines = content.split('\n');
+  const cleanContent = content.replace(/\[IMAGE:[^\]]+\]\s*$/g, '').trimEnd();
+  const lines = cleanContent.split('\n');
   return (
     <div className={cn('mb-8', isError && 'opacity-50')}>
       {characterName && (
@@ -883,6 +886,7 @@ function KakaoBubble({
   isError?: boolean;
 }) {
   const [imgErr, setImgErr] = useState(false);
+  const cleanContent = content.replace(/\[IMAGE:[^\]]+\]\s*$/g, '').trimEnd();
   const src = imgErr ? null : character?.avatarUrl;
 
   return (
@@ -900,7 +904,7 @@ function KakaoBubble({
           className="px-3.5 py-2.5 rounded-2xl rounded-tl-sm text-[14px] text-gray-800 leading-relaxed whitespace-pre-wrap"
           style={{ backgroundColor: '#ffffff' }}
         >
-          {isStreaming && !content ? (
+          {isStreaming && !cleanContent ? (
             <span className="flex items-center gap-1 h-5">
               {[0, 100, 200].map((d) => (
                 <span key={d} className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: `${d}ms` }} />
@@ -908,8 +912,8 @@ function KakaoBubble({
             </span>
           ) : (
             <>
-              {content.includes('*') ? renderNarration(content) : content}
-              {isStreaming && content && (
+              {cleanContent.includes('*') ? renderNarration(cleanContent) : cleanContent}
+              {isStreaming && cleanContent && (
                 <span className="inline-block w-0.5 h-4 bg-gray-500 animate-pulse align-middle ml-0.5" />
               )}
             </>
@@ -1236,8 +1240,15 @@ function PlayGuidePanel({ text, characterId }: { text: string; characterId?: str
 // ── 상황 이미지 카드 (Phase 3 킬러 기능) ───────────────────────────
 function SituationImageCard({ imageUrl, onClose }: { imageUrl: string; onClose: () => void }) {
   return (
-    <div className="relative rounded-xl overflow-hidden bg-gray-50 border border-gray-100" style={{ aspectRatio: '3/4', maxHeight: '400px' }}>
-      <Image src={imageUrl} alt="상황 이미지" fill className="object-cover" sizes="640px" />
+    <div className="relative rounded-xl overflow-hidden bg-gray-50 border border-gray-100">
+      <Image
+        src={imageUrl}
+        alt="상황 이미지"
+        width={640}
+        height={640}
+        className="w-full h-auto object-contain"
+        style={{ maxHeight: '480px' }}
+      />
       <button
         onClick={onClose}
         className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/40 flex items-center justify-center text-white text-[12px] hover:bg-black/60 transition-colors"
