@@ -608,7 +608,7 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
 
       let fileBuffer: Buffer | null = null;
       let mimetype = '';
-      let uploadType: 'avatar' | 'background' = 'avatar';
+      let uploadType: 'avatar' | 'background' | 'situation' = 'avatar';
 
       for await (const part of request.parts()) {
         if (part.type === 'file' && part.fieldname === 'file') {
@@ -623,6 +623,7 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
         } else if (part.type === 'field' && part.fieldname === 'type') {
           const val = part.value as string;
           if (val === 'background') uploadType = 'background';
+          else if (val === 'situation') uploadType = 'situation';
         }
       }
 
@@ -641,7 +642,9 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
 
       const ext = mimetype.split('/')[1].replace('jpeg', 'jpg');
       const userId = request.userId!;
-      const folder = uploadType === 'background' ? 'characters/backgrounds' : 'characters/avatars';
+      const folder = uploadType === 'background' ? 'characters/backgrounds'
+        : uploadType === 'situation' ? 'characters/situations'
+        : 'characters/avatars';
       const filename = `${userId}/${randomBytes(16).toString('hex')}.${ext}`;
       const key = `${folder}/${filename}`;
 

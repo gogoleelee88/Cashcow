@@ -2405,23 +2405,47 @@ export function CharacterCreateForm({ characterId, initialData }: {
                     accept="image/jpeg,image/png,image/webp,image/gif"
                     multiple
                     className="hidden"
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       const files = Array.from(e.target.files ?? []);
+                      e.target.value = '';
+
+                      const uploadSituationFile = async (file: File): Promise<{ url: string; id: string }> => {
+                        const tempId = Date.now().toString() + Math.random();
+                        const fd = new FormData();
+                        fd.append('file', file);
+                        fd.append('type', 'situation');
+                        const res = await apiClient.post('/api/characters/upload', fd, { headers: { 'Content-Type': undefined } });
+                        if (!res.data?.success) throw new Error(res.data?.error?.message || '업로드 실패');
+                        return { url: res.data.data.url, id: tempId };
+                      };
+
                       if (changingSituationImageId) {
                         const file = files[0];
                         if (file) {
-                          const url = URL.createObjectURL(file);
-                          setSituationImages((prev) => prev.map((i) => i.id === changingSituationImageId ? { ...i, url, name: file.name } : i));
+                          const blobUrl = URL.createObjectURL(file);
+                          setSituationImages((prev) => prev.map((i) => i.id === changingSituationImageId ? { ...i, url: blobUrl, name: file.name } : i));
+                          try {
+                            const { url } = await uploadSituationFile(file);
+                            setSituationImages((prev) => prev.map((i) => i.id === changingSituationImageId ? { ...i, url } : i));
+                          } catch (err: any) {
+                            toast.error('이미지 업로드 실패', err.message || '다시 시도해 주세요');
+                          }
                         }
                         setChangingSituationImageId(null);
                       } else {
                         const remaining = 50 - situationImages.length;
-                        files.slice(0, remaining).forEach((file) => {
-                          const url = URL.createObjectURL(file);
-                          setSituationImages((prev) => [...prev, { id: Date.now().toString() + Math.random(), url, name: file.name, situation: '', hint: '', collapsed: false }]);
-                        });
+                        for (const file of files.slice(0, remaining)) {
+                          const tempId = Date.now().toString() + Math.random();
+                          const blobUrl = URL.createObjectURL(file);
+                          setSituationImages((prev) => [...prev, { id: tempId, url: blobUrl, name: file.name, situation: '', hint: '', collapsed: false }]);
+                          try {
+                            const { url } = await uploadSituationFile(file);
+                            setSituationImages((prev) => prev.map((i) => i.id === tempId ? { ...i, url } : i));
+                          } catch (err: any) {
+                            toast.error('이미지 업로드 실패', err.message || '다시 시도해 주세요');
+                          }
+                        }
                       }
-                      e.target.value = '';
                     }}
                   />
                 </div>

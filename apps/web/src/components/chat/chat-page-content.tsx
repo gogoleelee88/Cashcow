@@ -584,7 +584,7 @@ function ChatWindow({
                     transition={{ duration: 0.18, delay: Math.min(i * 0.008, 0.1) }}
                   >
                     {msg.role === 'ASSISTANT'
-                      ? <StoryBlock content={msg.content} characterName={character?.name} isError={msg.status === 'ERROR'} />
+                      ? <StoryBlock content={msg.content} characterName={character?.name} characterAvatarUrl={character?.avatarUrl} isError={msg.status === 'ERROR'} />
                       : <UserMessage content={msg.content} user={user} />
                     }
                   </motion.div>
@@ -592,8 +592,8 @@ function ChatWindow({
                 {isStreaming && (
                   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                     {streamingContent
-                      ? <StoryBlock content={streamingContent} characterName={character?.name} isStreaming />
-                      : <TypingIndicator />
+                      ? <StoryBlock content={streamingContent} characterName={character?.name} characterAvatarUrl={character?.avatarUrl} isStreaming />
+                      : <TypingIndicator characterAvatarUrl={character?.avatarUrl} />
                     }
                   </motion.div>
                 )}
@@ -641,7 +641,7 @@ function ChatWindow({
                       {showDate && <KakaoDateSeparator date={new Date(msg.createdAt)} />}
                       {msg.role === 'ASSISTANT'
                         ? <KakaoBubble content={msg.content} character={character} isError={msg.status === 'ERROR'} />
-                        : <KakaoUserBubble content={msg.content} />
+                        : <KakaoUserBubble content={msg.content} user={user} />
                       }
                     </motion.div>
                   );
@@ -747,16 +747,29 @@ function renderNarration(text: string) {
 
 // ── 스토리 블록 ───────────────────────────────────────────────────
 function StoryBlock({
-  content, characterName, isStreaming, isError,
+  content, characterName, characterAvatarUrl, isStreaming, isError,
 }: {
   content: string;
   characterName?: string;
+  characterAvatarUrl?: string | null;
   isStreaming?: boolean;
   isError?: boolean;
 }) {
+  const [imgErr, setImgErr] = useState(false);
   const lines = content.split('\n');
   return (
     <div className={cn('mb-8', isError && 'opacity-50')}>
+      {characterName && (
+        <div className="flex items-center gap-2 mb-2">
+          <div className="w-6 h-6 rounded-full overflow-hidden flex-shrink-0 bg-gray-100">
+            {characterAvatarUrl && !imgErr
+              ? <Image src={characterAvatarUrl} alt={characterName} width={24} height={24} className="object-cover" onError={() => setImgErr(true)} />
+              : <div className="w-full h-full bg-brand/10 flex items-center justify-center text-brand text-[10px] font-bold">{characterName[0]}</div>
+            }
+          </div>
+          <span className="text-[11px] text-gray-400 font-medium">{characterName}</span>
+        </div>
+      )}
       <div className="space-y-2.5">
         {lines.map((line, i) => {
           const trimmed = line.trim();
@@ -808,12 +821,20 @@ function StoryBlock({
   );
 }
 
-function TypingIndicator() {
+function TypingIndicator({ characterAvatarUrl }: { characterAvatarUrl?: string | null }) {
+  const [imgErr, setImgErr] = useState(false);
   return (
-    <div className="mb-6 flex items-center gap-1 h-7">
-      {[0, 120, 240].map((d) => (
-        <span key={d} className="w-2 h-2 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: `${d}ms` }} />
-      ))}
+    <div className="mb-6 flex items-center gap-2 h-7">
+      {characterAvatarUrl && !imgErr && (
+        <div className="w-6 h-6 rounded-full overflow-hidden flex-shrink-0 bg-gray-100">
+          <Image src={characterAvatarUrl} alt="" width={24} height={24} className="object-cover" onError={() => setImgErr(true)} />
+        </div>
+      )}
+      <div className="flex items-center gap-1">
+        {[0, 120, 240].map((d) => (
+          <span key={d} className="w-2 h-2 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: `${d}ms` }} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -899,14 +920,21 @@ function KakaoBubble({
   );
 }
 
-function KakaoUserBubble({ content }: { content: string }) {
+function KakaoUserBubble({ content, user }: { content: string; user: any }) {
+  const [imgErr, setImgErr] = useState(false);
   return (
-    <div className="flex justify-end mb-3">
+    <div className="flex justify-end items-end gap-2 mb-3">
       <div
         className="max-w-[70%] px-3.5 py-2.5 rounded-2xl rounded-tr-sm text-[14px] text-gray-900 leading-relaxed whitespace-pre-wrap"
         style={{ backgroundColor: '#FFEB00' }}
       >
         {content.includes('*') ? renderNarration(content) : content}
+      </div>
+      <div className="w-9 h-9 rounded-xl overflow-hidden flex-shrink-0 bg-gray-200">
+        {user?.avatarUrl && !imgErr
+          ? <Image src={user.avatarUrl} alt={user.displayName ?? ''} width={36} height={36} className="object-cover" onError={() => setImgErr(true)} />
+          : <div className="w-full h-full bg-brand/20 flex items-center justify-center text-brand text-sm font-bold">{user?.displayName?.[0]?.toUpperCase() ?? 'U'}</div>
+        }
       </div>
     </div>
   );
