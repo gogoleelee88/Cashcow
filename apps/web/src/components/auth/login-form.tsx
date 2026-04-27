@@ -1,12 +1,29 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, AlertCircle, Loader2, ExternalLink } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/auth.store';
+
+function detectInAppBrowser(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent;
+  return /KAKAOTALK|Instagram|FBAN|FBIOS|FB_IAB|Line\/|NAVER|MicroMessenger|Whale\//.test(ua);
+}
+
+function openInExternalBrowser(url: string) {
+  const ua = navigator.userAgent;
+  const isAndroid = /Android/.test(ua);
+  if (isAndroid) {
+    window.location.href = `intent://${url.replace(/^https?:\/\//, '')}#Intent;scheme=https;package=com.android.chrome;end`;
+  } else {
+    // iOS — copy URL hint (can't force open Safari)
+    try { navigator.clipboard.writeText(url); } catch {}
+  }
+}
 
 export function LoginForm() {
   const [email, setEmail] = useState('');
@@ -14,10 +31,15 @@ export function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isInApp, setIsInApp] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams?.get('redirect') || '/';
   const { login } = useAuthStore();
+
+  useEffect(() => {
+    setIsInApp(detectInAppBrowser());
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,8 +62,21 @@ export function LoginForm() {
   };
 
   const handleOAuth = (provider: string) => {
+    if (provider === 'google' && isInApp) {
+      const currentUrl = window.location.href;
+      const ua = navigator.userAgent;
+      if (/Android/.test(ua)) {
+        openInExternalBrowser(currentUrl);
+      } else {
+        setError('카카오톡 내 브라우저에서는 Google 로그인을 사용할 수 없습니다.\nSafari 또는 Chrome에서 열어주세요.');
+      }
+      return;
+    }
     window.location.href = api.auth.oauthUrl(provider);
   };
+
+  const currentUrl = typeof window !== 'undefined' ? window.location.href : '';
+  const isAndroid = typeof navigator !== 'undefined' && /Android/.test(navigator.userAgent);
 
   return (
     <div className="min-h-screen bg-white flex">
@@ -77,6 +112,29 @@ export function LoginForm() {
               <span className="font-black text-xl text-text-primary">crack<span className="text-brand">.</span></span>
             </Link>
           </div>
+
+          {isInApp && (
+            <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-200">
+              <p className="text-amber-800 text-sm font-semibold mb-1">인앱 브라우저 감지됨</p>
+              <p className="text-amber-700 text-xs leading-relaxed mb-3">
+                카카오톡 내 브라우저에서는 Google 로그인이 차단됩니다.
+                외부 브라우저(Chrome / Safari)에서 열어주세요.
+              </p>
+              {isAndroid ? (
+                <button
+                  onClick={() => openInExternalBrowser(currentUrl)}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-amber-800 underline underline-offset-2"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Chrome으로 열기
+                </button>
+              ) : (
+                <p className="text-xs text-amber-600">
+                  오른쪽 상단 ··· 메뉴 → <strong>외부 브라우저로 열기</strong>를 선택해주세요.
+                </p>
+              )}
+            </div>
+          )}
 
           <h1 className="text-2xl font-bold text-text-primary mb-2">로그인</h1>
           <p className="text-text-muted text-sm mb-8">계정에 로그인하세요</p>
