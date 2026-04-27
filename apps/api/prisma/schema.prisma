@@ -327,6 +327,8 @@ model Character {
   detailDescription    String?             @db.Text  // 캐릭터 상세 설명 (최대 1000자)
   commentDisabled      Boolean             @default(false)  // 댓글 기능 닫기
   voiceId              String?
+  voiceProvider        String?             // "elevenlabs" | "openai"
+  voiceSettings        Json?               // { stability, similarity_boost, style, speed }
   gender               CharacterGender     @default(NEUTRAL)
   audienceTarget       AudienceTarget      @default(ALL)
   isFanCreation        Boolean             @default(false)

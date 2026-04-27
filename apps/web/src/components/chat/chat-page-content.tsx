@@ -9,9 +9,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Send, MoreVertical, Pencil, Loader2, MessageCircle,
   Sparkles, ChevronDown, BookOpen, LayoutList, Smile, Plus,
+  Mic, MicOff, Volume2, VolumeX, Play, Square,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { api, streamChatMessage } from '../../lib/api';
+import { api, streamChatMessage, voiceApi } from '../../lib/api';
 import { useAuthStore } from '../../stores/auth.store';
 import { getCharacterAvatarUrl } from '@characterverse/utils';
 import type { ChatMessage, Conversation } from '@characterverse/types';
@@ -342,6 +343,61 @@ function ChatWindow({
   const [situationImage, setSituationImage] = useState<{ imageId: string; imageUrl: string } | null>(null);
   useEffect(() => { if (messagesData?.data) setLocalMessages(messagesData.data); }, [messagesData?.data]);
 
+  // ── 음성 기능 state ──
+  const [autoPlay, setAutoPlay] = useState(false);
+  const [playingMsgId, setPlayingMsgId] = useState<string | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+
+  const playTTS = useCallback(async (text: string, msgId: string) => {
+    const voiceId = convData?.character?.voiceId;
+    const voiceSettings = convData?.character?.voiceSettings;
+    if (!voiceId) return;
+    if (playingMsgId === msgId) {
+      audioRef.current?.pause();
+      setPlayingMsgId(null);
+      return;
+    }
+    try {
+      setPlayingMsgId(msgId);
+      const blob = await voiceApi.speak(text, voiceId, voiceSettings ?? undefined);
+      const url = URL.createObjectURL(blob);
+      if (audioRef.current) { audioRef.current.pause(); URL.revokeObjectURL(audioRef.current.src); }
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => { setPlayingMsgId(null); URL.revokeObjectURL(url); };
+      audio.onerror = () => { setPlayingMsgId(null); };
+      await audio.play();
+    } catch { setPlayingMsgId(null); }
+  }, [convData?.character, playingMsgId]);
+
+  const startRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        try {
+          const text = await voiceApi.transcribe(blob);
+          if (text.trim()) setInputValue(text.trim());
+        } catch {}
+        setIsRecording(false);
+      };
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+    } catch { setIsRecording(false); }
+  }, []);
+
+  const stopRecording = useCallback(() => {
+    mediaRecorderRef.current?.stop();
+  }, []);
+
   const scrollToBottom = useCallback((smooth = true) => {
     messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'instant' });
   }, []);
@@ -382,6 +438,9 @@ function ChatWindow({
         setStreamingContent('');
         queryClient.invalidateQueries({ queryKey: ['conversations'] });
         queryClient.setQueryData(['user'], (old: any) => old ? { ...old, creditBalance: remainingCredits } : old);
+        if (autoPlay && convData?.character?.voiceId) {
+          playTTS(accumulated, messageId);
+        }
       },
       onImage: (data) => { setSituationImage(data); },
       onError: (message) => {
@@ -616,6 +675,11 @@ function ChatWindow({
           stopStreaming={stopStreaming}
           insertNarration={insertNarration}
           suggestOptions={Array.isArray(character?.suggestedReplies) ? character.suggestedReplies as string[] : undefined}
+          hasVoice={!!character?.voiceId}
+          isRecording={isRecording}
+          onMicClick={isRecording ? stopRecording : startRecording}
+          autoPlay={autoPlay}
+          onAutoPlayToggle={() => setAutoPlay((v) => !v)}
         />
       ) : (
         <KakaoInputBar
@@ -630,6 +694,11 @@ function ChatWindow({
           stopStreaming={stopStreaming}
           insertNarration={insertNarration}
           suggestOptions={Array.isArray(character?.suggestedReplies) ? character.suggestedReplies as string[] : undefined}
+          hasVoice={!!character?.voiceId}
+          isRecording={isRecording}
+          onMicClick={isRecording ? stopRecording : startRecording}
+          autoPlay={autoPlay}
+          onAutoPlayToggle={() => setAutoPlay((v) => !v)}
         />
       )}
     </div>
@@ -860,6 +929,7 @@ function KakaoTypingIndicator() {
 function StoryInputBar({
   inputValue, setInputValue, isStreaming, showSuggest, setShowSuggest,
   inputRef, handleKeyDown, sendMessage, stopStreaming, insertNarration, suggestOptions,
+  hasVoice, isRecording, onMicClick, autoPlay, onAutoPlayToggle,
 }: InputBarProps) {
   const options = (suggestOptions && suggestOptions.length > 0) ? suggestOptions : DEFAULT_SUGGEST_OPTIONS;
   return (
@@ -919,6 +989,24 @@ function StoryInputBar({
               추천답변
             </button>
             <div className="flex-1" />
+            {hasVoice && (
+              <>
+                <button
+                  onClick={onAutoPlayToggle}
+                  title={autoPlay ? '자동재생 끄기' : '자동재생 켜기'}
+                  className={cn('w-8 h-8 rounded-full flex items-center justify-center transition-colors', autoPlay ? 'text-brand' : 'text-gray-300 hover:text-gray-500')}
+                >
+                  {autoPlay ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                </button>
+                <button
+                  onClick={onMicClick}
+                  title={isRecording ? '녹음 중지' : '음성 입력'}
+                  className={cn('w-8 h-8 rounded-full flex items-center justify-center transition-colors', isRecording ? 'bg-red-500 text-white animate-pulse' : 'text-gray-400 hover:text-brand')}
+                >
+                  {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                </button>
+              </>
+            )}
             {isStreaming ? (
               <button onClick={stopStreaming} className="w-9 h-9 rounded-full bg-red-400 flex items-center justify-center hover:bg-red-500 transition-colors">
                 <div className="w-3 h-3 rounded-sm bg-white" />
@@ -946,6 +1034,7 @@ function StoryInputBar({
 function KakaoInputBar({
   inputValue, setInputValue, isStreaming, showSuggest, setShowSuggest,
   inputRef, handleKeyDown, sendMessage, stopStreaming, insertNarration, suggestOptions,
+  hasVoice, isRecording, onMicClick, autoPlay, onAutoPlayToggle,
 }: InputBarProps) {
   const options = (suggestOptions && suggestOptions.length > 0) ? suggestOptions : DEFAULT_SUGGEST_OPTIONS;
   return (
@@ -998,6 +1087,16 @@ function KakaoInputBar({
         <button className="flex-shrink-0 w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors">
           <Plus className="w-[22px] h-[22px]" />
         </button>
+        {/* 마이크 */}
+        {hasVoice && (
+          <button
+            onClick={onMicClick}
+            title={isRecording ? '녹음 중지' : '음성 입력'}
+            className={cn('flex-shrink-0 w-9 h-9 flex items-center justify-center transition-colors', isRecording ? 'text-red-500 animate-pulse' : 'text-gray-400 hover:text-brand')}
+          >
+            {isRecording ? <MicOff className="w-[22px] h-[22px]" /> : <Mic className="w-[22px] h-[22px]" />}
+          </button>
+        )}
 
         {/* 텍스트 입력 — 보더/배경 없는 flat 스타일 */}
         <textarea
@@ -1057,6 +1156,11 @@ interface InputBarProps {
   stopStreaming: () => void;
   insertNarration: () => void;
   suggestOptions?: string[];
+  hasVoice?: boolean;
+  isRecording?: boolean;
+  onMicClick?: () => void;
+  autoPlay?: boolean;
+  onAutoPlayToggle?: () => void;
 }
 
 // ── 플레이 가이드 패널 ───────────────────────────────────────────────

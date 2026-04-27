@@ -8,9 +8,9 @@ import {
   ArrowLeft, HelpCircle, History, AlertCircle,
   Loader2, Sparkles, X, ChevronRight, Upload, CheckCircle2,
   Pencil, Trash2, ImagePlus, Send, Check, BookOpen,
-  ChevronUp, GripVertical,
+  ChevronUp, GripVertical, Volume2, Mic, Play, Square, Sliders,
 } from 'lucide-react';
-import { api, streamPreviewChat } from '../../lib/api';
+import { api, streamPreviewChat, voiceApi } from '../../lib/api';
 import { apiClient } from '../../lib/api';
 import { cn } from '../../lib/utils';
 import { toast } from '../ui/toaster';
@@ -20,13 +20,14 @@ import { ImageCropModal } from '../ui/image-crop-modal';
 // ─────────────────────────────────────────────
 // TABS
 // ─────────────────────────────────────────────
-type CharacterTab = 'settings' | 'intro' | 'prompt' | 'advanced' | 'detail';
+type CharacterTab = 'settings' | 'intro' | 'prompt' | 'advanced' | 'voice' | 'detail';
 
 const TABS: { key: CharacterTab; label: string; required?: boolean }[] = [
   { key: 'settings', label: '캐릭터 설정', required: true },
   { key: 'intro',    label: '인트로',      required: true },
   { key: 'prompt',   label: '프롬프트',    required: true },
   { key: 'advanced', label: '고급 기능' },
+  { key: 'voice',    label: '음성' },
   { key: 'detail',   label: '캐릭터 상세', required: true },
 ];
 
@@ -916,7 +917,24 @@ export function CharacterCreateForm() {
     model: 'claude-haiku-3' as string,
     temperature: 0.8,
     maxTokens: 1024,
+    voiceProvider: null as 'elevenlabs' | null,
+    voiceId: null as string | null,
+    voiceSettings: { stability: 0.5, similarity_boost: 0.8, style: 0.3, speed: 1.0 },
   });
+
+  // ── 음성 탭 전용 state ──
+  type VoiceMode = 'none' | 'library' | 'clone';
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>('none');
+  const [voiceLibrary, setVoiceLibrary] = useState<{ voiceId: string; name: string; previewUrl: string | null; labels: Record<string, string>; category: string }[]>([]);
+  const [isLoadingVoices, setIsLoadingVoices] = useState(false);
+  const [voiceSearch, setVoiceSearch] = useState('');
+  const [previewingVoiceId, setPreviewingVoiceId] = useState<string | null>(null);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [isCloning, setIsCloning] = useState(false);
+  const [cloneName, setCloneName] = useState('내 목소리');
+  const [cloneFile, setCloneFile] = useState<File | null>(null);
+  const cloneInputRef = useRef<HTMLInputElement>(null);
+  const [showVoiceSettings, setShowVoiceSettings] = useState(false);
 
   const update = useCallback((patch: Partial<typeof formData>) => {
     setFormData((prev) => ({ ...prev, ...patch }));
@@ -996,15 +1014,15 @@ export function CharacterCreateForm() {
 
   // AI Generate
   const handleAIGenerate = async () => {
-    if (!formData.name.trim() || !formData.concept.trim()) {
-      toast.error('이름과 캐릭터 컨셉을 먼저 입력해주세요');
+    if (!formData.name.trim() || !formData.description.trim()) {
+      toast.error('이름과 한 줄 소개를 먼저 입력해주세요');
       return;
     }
     setIsGenerating(true);
     try {
       const res = await apiClient.post('/api/characters/generate', {
         name: formData.name,
-        concept: formData.concept,
+        concept: formData.description,
         category: formData.category,
         language: formData.language,
       }).then((r: any) => r.data);
@@ -1144,6 +1162,9 @@ export function CharacterCreateForm() {
         model: formData.model,
         temperature: formData.temperature,
         maxTokens: formData.maxTokens,
+        voiceProvider: formData.voiceProvider ?? undefined,
+        voiceId: formData.voiceId ?? undefined,
+        voiceSettings: formData.voiceId ? formData.voiceSettings : undefined,
       }),
     onSuccess: async (res) => {
       const characterId = res.data.id;
@@ -1163,14 +1184,22 @@ export function CharacterCreateForm() {
     },
   });
 
-  const TAB_ORDER: CharacterTab[] = ['settings', 'intro', 'prompt', 'advanced', 'detail'];
+  const TAB_ORDER: CharacterTab[] = ['settings', 'intro', 'prompt', 'advanced', 'voice', 'detail'];
   const currentIdx = TAB_ORDER.indexOf(activeTab);
   const isLastTab = currentIdx === TAB_ORDER.length - 1;
   const isFirstTab = currentIdx === 0;
 
+  const handleRegister = () => {
+    if (!formData.name.trim()) { toast.error('캐릭터 이름을 입력해주세요'); setActiveTab('settings'); return; }
+    if (formData.description.trim().length < 10) { toast.error('한 줄 소개를 10자 이상 입력해주세요'); setActiveTab('settings'); return; }
+    if (formData.systemPrompt.trim().length < 20) { toast.error('캐릭터 프롬프트를 20자 이상 입력해주세요'); setActiveTab('prompt'); return; }
+    if (!formData.greeting.trim()) { toast.error('인트로 탭에서 캐릭터의 첫 인사말을 입력해주세요'); setActiveTab('intro'); return; }
+    createMutation.mutate();
+  };
+
   const handleNext = () => {
     if (!isLastTab) setActiveTab(TAB_ORDER[currentIdx + 1]);
-    else createMutation.mutate();
+    else handleRegister();
   };
   const handlePrev = () => {
     if (!isFirstTab) setActiveTab(TAB_ORDER[currentIdx - 1]);
@@ -1731,7 +1760,7 @@ export function CharacterCreateForm() {
             <History className="w-4 h-4" />
           </button>
           <button
-            onClick={() => createMutation.mutate()}
+            onClick={handleRegister}
             disabled={createMutation.isPending}
             className="px-5 py-1.5 rounded-xl bg-gray-900 text-white text-sm font-bold hover:bg-gray-800 transition-colors disabled:opacity-40"
           >
@@ -2163,7 +2192,7 @@ export function CharacterCreateForm() {
                       <span className="text-gray-300 text-xs">{formData.systemPrompt.length} / 2000</span>
                       <button
                         onClick={handleAIGenerate}
-                        disabled={isGenerating || !formData.name.trim()}
+                        disabled={isGenerating || !formData.name.trim() || !formData.description.trim()}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand/10 text-brand text-xs font-semibold hover:bg-brand/20 transition-colors disabled:opacity-50"
                       >
                         {isGenerating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
@@ -2350,6 +2379,236 @@ export function CharacterCreateForm() {
                     }}
                   />
                 </div>
+              </div>
+            )}
+
+            {/* ── 음성 탭 ── */}
+            {activeTab === 'voice' && (
+              <div>
+                <div className="mb-1">
+                  <h2 className="text-gray-900 font-bold text-lg">음성 설정</h2>
+                </div>
+                <p className="text-gray-400 text-sm mb-6">캐릭터에 목소리를 부여하면 유저가 음성으로 대화할 수 있어요</p>
+
+                {/* 모드 선택 */}
+                <div className="flex gap-2 mb-6">
+                  {(['none', 'library', 'clone'] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={async () => {
+                        setVoiceMode(m);
+                        if (m === 'none') { update({ voiceProvider: null, voiceId: null }); }
+                        if (m === 'library' && voiceLibrary.length === 0) {
+                          setIsLoadingVoices(true);
+                          try {
+                            const res = await voiceApi.getLibrary();
+                            setVoiceLibrary(res.data ?? []);
+                          } catch {}
+                          setIsLoadingVoices(false);
+                        }
+                      }}
+                      className={cn(
+                        'flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all border',
+                        voiceMode === m
+                          ? 'bg-gray-900 text-white border-gray-900'
+                          : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'
+                      )}
+                    >
+                      {m === 'none' ? '음성 없음' : m === 'library' ? '라이브러리' : '내 목소리 클로닝'}
+                    </button>
+                  ))}
+                </div>
+
+                {/* 라이브러리 모드 */}
+                {voiceMode === 'library' && (
+                  <div className="border border-gray-200 rounded-2xl p-5">
+                    {/* 검색 */}
+                    <div className="relative mb-4">
+                      <input
+                        value={voiceSearch}
+                        onChange={(e) => setVoiceSearch(e.target.value)}
+                        placeholder="음성 검색..."
+                        className="w-full pl-4 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-gray-400 transition-colors"
+                      />
+                    </div>
+
+                    {isLoadingVoices ? (
+                      <div className="flex justify-center py-8">
+                        <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-3 max-h-72 overflow-y-auto pr-1">
+                        {voiceLibrary
+                          .filter((v) => !voiceSearch || v.name.toLowerCase().includes(voiceSearch.toLowerCase()))
+                          .map((v) => (
+                            <button
+                              key={v.voiceId}
+                              type="button"
+                              onClick={() => update({ voiceProvider: 'elevenlabs', voiceId: v.voiceId })}
+                              className={cn(
+                                'flex flex-col gap-2 p-3 rounded-xl border text-left transition-all',
+                                formData.voiceId === v.voiceId
+                                  ? 'border-brand bg-brand/5'
+                                  : 'border-gray-200 hover:border-gray-400'
+                              )}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-semibold text-gray-900 truncate">{v.name}</span>
+                                {formData.voiceId === v.voiceId && (
+                                  <Check className="w-4 h-4 text-brand flex-shrink-0" />
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (previewingVoiceId === v.voiceId) {
+                                    previewAudioRef.current?.pause();
+                                    setPreviewingVoiceId(null);
+                                    return;
+                                  }
+                                  const audio = new Audio(voiceApi.previewUrl(v.voiceId));
+                                  previewAudioRef.current?.pause();
+                                  previewAudioRef.current = audio;
+                                  setPreviewingVoiceId(v.voiceId);
+                                  audio.onended = () => setPreviewingVoiceId(null);
+                                  audio.play().catch(() => setPreviewingVoiceId(null));
+                                }}
+                                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-brand transition-colors"
+                              >
+                                {previewingVoiceId === v.voiceId
+                                  ? <><Square className="w-3 h-3" />정지</>
+                                  : <><Play className="w-3 h-3" />미리 듣기</>
+                                }
+                              </button>
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 클로닝 모드 */}
+                {voiceMode === 'clone' && (
+                  <div className="border border-gray-200 rounded-2xl p-5 space-y-4">
+                    <div>
+                      <label className="text-sm font-semibold text-gray-900 mb-1 block">목소리 이름</label>
+                      <input
+                        value={cloneName}
+                        onChange={(e) => setCloneName(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-gray-400 transition-colors"
+                        placeholder="내 목소리"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-semibold text-gray-900 mb-1 block">오디오 파일 업로드</label>
+                      <p className="text-xs text-gray-400 mb-3">최소 1분 이상의 음성 파일 (mp3 / wav / m4a, 최대 25MB)</p>
+                      <button
+                        type="button"
+                        onClick={() => cloneInputRef.current?.click()}
+                        className="w-full flex items-center justify-center gap-2 py-6 border-2 border-dashed border-gray-200 rounded-xl text-gray-500 hover:border-brand hover:text-brand transition-colors"
+                      >
+                        <Mic className="w-5 h-5" />
+                        {cloneFile ? cloneFile.name : '파일 선택 또는 드래그'}
+                      </button>
+                      <input
+                        ref={cloneInputRef}
+                        type="file"
+                        accept="audio/mp3,audio/wav,audio/m4a,audio/*"
+                        className="hidden"
+                        onChange={(e) => setCloneFile(e.target.files?.[0] ?? null)}
+                      />
+                    </div>
+
+                    {formData.voiceId && (
+                      <div className="flex items-center gap-2 p-3 bg-green-50 rounded-xl">
+                        <Check className="w-4 h-4 text-green-600" />
+                        <span className="text-sm text-green-700 font-medium">클로닝 완료! 미리 듣기로 확인해 보세요.</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const audio = new Audio(voiceApi.previewUrl(formData.voiceId!));
+                            previewAudioRef.current?.pause();
+                            previewAudioRef.current = audio;
+                            audio.play().catch(() => {});
+                          }}
+                          className="ml-auto flex items-center gap-1 text-xs text-green-600 hover:text-green-800"
+                        >
+                          <Play className="w-3 h-3" />미리 듣기
+                        </button>
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      disabled={!cloneFile || isCloning}
+                      onClick={async () => {
+                        if (!cloneFile) return;
+                        setIsCloning(true);
+                        try {
+                          const res = await voiceApi.clone(cloneName, cloneFile, cloneFile.name);
+                          update({ voiceProvider: 'elevenlabs', voiceId: res.voiceId });
+                          toast.success('목소리 클로닝 완료!', '미리 듣기로 확인해 보세요');
+                        } catch {
+                          toast.error('클로닝 실패', '파일을 확인하고 다시 시도해주세요');
+                        } finally {
+                          setIsCloning(false);
+                        }
+                      }}
+                      className="w-full py-3 rounded-xl bg-gray-900 text-white font-semibold text-sm disabled:opacity-40 flex items-center justify-center gap-2"
+                    >
+                      {isCloning ? <><Loader2 className="w-4 h-4 animate-spin" />클로닝 중...</> : '클로닝 시작'}
+                    </button>
+                  </div>
+                )}
+
+                {/* 고급 설정 (음성 선택됐을 때) */}
+                {formData.voiceId && voiceMode !== 'none' && (
+                  <div className="mt-5">
+                    <button
+                      type="button"
+                      onClick={() => setShowVoiceSettings((v) => !v)}
+                      className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-800 transition-colors"
+                    >
+                      <Sliders className="w-4 h-4" />
+                      고급 설정
+                      <ChevronUp className={cn('w-4 h-4 transition-transform', !showVoiceSettings && 'rotate-180')} />
+                    </button>
+
+                    {showVoiceSettings && (
+                      <div className="mt-4 border border-gray-200 rounded-2xl p-5 space-y-5">
+                        {(
+                          [
+                            { key: 'stability', label: '안정성', min: 0, max: 1, step: 0.05 },
+                            { key: 'similarity_boost', label: '유사도', min: 0, max: 1, step: 0.05 },
+                            { key: 'style', label: '감정 강도', min: 0, max: 1, step: 0.05 },
+                            { key: 'speed', label: '말하기 속도', min: 0.5, max: 2.0, step: 0.05 },
+                          ] as const
+                        ).map(({ key, label, min, max, step }) => (
+                          <div key={key}>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm text-gray-700 font-medium">{label}</span>
+                              <span className="text-sm text-gray-500 font-mono">{formData.voiceSettings[key].toFixed(2)}</span>
+                            </div>
+                            <input
+                              type="range"
+                              min={min}
+                              max={max}
+                              step={step}
+                              value={formData.voiceSettings[key]}
+                              onChange={(e) =>
+                                update({ voiceSettings: { ...formData.voiceSettings, [key]: parseFloat(e.target.value) } })
+                              }
+                              className="w-full accent-gray-900"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

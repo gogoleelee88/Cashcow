@@ -512,6 +512,45 @@ export const api = {
 };
 
 // ─────────────────────────────────────────────
+// VOICE API
+// ─────────────────────────────────────────────
+const BASE_URL_RAW = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+
+export const voiceApi = {
+  getLibrary: () => apiClient.get('/api/voice/library').then((r) => r.data),
+
+  previewUrl: (voiceId: string) => `${BASE_URL_RAW}/api/voice/preview/${voiceId}`,
+
+  clone: async (name: string, audioBlob: Blob, fileName: string): Promise<{ voiceId: string; name: string }> => {
+    const form = new FormData();
+    form.append('name', name);
+    form.append('file', audioBlob, fileName);
+    const r = await apiClient.post('/api/voice/clone', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+    return r.data.data;
+  },
+
+  deleteVoice: (voiceId: string) => apiClient.delete(`/api/voice/${voiceId}`).then((r) => r.data),
+
+  speak: async (text: string, voiceId: string, voiceSettings?: object): Promise<Blob> => {
+    const token = useAuthStore.getState().accessToken;
+    const res = await fetch(`${BASE_URL_RAW}/api/voice/speak`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ text: text.slice(0, 5000), voiceId, voiceSettings }),
+    });
+    if (!res.ok) throw new Error('TTS 요청 실패');
+    return res.blob();
+  },
+
+  transcribe: async (audioBlob: Blob): Promise<string> => {
+    const form = new FormData();
+    form.append('file', audioBlob, 'audio.webm');
+    const r = await apiClient.post('/api/voice/transcribe', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+    return r.data.data.text;
+  },
+};
+
+// ─────────────────────────────────────────────
 // STREAMING CHAT (SSE) — with reconnection recovery
 // ─────────────────────────────────────────────
 export function streamChatMessage(
