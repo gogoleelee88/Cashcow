@@ -1031,8 +1031,9 @@ export function CharacterCreateForm() {
         update({ systemPrompt, greeting, description: description || formData.description, tags: tags || formData.tags });
         toast.success('AI가 캐릭터를 생성했어요!', '내용을 확인하고 수정해보세요');
       }
-    } catch {
-      toast.error('AI 생성 실패', '직접 입력해주세요');
+    } catch (err: any) {
+      const msg = err?.response?.data?.error?.message || err?.message || '직접 입력해주세요';
+      toast.error('AI 생성 실패', msg);
     } finally {
       setIsGenerating(false);
     }

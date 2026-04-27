@@ -714,20 +714,21 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
 
       const { name, concept, category, language } = body.data;
 
-      // OpenAI로 전환 (Anthropic 비활성화)
       const OpenAI = (await import('openai')).default;
       const { config: cfg } = await import('../config');
       const openai = new OpenAI({ apiKey: cfg.OPENAI_API_KEY });
 
       const langInstruction = language === 'ko' ? '한국어로 작성해주세요.' : 'Write in English.';
 
-      const response = await openai.chat.completions.create({
-        model: cfg.OPENAI_HAIKU_MODEL,
-        max_tokens: 1500,
-        messages: [
-          {
-            role: 'user',
-            content: `당신은 AI 캐릭터 제작 전문가입니다. 다음 정보를 바탕으로 캐릭터의 시스템 프롬프트와 첫 인사말을 생성해주세요.
+      let text: string;
+      try {
+        const response = await openai.chat.completions.create({
+          model: cfg.OPENAI_HAIKU_MODEL,
+          max_tokens: 1500,
+          messages: [
+            {
+              role: 'user',
+              content: `당신은 AI 캐릭터 제작 전문가입니다. 다음 정보를 바탕으로 캐릭터의 시스템 프롬프트와 첫 인사말을 생성해주세요.
 
 캐릭터 이름: ${name}
 캐릭터 개념: ${concept}
@@ -742,14 +743,19 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
 }
 
 JSON만 응답하고, 다른 텍스트는 포함하지 마세요.`,
-          },
-        ],
-      });
-
-      const text = response.choices[0].message.content ?? '';
+            },
+          ],
+        });
+        text = response.choices[0].message.content ?? '';
+      } catch (err: any) {
+        logger.error({ err, name, category }, 'OpenAI API call failed in /generate');
+        return reply.code(502).send({
+          success: false,
+          error: { code: 'AI_API_ERROR', message: `OpenAI 호출 실패: ${err?.message ?? '알 수 없는 오류'}` },
+        });
+      }
 
       try {
-        // Extract JSON from response (handle markdown code blocks)
         const jsonMatch = text.match(/\{[\s\S]*\}/);
         if (!jsonMatch) throw new Error('No JSON found');
         const generated = JSON.parse(jsonMatch[0]);
@@ -767,7 +773,7 @@ JSON만 응답하고, 다른 텍스트는 포함하지 마세요.`,
         logger.warn({ text }, 'Failed to parse AI generation response');
         return reply.code(500).send({
           success: false,
-          error: { code: 'GENERATION_FAILED', message: 'AI 생성에 실패했습니다. 직접 입력해주세요.' },
+          error: { code: 'GENERATION_FAILED', message: 'AI 응답 파싱 실패. 직접 입력해주세요.' },
         });
       }
     },
