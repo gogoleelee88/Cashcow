@@ -62,6 +62,16 @@ export const imageQueue = new Queue('image-generation', {
   },
 });
 
+export const autoModerationQueue = new Queue('auto-moderation', {
+  connection: getBullRedis(),
+  defaultJobOptions: {
+    attempts: 2,
+    backoff: { type: 'exponential', delay: 3000 },
+    removeOnComplete: { count: 500 },
+    removeOnFail: { count: 100 },
+  },
+});
+
 // ─────────────────────────────────────────────
 // JOB TYPES
 // ─────────────────────────────────────────────
@@ -106,6 +116,14 @@ export interface ImageJobData {
   sourceImageFilename?: string;
 }
 
+export interface AutoModerationJobData {
+  messageId: string;
+  content: string;
+  characterName: string;
+  conversationId: string;
+  userId: string;
+}
+
 // ─────────────────────────────────────────────
 // JOB PRODUCERS
 // ─────────────────────────────────────────────
@@ -139,6 +157,12 @@ export async function enqueueMemoryCompression(conversationId: string): Promise<
 export async function enqueueImageJob(data: ImageJobData): Promise<string> {
   const job = await imageQueue.add('process-image', data);
   return job.id!;
+}
+
+export async function enqueueAutoModeration(data: AutoModerationJobData): Promise<void> {
+  await autoModerationQueue.add('moderate-message', data, {
+    jobId: `moderate-${data.messageId}`,
+  });
 }
 
 // ─────────────────────────────────────────────
@@ -377,6 +401,60 @@ async function processImageJob(job: Job<ImageJobData>): Promise<void> {
 }
 
 // ─────────────────────────────────────────────
+// AUTO MODERATION PROCESSOR
+// ─────────────────────────────────────────────
+async function processAutoModeration(job: Job<AutoModerationJobData>): Promise<void> {
+  const { messageId, content, characterName, conversationId, userId } = job.data;
+
+  const { autoModerateMessage } = await import('./ai.service');
+  const { sendSlackAlert } = await import('../lib/slack');
+
+  const result = await autoModerateMessage(content);
+  if (!result.flagged || !result.category) return;
+
+  const autoHidden = result.confidence >= 0.9;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.moderationFlag.create({
+      data: {
+        messageId,
+        category: result.category!,
+        confidence: result.confidence,
+        status: 'PENDING',
+        autoHidden,
+      },
+    });
+
+    if (autoHidden) {
+      await tx.message.update({
+        where: { id: messageId },
+        data: {
+          isHidden: true,
+          hiddenReason: `자동 감지: ${result.category} (신뢰도 ${Math.round(result.confidence * 100)}%)`,
+          hiddenAt: new Date(),
+        },
+      });
+    }
+  });
+
+  const severity = result.confidence >= 0.9 ? 'critical' : 'warning';
+  await sendSlackAlert({
+    title: autoHidden ? '🚨 유해 메시지 자동 차단' : '⚠️ 유해 콘텐츠 의심 감지',
+    message: content.slice(0, 200),
+    severity,
+    fields: {
+      '카테고리': result.category!,
+      '신뢰도': `${Math.round(result.confidence * 100)}%`,
+      '캐릭터': characterName,
+      '자동차단': autoHidden ? '예' : '아니오',
+      '대화ID': conversationId,
+    },
+  });
+
+  logger.warn({ messageId, category: result.category, confidence: result.confidence, autoHidden }, 'Auto moderation flagged message');
+}
+
+// ─────────────────────────────────────────────
 // WORKERS
 // ─────────────────────────────────────────────
 let settlementWorker: Worker | null = null;
@@ -384,6 +462,7 @@ let notificationWorker: Worker | null = null;
 let memoryWorker: Worker | null = null;
 let imageWorker: Worker | null = null;
 let chapterPublishWorker: Worker | null = null;
+let autoModerationWorker: Worker | null = null;
 
 export function startWorkers(): void {
   chapterPublishWorker = new Worker(
@@ -445,7 +524,15 @@ export function startWorkers(): void {
     { connection: getBullRedis(), concurrency: 3 }
   );
 
-  [settlementWorker, notificationWorker, memoryWorker, imageWorker].forEach((worker) => {
+  autoModerationWorker = new Worker(
+    'auto-moderation',
+    async (job: Job) => {
+      await processAutoModeration(job as Job<AutoModerationJobData>);
+    },
+    { connection: getBullRedis(), concurrency: 5 }
+  );
+
+  [settlementWorker, notificationWorker, memoryWorker, imageWorker, autoModerationWorker].forEach((worker) => {
     worker.on('failed', async (job, err) => {
       logger.error({ jobId: job?.id, queue: worker.name, err }, 'Job failed');
       if (job?.attemptsMade === job?.opts.attempts) {
@@ -467,6 +554,7 @@ export async function stopWorkers(): Promise<void> {
     notificationWorker?.close(),
     memoryWorker?.close(),
     imageWorker?.close(),
+    autoModerationWorker?.close(),
   ]);
 }
 

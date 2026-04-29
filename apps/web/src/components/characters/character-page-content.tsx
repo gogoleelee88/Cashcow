@@ -8,6 +8,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { CharacterPreviewModal } from './character-preview-modal';
+import { AnnouncementSlider } from '../home/AnnouncementSlider';
 import {
   MessageCircle, Heart, ChevronDown, MoreVertical,
   Pencil, Info, BookOpen, X,
@@ -611,6 +612,11 @@ export function CharacterPageContent() {
         <ChatHistorySidebar />
 
         <main className="flex-1 min-w-0 px-6 py-4">
+          {/* 공지 슬라이더 */}
+          <div className="mb-5">
+            <AnnouncementSlider />
+          </div>
+
           {/* 탭 + 선호장르 버튼 */}
           <div className="flex items-center gap-1.5 mb-0 pb-3 border-b border-gray-100">
             <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-1 min-w-0">

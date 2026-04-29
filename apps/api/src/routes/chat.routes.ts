@@ -3,7 +3,7 @@ import { prisma, prismaRead } from '../lib/prisma';
 import { requireAuth } from '../plugins/auth.plugin';
 import { chatRateLimit } from '../plugins/rate-limit.plugin';
 import { filterUserMessage, estimateTokens, extractEpisodicMemory, updateRelationshipState } from '../services/ai.service';
-import { enqueueMemoryCompression } from '../services/queue.service';
+import { enqueueMemoryCompression, enqueueAutoModeration } from '../services/queue.service';
 import { chatMessagesTotal, creditsConsumedTotal } from '../lib/metrics';
 import { logger } from '../lib/logger';
 
@@ -125,7 +125,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
         take: Number(limit) + 1,
         select: {
           id: true, role: true, content: true, status: true,
-          isFiltered: true, createdAt: true,
+          isFiltered: true, isHidden: true, createdAt: true,
         },
       });
 
@@ -133,9 +133,13 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
       if (hasMore) messages.pop();
       messages.reverse();
 
+      const processed = messages.map((m) =>
+        m.isHidden ? { ...m, content: '[삭제된 메시지입니다.]' } : m
+      );
+
       return reply.send({
         success: true,
-        data: messages,
+        data: processed,
         meta: {
           hasMore,
           nextCursor: hasMore ? messages[0]?.createdAt.toISOString() : null,
@@ -332,6 +336,15 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
 
             // 비동기 백그라운드 메모리 트리거들 (응답 지연 없음)
             const msgCount = await prisma.message.count({ where: { conversationId } });
+
+            // 자동 모더레이션: 모든 AI 응답 비동기 검수
+            enqueueAutoModeration({
+              messageId: assistantMessage.id,
+              content: fullText,
+              characterName: conversation.character.name,
+              conversationId,
+              userId: request.userId!,
+            }).catch((err) => logger.warn({ err, conversationId }, 'Auto moderation enqueue failed'));
 
             // 계층 1: 20의 배수마다 압축 (20, 40, 60...)
             if (msgCount % 20 === 0) {

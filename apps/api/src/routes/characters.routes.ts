@@ -8,6 +8,7 @@ import { requireAuth, requireAgeVerification } from '../plugins/auth.plugin';
 import { searchRateLimit, uploadRateLimit } from '../plugins/rate-limit.plugin';
 import { logger } from '../lib/logger';
 import type { CharacterCategory, CharacterVisibility, AgeRating, AudienceTarget } from '@prisma/client';
+import { reviewCharacterPrompt } from '../services/ai.service';
 import { randomBytes } from 'crypto';
 
 const CACHE_TTL_CHARACTER_LIST = 120;  // 2 min
@@ -405,6 +406,24 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
       // Encrypt system prompt at rest
       const { encrypted, iv } = encrypt(body.data.systemPrompt);
 
+      // 캐릭터 프롬프트 자동 검수 (비동기로 먼저 실행)
+      const review = await reviewCharacterPrompt(
+        body.data.name,
+        body.data.description,
+        body.data.systemPrompt
+      );
+
+      // REJECTED → 등록 차단
+      if (review.status === 'REJECTED') {
+        return reply.code(422).send({
+          success: false,
+          error: {
+            code: 'CHARACTER_REJECTED',
+            message: `캐릭터 등록이 거절되었습니다. 사유: ${review.note ?? '정책 위반'}`,
+          },
+        });
+      }
+
       // imageKey → avatarUrl / avatarKey
       const { config: cfg } = await import('../config');
       const avatarKey = body.data.imageKey ?? null;
@@ -440,6 +459,8 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
           model: body.data.model,
           temperature: body.data.temperature,
           maxTokens: body.data.maxTokens,
+          reviewStatus: review.status,
+          reviewNote: review.note,
           creatorId: request.userId!,
         },
         include: { creator: { select: { id: true, username: true, displayName: true } } },

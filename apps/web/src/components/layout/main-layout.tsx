@@ -3,9 +3,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { Search, Bell, X, Menu, ChevronDown, BookOpen, Users, Image as ImageIcon, Bookmark, Plus, LogOut, Settings, User, ShieldCheck, Baby } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { cn } from '../../lib/utils';
 import { useAuthStore } from '../../stores/auth.store';
 import { useProfileStore } from '../../stores/profile.store';
+import { api } from '../../lib/api';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -40,6 +42,14 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
 
   const isKids = activeProfile?.isKids ?? false;
   const NAV_ITEMS = isKids ? NAV_ITEMS_KIDS : NAV_ITEMS_DEFAULT;
+
+  const { data: notifData } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: () => api.users.notifications(),
+    enabled: isAuthenticated,
+    refetchInterval: 60_000,
+  });
+  const unreadCount = (notifData as any)?.meta?.unreadCount ?? 0;
 
   // 키즈 모드 body 클래스
   useEffect(() => {
@@ -191,7 +201,9 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
                   className="relative p-2 rounded-xl hover:bg-surface text-text-muted hover:text-text-primary transition-all"
                 >
                   <Bell className="w-5 h-5" />
-                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-brand" />
+                  {unreadCount > 0 && (
+                    <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-brand" />
+                  )}
                 </Link>
 
                 {/* User avatar + dropdown */}

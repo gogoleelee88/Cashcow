@@ -48,6 +48,16 @@ const nextConfig = {
       },
     ];
   },
+  async rewrites() {
+    return {
+      beforeFiles: [
+        {
+          source: '/api/:path*',
+          destination: `${API_URL}/api/:path*`,
+        },
+      ],
+    };
+  },
   experimental: {
     optimizePackageImports: ['lucide-react', 'framer-motion'],
   },

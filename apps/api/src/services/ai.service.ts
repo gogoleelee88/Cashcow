@@ -126,6 +126,112 @@ export function filterAssistantResponse(content: string): { safe: boolean; filte
 }
 
 // ─────────────────────────────────────────────
+// AUTO MODERATION (GPT-4o-mini 2차 분류)
+// 키워드 필터 통과 후 비동기 검수
+// ─────────────────────────────────────────────
+export type ModerationCategory =
+  | 'SELF_HARM'
+  | 'SEXUAL_MINOR'
+  | 'REAL_PERSON'
+  | 'ILLEGAL'
+  | 'PRIVACY'
+  | 'MANIPULATION';
+
+export interface ModerationResult {
+  flagged: boolean;
+  category: ModerationCategory | null;
+  confidence: number;
+}
+
+export async function autoModerateMessage(content: string): Promise<ModerationResult> {
+  try {
+    const response = await openai.chat.completions.create({
+      model: config.OPENAI_HAIKU_MODEL,
+      max_tokens: 150,
+      temperature: 0,
+      messages: [
+        {
+          role: 'system',
+          content: `You are a content moderation AI. Analyze the text and return JSON only.
+Categories:
+- SELF_HARM: promotes or details self-harm, suicide methods (indirect expressions included)
+- SEXUAL_MINOR: sexual content involving minors
+- REAL_PERSON: defamation or impersonation of real people
+- ILLEGAL: promotes illegal activities
+- PRIVACY: attempts to extract personal information
+- MANIPULATION: emotional manipulation, financial coercion
+
+Respond ONLY with JSON:
+{"flagged": boolean, "category": "CATEGORY_NAME or null", "confidence": 0.0-1.0}`,
+        },
+        { role: 'user', content: content.slice(0, 1000) },
+      ],
+    });
+
+    const raw = response.choices[0].message.content ?? '{}';
+    const json = JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] ?? '{}');
+    return {
+      flagged: json.flagged === true && json.confidence >= 0.7,
+      category: json.category ?? null,
+      confidence: json.confidence ?? 0,
+    };
+  } catch {
+    return { flagged: false, category: null, confidence: 0 };
+  }
+}
+
+// ─────────────────────────────────────────────
+// CHARACTER PROMPT REVIEW
+// 캐릭터 등록 시 시스템 프롬프트 사전 검수
+// ─────────────────────────────────────────────
+export type CharacterReviewStatus = 'AUTO_APPROVED' | 'NEEDS_REVIEW' | 'REJECTED';
+
+export interface CharacterReviewResult {
+  status: CharacterReviewStatus;
+  note: string | null;
+}
+
+export async function reviewCharacterPrompt(
+  name: string,
+  description: string,
+  systemPrompt: string
+): Promise<CharacterReviewResult> {
+  try {
+    const content = `캐릭터명: ${name}\n설명: ${description}\n시스템 프롬프트: ${systemPrompt.slice(0, 2000)}`;
+
+    const response = await openai.chat.completions.create({
+      model: config.OPENAI_HAIKU_MODEL,
+      max_tokens: 200,
+      temperature: 0,
+      messages: [
+        {
+          role: 'system',
+          content: `AI 캐릭터 콘텐츠 검수 AI입니다. 캐릭터 정보를 검토하고 JSON만 반환하세요.
+
+판정 기준:
+- REJECTED: 미성년자 성적 묘사, 실제 인물 사칭, 자해/자살 조장, 불법 행위 명시적 지시
+- NEEDS_REVIEW: 성인 콘텐츠 암시, 폭력적 요소, 모호한 위험 표현
+- AUTO_APPROVED: 그 외 일반 캐릭터
+
+응답 형식 (JSON만):
+{"status": "AUTO_APPROVED|NEEDS_REVIEW|REJECTED", "note": "문제가 있을 경우 사유, 없으면 null"}`,
+        },
+        { role: 'user', content },
+      ],
+    });
+
+    const raw = response.choices[0].message.content ?? '{}';
+    const json = JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] ?? '{}');
+    return {
+      status: (json.status as CharacterReviewStatus) ?? 'NEEDS_REVIEW',
+      note: json.note ?? null,
+    };
+  } catch {
+    return { status: 'NEEDS_REVIEW', note: '자동 검수 실패 - 수동 검토 필요' };
+  }
+}
+
+// ─────────────────────────────────────────────
 // PERSONA DRIFT PREVENTION
 // Ensures character stays in character
 // ─────────────────────────────────────────────
@@ -370,18 +476,34 @@ export async function syncUserCharacterMemory(
     ...episodic.userFacts,
   };
 
+  const summaryParts: string[] = [];
+  const profileEntries = Object.entries(mergedProfile).filter(([, v]) => v !== null && v !== undefined);
+  if (profileEntries.length > 0) {
+    summaryParts.push(
+      `유저 정보: ${profileEntries.map(([k, v]) => `${k}=${Array.isArray(v) ? (v as string[]).join(', ') : v}`).join(' / ')}`
+    );
+  }
+  if (episodic.keyEvents.length > 0) {
+    summaryParts.push(`주요 사건: ${episodic.keyEvents.slice(-5).map((e) => e.event).join(' / ')}`);
+  }
+  if (episodic.relationshipMilestones.length > 0) {
+    summaryParts.push(`관계 흐름: ${episodic.relationshipMilestones.join(' → ')}`);
+  }
+  const cumulativeSummary = summaryParts.length > 0 ? summaryParts.join('\n') : null;
+
   if (existing) {
     await prisma.userCharacterMemory.update({
       where: { userId_characterId: { userId, characterId } },
       data: {
         userProfile: mergedProfile as any,
+        cumulativeSummary,
         totalInteractions: { increment: 1 },
         updatedAt: new Date(),
       },
     });
   } else {
     await prisma.userCharacterMemory.create({
-      data: { userId, characterId, userProfile: mergedProfile as any, totalInteractions: 1 },
+      data: { userId, characterId, userProfile: mergedProfile as any, cumulativeSummary, totalInteractions: 1 },
     });
   }
 }
