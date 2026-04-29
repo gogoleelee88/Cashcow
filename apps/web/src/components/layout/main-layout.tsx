@@ -19,14 +19,14 @@ interface MainLayoutProps {
 
 const NAV_ITEMS_DEFAULT = [
   { href: '/story', label: '스토리', icon: BookOpen },
-  { href: '/', label: '캐릭터', icon: Users },
+  { href: '/characters', label: '캐릭터', icon: Users },
   { href: '/creator', label: '내 작품', icon: Bookmark },
   { href: '/images', label: '이미지', icon: ImageIcon },
 ];
 
 const NAV_ITEMS_KIDS = [
   { href: '/story', label: '스토리', icon: BookOpen },
-  { href: '/', label: '캐릭터', icon: Users },
+  { href: '/characters', label: '캐릭터', icon: Users },
 ];
 
 export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
