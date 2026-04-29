@@ -104,12 +104,12 @@ export function LoginForm() {
           className="w-full max-w-sm"
         >
           {/* Mobile logo */}
-          <div className="lg:hidden text-center mb-8">
-            <Link href="/" className="inline-flex items-center gap-2">
-              <div className="w-10 h-10 rounded-xl bg-brand flex items-center justify-center">
-                <span className="text-white font-black text-base">Z</span>
+          <div className="lg:hidden text-center mb-10">
+            <Link href="/" className="inline-flex items-center gap-4">
+              <div className="w-[4.5rem] h-[4.5rem] rounded-2xl bg-brand flex items-center justify-center">
+                <span className="text-white font-black text-4xl">Z</span>
               </div>
-              <span className="font-black text-xl text-text-primary">Zac<span className="text-2xl">∞</span></span>
+              <span className="font-black text-6xl text-text-primary">Zac<span className="text-7xl">∞</span></span>
             </Link>
           </div>
 
@@ -136,8 +136,6 @@ export function LoginForm() {
             </div>
           )}
 
-          <h1 className="text-2xl font-bold text-text-primary mb-2">로그인</h1>
-          <p className="text-text-muted text-sm mb-8">계정에 로그인하세요</p>
 
           {/* OAuth buttons */}
           <div className="space-y-3 mb-6">
