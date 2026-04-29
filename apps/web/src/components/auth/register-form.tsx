@@ -7,7 +7,7 @@ import { motion } from 'framer-motion';
 import { Eye, EyeOff, Zap, AlertCircle, CheckCircle2, Loader2, ChevronRight, Check, X } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/auth.store';
-import { isValidEmail, isValidUsername, isValidPassword } from '@Zac∞/utils';
+import { isValidEmail, isValidUsername, isValidPassword } from '@characterverse/utils';
 import { cn } from '../../lib/utils';
 
 // ─────────────────────────────────────────────
