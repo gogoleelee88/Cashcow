@@ -279,14 +279,9 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
                 </div>
               </>
             ) : (
-              <div className="flex items-center gap-2">
-                <Link href="/login" className="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors px-3 py-2">
-                  로그인
-                </Link>
-                <Link href="/login" className="btn-primary text-sm py-2 px-4">
-                  시작하기
-                </Link>
-              </div>
+              <Link href="/login" className="btn-primary text-sm py-2 px-4">
+                시작하기
+              </Link>
             )}
 
             {/* Mobile menu button */}
