@@ -227,8 +227,46 @@ export function ImageGenerationPage() {
 
           {activeTab === '신규 생성' ? (
             <>
+              {/* 이미지 스타일 — 상단 가로 스크롤 */}
+              <div className="mb-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-brand text-sm font-bold">✦</span>
+                  <h2 className="text-gray-900 font-bold text-base">이미지 스타일</h2>
+                </div>
+                <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                  {STYLES.map(style => (
+                    <button
+                      key={style.name}
+                      onClick={() => setSelectedStyle(style.name)}
+                      className={cn(
+                        'relative flex-shrink-0 w-20 h-20 rounded-2xl overflow-hidden border-2 transition-all hover:scale-[1.03]',
+                        selectedStyle === style.name
+                          ? 'border-brand shadow-[0_0_0_2px_rgba(230,51,37,0.3)]'
+                          : 'border-transparent'
+                      )}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={style.img} alt={style.name} className="w-full h-full object-cover" />
+
+                      {selectedStyle === style.name && (
+                        <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-brand flex items-center justify-center shadow-md">
+                          <svg width="8" height="7" viewBox="0 0 10 8" fill="none">
+                            <path d="M1 4l2.5 2.5L9 1" stroke="white" strokeWidth="1.8"
+                              strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </div>
+                      )}
+
+                      <div className="absolute bottom-0 left-0 right-0 py-1 bg-gradient-to-t from-black/60 to-transparent">
+                        <span className="text-white text-[10px] font-semibold drop-shadow">{style.name}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* 프롬프트 영역 */}
-              <div className="max-w-2xl mb-8">
+              <div className="max-w-2xl">
                 <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
                   <textarea
                     value={prompt}
@@ -258,48 +296,6 @@ export function ImageGenerationPage() {
                       </button>
                     </div>
                   </div>
-                </div>
-              </div>
-
-              {/* 이미지 스타일 */}
-              <div className="max-w-2xl">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-brand text-sm font-bold">✦</span>
-                  <h2 className="text-gray-900 font-bold text-base">이미지 스타일</h2>
-                </div>
-                <p className="text-gray-400 text-sm mb-5">원하는 느낌의 스타일을 선택하세요</p>
-
-                <div className="grid grid-cols-4 gap-3">
-                  {STYLES.map(style => (
-                    <button
-                      key={style.name}
-                      onClick={() => setSelectedStyle(style.name)}
-                      className={cn(
-                        'relative rounded-2xl overflow-hidden aspect-square border-2 transition-all hover:scale-[1.02]',
-                        selectedStyle === style.name
-                          ? 'border-brand shadow-[0_0_0_2px_rgba(230,51,37,0.3)]'
-                          : 'border-transparent'
-                      )}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={style.img} alt={style.name} className="w-full h-full object-cover" />
-
-                      {/* 선택 체크 */}
-                      {selectedStyle === style.name && (
-                        <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-brand flex items-center justify-center shadow-md">
-                          <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                            <path d="M1 4l2.5 2.5L9 1" stroke="white" strokeWidth="1.8"
-                              strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        </div>
-                      )}
-
-                      {/* 이름 */}
-                      <div className="absolute bottom-0 left-0 right-0 py-1.5 bg-gradient-to-t from-black/60 to-transparent">
-                        <span className="text-white text-xs font-semibold drop-shadow">{style.name}</span>
-                      </div>
-                    </button>
-                  ))}
                 </div>
               </div>
             </>
