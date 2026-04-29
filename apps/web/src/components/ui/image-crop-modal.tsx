@@ -103,7 +103,7 @@ export function ImageCropModal({
             onCropComplete={onCropComplete}
             style={{
               containerStyle: { borderRadius: 0 },
-              cropAreaStyle: { border: '2px solid #E63325' },
+              cropAreaStyle: { border: '2px solid #00D96B' },
             }}
           />
         </div>

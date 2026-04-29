@@ -24,11 +24,11 @@ const config: Config = {
           border: '#E0E0E5',
         },
         brand: {
-          DEFAULT: '#E63325',  // crack.wrtn.ai red
-          hover: '#D12E21',
-          light: '#FF5547',
-          dark: '#C72A1E',
-          glow: 'rgba(230, 51, 37, 0.3)',
+          DEFAULT: '#00D96B',
+          hover: '#00C260',
+          light: '#1AFF82',
+          dark: '#00A855',
+          glow: 'rgba(0, 217, 107, 0.3)',
         },
         accent: {
           pink: '#FF6B9D',
@@ -64,9 +64,9 @@ const config: Config = {
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
         'gradient-conic': 'conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))',
-        'brand-gradient': 'linear-gradient(135deg, #E63325 0%, #FF6B9D 100%)',
+        'brand-gradient': 'linear-gradient(135deg, #00D96B 0%, #00B4D8 100%)',
         'card-gradient': 'linear-gradient(180deg, transparent 40%, rgba(0,0,0,0.7) 100%)',
-        'hero-gradient': 'radial-gradient(ellipse 80% 50% at 50% -20%, rgba(230,51,37,0.1), transparent)',
+        'hero-gradient': 'radial-gradient(ellipse 80% 50% at 50% -20%, rgba(0,217,107,0.1), transparent)',
         'sidebar-gradient': 'linear-gradient(180deg, #F7F7F9 0%, #FFFFFF 100%)',
       },
       animation: {
@@ -101,8 +101,8 @@ const config: Config = {
           '100%': { transform: 'scale(1)', opacity: '1' },
         },
         pulseGlow: {
-          '0%, 100%': { boxShadow: '0 0 15px rgba(230,51,37,0.3)' },
-          '50%': { boxShadow: '0 0 30px rgba(230,51,37,0.5)' },
+          '0%, 100%': { boxShadow: '0 0 15px rgba(0,217,107,0.3)' },
+          '50%': { boxShadow: '0 0 30px rgba(0,217,107,0.5)' },
         },
         shimmer: {
           '0%': { backgroundPosition: '-200% 0' },
@@ -115,11 +115,11 @@ const config: Config = {
         },
       },
       boxShadow: {
-        'brand': '0 0 15px rgba(230,51,37,0.3)',
+        'brand': '0 0 15px rgba(0,217,107,0.3)',
         'card': '0 2px 12px rgba(0,0,0,0.08)',
-        'card-hover': '0 8px 32px rgba(0,0,0,0.15), 0 0 0 1px rgba(230,51,37,0.2)',
+        'card-hover': '0 8px 32px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,217,107,0.2)',
         'inner-border': 'inset 0 0 0 1px rgba(0,0,0,0.06)',
-        'glow-red': '0 0 20px rgba(230,51,37,0.4)',
+        'glow-red': '0 0 20px rgba(0,217,107,0.4)',
         'nav': '0 2px 8px rgba(0,0,0,0.06)',
       },
       borderRadius: {

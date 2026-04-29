@@ -584,7 +584,7 @@ export function StoryChatPage({ storyId }: { storyId: string }) {
                   onClick={handleSend}
                   disabled={!input.trim() || streaming}
                   className="w-9 h-9 rounded-full flex items-center justify-center transition-all disabled:opacity-30"
-                  style={{ background: '#E63325' }}
+                  style={{ background: '#00D96B' }}
                 >
                   {streaming ? (
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="animate-spin">

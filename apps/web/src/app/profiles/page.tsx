@@ -12,7 +12,7 @@ import type { Profile } from '@characterverse/types';
 import { cn } from '../../lib/utils';
 
 const EMOJI_OPTIONS = ['😊','🦁','🐯','🐻','🐼','🦊','🐸','🐧','🦄','🌟','🎮','🎨','🎵','🚀','⚽','🎀','🌈','🍭','🦋','🐬'];
-const COLOR_OPTIONS = ['#E63325','#3B82F6','#10B981','#F59E0B','#8B5CF6','#EC4899','#06B6D4','#F97316','#6366F1','#14B8A6'];
+const COLOR_OPTIONS = ['#00D96B','#3B82F6','#10B981','#F59E0B','#8B5CF6','#EC4899','#06B6D4','#F97316','#6366F1','#14B8A6'];
 
 // ─── 프로필 아바타 ───────────────────────────────
 function ProfileAvatar({ profile, size = 'lg' }: { profile: Profile; size?: 'sm' | 'lg' }) {
@@ -45,7 +45,7 @@ function ProfileFormModal({
   const [name, setName] = useState(initial?.name ?? '');
   const [isKids, setIsKids] = useState(initial?.isKids ?? false);
   const [emoji, setEmoji] = useState(initial?.avatarEmoji ?? '😊');
-  const [color, setColor] = useState(initial?.avatarColor ?? '#E63325');
+  const [color, setColor] = useState(initial?.avatarColor ?? '#00D96B');
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
 
@@ -211,11 +211,11 @@ export default function ProfilesPage() {
     <div className="min-h-screen bg-[#0d0d0d] flex flex-col items-center justify-center px-4">
       {/* 로고 */}
       <div className="mb-12 flex items-center gap-2">
-        <div className="w-10 h-10 rounded-xl bg-[#E63325] flex items-center justify-center">
+        <div className="w-10 h-10 rounded-xl bg-[#00D96B] flex items-center justify-center">
           <span className="text-white font-black text-lg">C</span>
         </div>
         <span className="text-white font-black text-2xl tracking-tight">
-          crack<span className="text-[#E63325]">.</span>
+          crack<span className="text-[#00D96B]">.</span>
         </span>
       </div>
 
