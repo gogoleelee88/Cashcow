@@ -356,9 +356,7 @@ function StoryTabContent({ tabKey, preferredGenres }: { tabKey: TabKey; preferre
           {isRankingTab && (
             <SimpleDropdown value={period} options={['daily', 'weekly', 'monthly']} labels={PERIOD_LABELS} onChange={setPeriod} />
           )}
-          {!isRankingTab && (
-            <SimpleDropdown value={sort} options={['popular', 'newest', 'trending']} labels={SORT_LABELS} onChange={setSort} />
-          )}
+          <SimpleDropdown value={sort} options={['popular', 'newest', 'trending']} labels={SORT_LABELS} onChange={setSort} />
         </div>
       </div>
 
