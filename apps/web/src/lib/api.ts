@@ -528,8 +528,11 @@ export const voiceApi = {
     const form = new FormData();
     form.append('name', name);
     form.append('file', audioBlob, fileName);
-    // Content-Type을 수동으로 설정하지 않음 — 브라우저가 boundary 포함해서 자동 설정
-    const r = await apiClient.post('/api/voice/clone', form);
+    // Content-Type을 undefined로 설정해 axios 기본값(application/json)을 제거하고
+    // 브라우저가 boundary 포함한 multipart/form-data를 자동 설정하도록 함
+    const r = await apiClient.post('/api/voice/clone', form, {
+      headers: { 'Content-Type': undefined },
+    });
     return r.data.data;
   },
 

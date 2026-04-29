@@ -73,6 +73,10 @@ export async function cloneVoice(name: string, audioBuffer: Buffer, fileName: st
     logger.error({ status: res.status, detail }, 'ElevenLabs voice clone failed');
 
     if (res.status === 401 || res.status === 403) {
+      const msg = detail.toLowerCase();
+      if (msg.includes('missing_permissions') || msg.includes('permission')) {
+        throw Object.assign(new Error('음성 클로닝 권한이 없습니다. ElevenLabs API 키에 클로닝 권한이 필요합니다.'), { code: 'AUTH_ERROR' });
+      }
       throw Object.assign(new Error('음성 서비스 인증 오류입니다.'), { code: 'AUTH_ERROR' });
     }
     if (res.status === 422) {
@@ -87,6 +91,12 @@ export async function cloneVoice(name: string, audioBuffer: Buffer, fileName: st
     }
     if (res.status === 429) {
       throw Object.assign(new Error('요청이 너무 많습니다. 잠시 후 다시 시도해주세요.'), { code: 'RATE_LIMITED' });
+    }
+    if (res.status === 400) {
+      const msg = detail.toLowerCase();
+      if (msg.includes('paid_plan') || msg.includes('upgrade') || msg.includes('subscription')) {
+        throw Object.assign(new Error('음성 클로닝은 ElevenLabs 유료 플랜이 필요합니다.'), { code: 'PLAN_REQUIRED' });
+      }
     }
     throw Object.assign(new Error('음성 클로닝에 실패했습니다. 잠시 후 다시 시도해주세요.'), { code: 'CLONE_FAILED' });
   }
