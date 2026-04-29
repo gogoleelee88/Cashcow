@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
@@ -7,7 +7,7 @@ import { motion } from 'framer-motion';
 import { Eye, EyeOff, Zap, AlertCircle, CheckCircle2, Loader2, ChevronRight, Check, X } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/auth.store';
-import { isValidEmail, isValidUsername, isValidPassword } from '@characterverse/utils';
+import { isValidEmail, isValidUsername, isValidPassword } from '@Zacoo/utils';
 import { cn } from '../../lib/utils';
 
 // ─────────────────────────────────────────────
@@ -21,7 +21,7 @@ const TERMS_CONTENT: Record<string, { title: string; content: React.ReactNode }>
         <section><h3 className="font-bold text-base">제1장 총칙</h3></section>
         <section>
           <h3 className="font-semibold">제1조 (목적)</h3>
-          <p>이 약관은 CharacterVerse(이하 '회사')은(는) 회사가 운영하는 CharacterVerse 및 이에 부수하는 제반 서비스(통칭하여 이하 '서비스')의 이용조건 및 절차에 관한 사항 및 기타 필요한 사항을 규정함을 목적으로 하며, 본 약관에 동의함으로써 해당 서비스들도 별도 이용계약 체결없이 이용이 가능합니다.</p>
+          <p>이 약관은 Zacoo(이하 '회사')은(는) 회사가 운영하는 Zacoo 및 이에 부수하는 제반 서비스(통칭하여 이하 '서비스')의 이용조건 및 절차에 관한 사항 및 기타 필요한 사항을 규정함을 목적으로 하며, 본 약관에 동의함으로써 해당 서비스들도 별도 이용계약 체결없이 이용이 가능합니다.</p>
         </section>
         <section>
           <h3 className="font-semibold">제2조 (생성형 인공지능 사전 고지 사항)</h3>
@@ -90,7 +90,7 @@ const TERMS_CONTENT: Record<string, { title: string; content: React.ReactNode }>
     title: '개인정보 수집 및 이용',
     content: (
       <div className="text-[14px] text-gray-800 leading-relaxed space-y-6">
-        <p>CharacterVerse(이하 '회사')가 운영하는 CharacterVerse은(는) 아래와 같이 정보주체의 개인정보를 수집·이용합니다.</p>
+        <p>Zacoo(이하 '회사')가 운영하는 Zacoo은(는) 아래와 같이 정보주체의 개인정보를 수집·이용합니다.</p>
         <section>
           <p className="font-bold mb-3">■ 정보주체의 동의를 받아 처리하는 개인정보</p>
           <p className="font-semibold mb-2">① 회원가입을 위해 수집하는 개인정보</p>
@@ -275,14 +275,14 @@ function TermsStep({ onNext }: { onNext: () => void }) {
       )}
       {/* Header */}
       <div className="w-full max-w-[560px] pt-16 pb-10 text-center">
-        <div className="text-[#E8613C] font-bold text-base mb-2">CharacterVerse</div>
+        <div className="text-[#E8613C] font-bold text-base mb-2">Zacoo</div>
         <h1 className="text-[28px] font-bold text-gray-900">회원가입</h1>
       </div>
 
       {/* Terms card */}
       <div className="w-full max-w-[560px]">
         <div className="mb-5">
-          <p className="text-sm font-semibold text-gray-800">CharacterVerse 계정</p>
+          <p className="text-sm font-semibold text-gray-800">Zacoo 계정</p>
           <p className="text-[17px] font-bold text-gray-900 mt-0.5">서비스 약관에 동의해주세요</p>
         </div>
 
@@ -496,7 +496,7 @@ export function RegisterForm() {
           <div className="w-10 h-10 rounded-xl bg-brand-gradient flex items-center justify-center shadow-brand">
             <Zap className="w-5 h-5 text-white" />
           </div>
-          <span className="font-bold text-xl gradient-text">CharacterVerse</span>
+          <span className="font-bold text-xl gradient-text">Zacoo</span>
         </Link>
         <h1 className="text-2xl font-bold text-text-primary mb-1">함께해요! 🎉</h1>
         <p className="text-text-muted text-sm">무료로 가입하고 100 크레딧을 받으세요</p>

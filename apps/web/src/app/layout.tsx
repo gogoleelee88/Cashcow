@@ -1,28 +1,28 @@
-import type { Metadata, Viewport } from 'next';
+﻿import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { Providers } from '../components/layout/providers';
 
 export const metadata: Metadata = {
   title: {
-    template: '%s | CharacterVerse',
-    default: 'CharacterVerse — AI 캐릭터 채팅 플랫폼',
+    template: '%s | Zacoo',
+    default: 'Zacoo — AI 캐릭터 채팅 플랫폼',
   },
   description: '좋아하는 캐릭터와 대화하고, 나만의 캐릭터를 만들어보세요. AI 기반 캐릭터 채팅 플랫폼.',
-  keywords: ['AI 채팅', '캐릭터', '롤플레이', 'AI', '버추얼 캐릭터', 'CharacterVerse'],
-  authors: [{ name: 'CharacterVerse' }],
-  creator: 'CharacterVerse',
+  keywords: ['AI 채팅', '캐릭터', '롤플레이', 'AI', '버추얼 캐릭터', 'Zacoo'],
+  authors: [{ name: 'Zacoo' }],
+  creator: 'Zacoo',
   openGraph: {
     type: 'website',
     locale: 'ko_KR',
-    url: 'https://characterverse.ai',
-    siteName: 'CharacterVerse',
-    title: 'CharacterVerse — AI 캐릭터 채팅 플랫폼',
+    url: 'https://Zacoo.ai',
+    siteName: 'Zacoo',
+    title: 'Zacoo — AI 캐릭터 채팅 플랫폼',
     description: '좋아하는 캐릭터와 대화하세요.',
     images: [{ url: '/og-image.png', width: 1200, height: 630 }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'CharacterVerse',
+    title: 'Zacoo',
     description: '좋아하는 캐릭터와 대화하세요.',
   },
   manifest: '/manifest.json',

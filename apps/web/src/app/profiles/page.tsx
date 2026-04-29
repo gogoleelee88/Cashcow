@@ -212,10 +212,10 @@ export default function ProfilesPage() {
       {/* 로고 */}
       <div className="mb-12 flex items-center gap-2">
         <div className="w-10 h-10 rounded-xl bg-[#00D96B] flex items-center justify-center">
-          <span className="text-white font-black text-lg">C</span>
+          <span className="text-white font-black text-lg">Z</span>
         </div>
         <span className="text-white font-black text-2xl tracking-tight">
-          crack<span className="text-[#00D96B]">.</span>
+          Zacoo
         </span>
       </div>
 

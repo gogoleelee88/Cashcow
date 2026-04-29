@@ -1,4 +1,4 @@
-import Link from 'next/link';
+﻿import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 
 export default function TermsPage() {
@@ -12,7 +12,7 @@ export default function TermsPage() {
         </Link>
 
         <h1 className="text-[22px] font-bold text-gray-900 mb-1">서비스 이용약관</h1>
-        <h2 className="text-[18px] font-bold text-gray-900 mb-4">CharacterVerse 서비스 이용약관</h2>
+        <h2 className="text-[18px] font-bold text-gray-900 mb-4">Zacoo 서비스 이용약관</h2>
 
         <div className="prose prose-sm max-w-none text-gray-800 leading-relaxed space-y-6 text-[14px]">
 
@@ -22,7 +22,7 @@ export default function TermsPage() {
 
           <section>
             <h3 className="font-semibold">제1조 (목적)</h3>
-            <p>이 약관은 CharacterVerse(이하 '회사')은(는) 회사가 운영하는 CharacterVerse 및 이에 부수하는 제반 서비스(통칭하여 이하 '서비스')의 이용조건 및 절차에 관한 사항 및 기타 필요한 사항을 규정함을 목적으로 하며, 본 약관에 동의함으로써 해당 서비스들도 별도 이용계약 체결없이 이용이 가능합니다.</p>
+            <p>이 약관은 Zacoo(이하 '회사')은(는) 회사가 운영하는 Zacoo 및 이에 부수하는 제반 서비스(통칭하여 이하 '서비스')의 이용조건 및 절차에 관한 사항 및 기타 필요한 사항을 규정함을 목적으로 하며, 본 약관에 동의함으로써 해당 서비스들도 별도 이용계약 체결없이 이용이 가능합니다.</p>
           </section>
 
           <section>

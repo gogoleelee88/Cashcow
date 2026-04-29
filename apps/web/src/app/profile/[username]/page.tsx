@@ -3,7 +3,7 @@ import { MainLayout } from '../../../components/layout/main-layout';
 import { ProfileContent } from '../../../components/profile/profile-content';
 
 export const metadata: Metadata = {
-  title: '프로필 | CharacterVerse',
+  title: '?�로??| Zacoo',
 };
 
 export default function ProfilePage({ params }: { params: { username: string } }) {
