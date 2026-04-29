@@ -85,9 +85,9 @@ export function LoginForm() {
         <div className="max-w-sm text-center">
           <Link href="/" className="inline-flex items-center gap-2 mb-8">
             <div className="w-12 h-12 rounded-xl bg-brand flex items-center justify-center">
-              <span className="text-white font-black text-xl">C</span>
+              <span className="text-white font-black text-xl">Z</span>
             </div>
-            <span className="font-black text-2xl text-text-primary">crack<span className="text-brand">.</span></span>
+            <span className="font-black text-2xl text-text-primary">Zacoo</span>
           </Link>
           <h2 className="text-2xl font-bold text-text-primary mb-3">AI 스토리 플랫폼</h2>
           <p className="text-text-secondary text-base leading-relaxed">
@@ -107,9 +107,9 @@ export function LoginForm() {
           <div className="lg:hidden text-center mb-8">
             <Link href="/" className="inline-flex items-center gap-2">
               <div className="w-10 h-10 rounded-xl bg-brand flex items-center justify-center">
-                <span className="text-white font-black text-base">C</span>
+                <span className="text-white font-black text-base">Z</span>
               </div>
-              <span className="font-black text-xl text-text-primary">crack<span className="text-brand">.</span></span>
+              <span className="font-black text-xl text-text-primary">Zacoo</span>
             </Link>
           </div>
 

@@ -120,11 +120,11 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
           {/* Logo */}
           <Link href="/" className="flex-shrink-0 flex items-center gap-2 mr-2">
             <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center">
-              <span className="text-white font-black text-sm">C</span>
+              <span className="text-white font-black text-sm">Z</span>
             </div>
             <div className="hidden sm:flex items-baseline gap-1.5">
               <span className="font-black text-lg text-text-primary tracking-tight">
-                crack<span className="text-brand">.</span>
+                Zacoo
               </span>
               {isKids && (
                 <span className="text-xs font-bold text-sky-500 tracking-tight">
@@ -319,7 +319,7 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
               className="fixed right-0 top-0 bottom-0 w-72 bg-white z-50 shadow-card-hover md:hidden flex flex-col"
             >
               <div className="flex items-center justify-between p-4 border-b border-border">
-                <span className="font-black text-lg text-text-primary">crack<span className="text-brand">.</span></span>
+                <span className="font-black text-lg text-text-primary">Zacoo</span>
                 <button onClick={() => setMobileMenuOpen(false)} className="p-2 rounded-xl hover:bg-surface">
                   <X className="w-5 h-5 text-text-muted" />
                 </button>
