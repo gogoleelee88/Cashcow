@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import Image from 'next/image';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -21,17 +22,21 @@ const CATEGORY_LABELS: Record<string, string> = {
 const INTERVAL = 4000;
 
 export function AnnouncementSlider() {
-  const [posts, setPosts] = useState<FeaturedPost[]>([]);
   const [current, setCurrent] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => {
-    const base = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:4000';
-    fetch(`${base}/api/posts/featured`)
-      .then(r => r.json())
-      .then(d => { if (d.success) setPosts(d.data); })
-      .catch(() => {});
-  }, []);
+  const { data } = useQuery({
+    queryKey: ['announcements', 'featured'],
+    queryFn: () => {
+      const base = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:4000';
+      return fetch(`${base}/api/posts/featured`)
+        .then(r => r.json())
+        .then(d => d.success ? d.data : []);
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const posts: FeaturedPost[] = data ?? [];
 
   const next = useCallback(() => setCurrent(c => (c + 1) % posts.length), [posts.length]);
   const prev = useCallback(() => setCurrent(c => (c - 1 + posts.length) % posts.length), [posts.length]);
