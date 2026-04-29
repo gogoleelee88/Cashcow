@@ -39,20 +39,58 @@ export async function getVoiceLibrary(): Promise<ElevenVoice[]> {
 // VOICE CLONE
 // ─────────────────────────────────────────────
 export async function cloneVoice(name: string, audioBuffer: Buffer, fileName: string): Promise<string> {
+  if (!config.ELEVENLABS_API_KEY) {
+    throw Object.assign(new Error('음성 클로닝 서비스가 설정되지 않았습니다.'), { code: 'SERVICE_UNAVAILABLE' });
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const form: any = new FormData();
   form.append('name', name);
   form.append('files', new Blob([audioBuffer as any]), fileName);
 
-  const res = await fetch(`${ELEVEN_BASE}/voices/add`, {
-    method: 'POST',
-    headers: { 'xi-api-key': config.ELEVENLABS_API_KEY ?? '' },
-    body: form,
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Voice clone failed: ${err}`);
+  let res: Response;
+  try {
+    res = await fetch(`${ELEVEN_BASE}/voices/add`, {
+      method: 'POST',
+      headers: { 'xi-api-key': config.ELEVENLABS_API_KEY },
+      body: form,
+    });
+  } catch (networkErr) {
+    logger.error({ networkErr }, 'ElevenLabs network error during voice clone');
+    throw Object.assign(new Error('음성 서비스에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.'), { code: 'NETWORK_ERROR' });
   }
+
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const errJson = await res.json() as { detail?: { message?: string; status?: string } | string };
+      if (typeof errJson.detail === 'object') detail = errJson.detail?.message ?? errJson.detail?.status ?? '';
+      else if (typeof errJson.detail === 'string') detail = errJson.detail;
+    } catch {
+      detail = await res.text().catch(() => '');
+    }
+
+    logger.error({ status: res.status, detail }, 'ElevenLabs voice clone failed');
+
+    if (res.status === 401 || res.status === 403) {
+      throw Object.assign(new Error('음성 서비스 인증 오류입니다.'), { code: 'AUTH_ERROR' });
+    }
+    if (res.status === 422) {
+      const msg = detail.toLowerCase();
+      if (msg.includes('too short') || msg.includes('duration')) {
+        throw Object.assign(new Error('오디오가 너무 짧습니다. 최소 1분 이상의 파일을 사용하세요.'), { code: 'AUDIO_TOO_SHORT' });
+      }
+      if (msg.includes('format') || msg.includes('codec')) {
+        throw Object.assign(new Error('지원하지 않는 오디오 형식입니다. mp3, wav, m4a 파일을 사용하세요.'), { code: 'INVALID_FORMAT' });
+      }
+      throw Object.assign(new Error(detail || '오디오 파일을 처리할 수 없습니다. 파일을 확인해주세요.'), { code: 'INVALID_AUDIO' });
+    }
+    if (res.status === 429) {
+      throw Object.assign(new Error('요청이 너무 많습니다. 잠시 후 다시 시도해주세요.'), { code: 'RATE_LIMITED' });
+    }
+    throw Object.assign(new Error('음성 클로닝에 실패했습니다. 잠시 후 다시 시도해주세요.'), { code: 'CLONE_FAILED' });
+  }
+
   const json = await res.json() as { voice_id: string };
   return json.voice_id;
 }

@@ -50,22 +50,54 @@ export const voiceRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post('/clone', {
     preHandler: [requireAuth, uploadRateLimit],
     handler: async (request, reply) => {
-      const data = await request.file();
-      if (!data) return reply.code(400).send({ success: false, error: { code: 'NO_FILE', message: '오디오 파일이 필요합니다.' } });
+      const VOICE_MAX_BYTES = 25 * 1024 * 1024; // 25MB
 
-      const nameField = (request.body as any)?.name;
-      const voiceName = nameField || '내 목소리';
+      let voiceName = '내 목소리';
+      let audioBuffer: Buffer | null = null;
+      let fileName = 'voice.mp3';
+      let mimeType = '';
 
-      const chunks: Buffer[] = [];
-      for await (const chunk of data.file) chunks.push(chunk);
-      const audioBuffer = Buffer.concat(chunks);
+      // parts()로 텍스트 필드 + 파일 필드 모두 읽기
+      for await (const part of request.parts({ limits: { fileSize: VOICE_MAX_BYTES } })) {
+        if (part.type === 'field' && part.fieldname === 'name' && typeof part.value === 'string') {
+          voiceName = part.value.trim() || '내 목소리';
+        } else if (part.type === 'file') {
+          mimeType = part.mimetype ?? '';
+          fileName = part.filename ?? 'voice.mp3';
+          const chunks: Buffer[] = [];
+          for await (const chunk of part.file) chunks.push(chunk);
+          audioBuffer = Buffer.concat(chunks);
 
-      if (audioBuffer.length > 25 * 1024 * 1024) {
-        return reply.code(400).send({ success: false, error: { code: 'FILE_TOO_LARGE', message: '파일은 25MB 이하여야 합니다.' } });
+          // busboy truncated 이벤트 = 파일이 limit 초과
+          if ((part.file as any).truncated) {
+            return reply.code(400).send({ success: false, error: { code: 'FILE_TOO_LARGE', message: '파일은 25MB 이하여야 합니다.' } });
+          }
+        }
       }
 
-      const voiceId = await cloneVoice(voiceName, audioBuffer, data.filename);
-      return reply.send({ success: true, data: { voiceId, name: voiceName } });
+      if (!audioBuffer || audioBuffer.length === 0) {
+        return reply.code(400).send({ success: false, error: { code: 'NO_FILE', message: '오디오 파일이 필요합니다.' } });
+      }
+
+      // MIME 타입 검사 (오디오 파일만 허용)
+      if (mimeType && !mimeType.startsWith('audio/') && mimeType !== 'application/octet-stream') {
+        return reply.code(400).send({ success: false, error: { code: 'INVALID_FORMAT', message: 'mp3, wav, m4a 오디오 파일만 업로드할 수 있습니다.' } });
+      }
+
+      try {
+        const voiceId = await cloneVoice(voiceName, audioBuffer, fileName);
+        logger.info({ voiceName, fileSize: audioBuffer.length }, 'Voice clone success');
+        return reply.send({ success: true, data: { voiceId, name: voiceName } });
+      } catch (err: any) {
+        logger.error({ err: err.message, code: err.code }, 'Voice clone route error');
+        const code = err.code ?? 'CLONE_FAILED';
+        const message = err.message ?? '클로닝에 실패했습니다.';
+        const status = code === 'SERVICE_UNAVAILABLE' ? 503
+          : code === 'NETWORK_ERROR' ? 502
+          : code === 'RATE_LIMITED' ? 429
+          : 400;
+        return reply.code(status).send({ success: false, error: { code, message } });
+      }
     },
   });
 

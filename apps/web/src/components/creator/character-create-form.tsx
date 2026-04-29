@@ -2576,17 +2576,38 @@ export function CharacterCreateForm({ characterId, initialData }: {
                       <button
                         type="button"
                         onClick={() => cloneInputRef.current?.click()}
-                        className="w-full flex items-center justify-center gap-2 py-6 border-2 border-dashed border-gray-200 rounded-xl text-gray-500 hover:border-brand hover:text-brand transition-colors"
+                        className={`w-full flex items-center justify-center gap-2 py-6 border-2 border-dashed rounded-xl transition-colors ${
+                          cloneFile
+                            ? 'border-brand/40 bg-brand/5 text-brand'
+                            : 'border-gray-200 text-gray-500 hover:border-brand hover:text-brand'
+                        }`}
                       >
                         <Mic className="w-5 h-5" />
-                        {cloneFile ? cloneFile.name : '파일 선택 또는 드래그'}
+                        <span className="text-sm truncate max-w-[220px]">
+                          {cloneFile
+                            ? `${cloneFile.name} (${(cloneFile.size / 1024 / 1024).toFixed(1)}MB)`
+                            : '파일 선택 또는 드래그'}
+                        </span>
                       </button>
                       <input
                         ref={cloneInputRef}
                         type="file"
-                        accept="audio/mp3,audio/wav,audio/m4a,audio/*"
+                        accept="audio/mp3,audio/mpeg,audio/wav,audio/m4a,audio/x-m4a,audio/*"
                         className="hidden"
-                        onChange={(e) => setCloneFile(e.target.files?.[0] ?? null)}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] ?? null;
+                          if (file && file.size > 25 * 1024 * 1024) {
+                            toast.error('파일이 너무 큽니다', '25MB 이하의 파일을 선택해주세요');
+                            e.target.value = '';
+                            return;
+                          }
+                          if (file && !file.type.startsWith('audio/') && file.type !== 'application/octet-stream') {
+                            toast.error('오디오 파일만 가능합니다', 'mp3, wav, m4a 파일을 선택해주세요');
+                            e.target.value = '';
+                            return;
+                          }
+                          setCloneFile(file);
+                        }}
                       />
                     </div>
 
@@ -2616,18 +2637,37 @@ export function CharacterCreateForm({ characterId, initialData }: {
                         if (!cloneFile) return;
                         setIsCloning(true);
                         try {
-                          const res = await voiceApi.clone(cloneName, cloneFile, cloneFile.name);
+                          const res = await voiceApi.clone(cloneName || '내 목소리', cloneFile, cloneFile.name);
                           update({ voiceProvider: 'elevenlabs', voiceId: res.voiceId });
                           toast.success('목소리 클로닝 완료!', '미리 듣기로 확인해 보세요');
-                        } catch {
-                          toast.error('클로닝 실패', '파일을 확인하고 다시 시도해주세요');
+                        } catch (err: any) {
+                          const code = err?.response?.data?.error?.code ?? '';
+                          const msg = err?.response?.data?.error?.message ?? '';
+                          if (code === 'FILE_TOO_LARGE') {
+                            toast.error('파일이 너무 큽니다', '25MB 이하의 파일을 사용해주세요');
+                          } else if (code === 'AUDIO_TOO_SHORT') {
+                            toast.error('오디오가 너무 짧습니다', '최소 1분 이상의 음성 파일을 사용해주세요');
+                          } else if (code === 'INVALID_FORMAT' || code === 'INVALID_AUDIO') {
+                            toast.error('파일 형식 오류', 'mp3, wav, m4a 파일만 지원합니다');
+                          } else if (code === 'RATE_LIMITED') {
+                            toast.error('잠시 후 다시 시도해주세요', '요청이 너무 많습니다');
+                          } else if (code === 'NETWORK_ERROR' || code === 'SERVICE_UNAVAILABLE') {
+                            toast.error('서비스 연결 오류', '잠시 후 다시 시도해주세요');
+                          } else {
+                            toast.error('클로닝 실패', msg || '파일을 확인하고 다시 시도해주세요');
+                          }
                         } finally {
                           setIsCloning(false);
                         }
                       }}
-                      className="w-full py-3 rounded-xl bg-gray-900 text-white font-semibold text-sm disabled:opacity-40 flex items-center justify-center gap-2"
+                      className="w-full py-3 rounded-xl bg-gray-900 text-white font-semibold text-sm disabled:opacity-40 flex items-center justify-center gap-2 transition-opacity"
                     >
-                      {isCloning ? <><Loader2 className="w-4 h-4 animate-spin" />클로닝 중...</> : '클로닝 시작'}
+                      {isCloning ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          클로닝 중... (1~2분 소요)
+                        </>
+                      ) : '클로닝 시작'}
                     </button>
                   </div>
                 )}

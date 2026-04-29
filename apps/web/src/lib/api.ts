@@ -528,7 +528,8 @@ export const voiceApi = {
     const form = new FormData();
     form.append('name', name);
     form.append('file', audioBlob, fileName);
-    const r = await apiClient.post('/api/voice/clone', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+    // Content-Type을 수동으로 설정하지 않음 — 브라우저가 boundary 포함해서 자동 설정
+    const r = await apiClient.post('/api/voice/clone', form);
     return r.data.data;
   },
 
