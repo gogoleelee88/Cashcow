@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { api } from '../../lib/api';
 import { cn } from '../../lib/utils';
 import { useAuthStore } from '../../stores/auth.store';
+import { ChatHistorySidebar } from '../layout/ChatHistorySidebar';
 
 const STORY_CATEGORIES = [
   { value: undefined, label: '전체' },
@@ -134,7 +135,9 @@ export function StoryListContent() {
   const trending = trendingData?.data ?? [];
 
   return (
-    <div className="max-w-[1400px] mx-auto px-4 py-6">
+    <div className="flex min-h-[calc(100vh-56px)] bg-white">
+      <ChatHistorySidebar />
+      <div className="flex-1 min-w-0 px-6 py-6">
 
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
@@ -251,6 +254,7 @@ export function StoryListContent() {
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }
