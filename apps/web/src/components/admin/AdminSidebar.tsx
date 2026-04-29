@@ -50,7 +50,7 @@ export function AdminSidebar() {
           <Zap className="w-4 h-4 text-white" />
         </div>
         <div>
-          <p className="text-white font-bold text-sm">Zac∞</p>
+          <p className="text-white font-bold text-sm">Zac<span className="text-base">∞</span></p>
           <p className="text-gray-500 text-[10px] uppercase tracking-widest">Admin</p>
         </div>
       </div>

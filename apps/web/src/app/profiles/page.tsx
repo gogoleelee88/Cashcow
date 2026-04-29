@@ -215,7 +215,7 @@ export default function ProfilesPage() {
           <span className="text-white font-black text-lg">Z</span>
         </div>
         <span className="text-white font-black text-2xl tracking-tight">
-          Zac∞
+          Zac<span className="text-3xl">∞</span>
         </span>
       </div>
 

@@ -124,7 +124,7 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
             </div>
             <div className="hidden sm:flex items-baseline gap-1.5">
               <span className="font-black text-lg text-text-primary tracking-tight">
-                Zac∞
+                Zac<span className="text-xl">∞</span>
               </span>
               {isKids && (
                 <span className="text-xs font-bold text-sky-500 tracking-tight">
@@ -319,7 +319,7 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
               className="fixed right-0 top-0 bottom-0 w-72 bg-white z-50 shadow-card-hover md:hidden flex flex-col"
             >
               <div className="flex items-center justify-between p-4 border-b border-border">
-                <span className="font-black text-lg text-text-primary">Zac∞</span>
+                <span className="font-black text-lg text-text-primary">Zac<span className="text-xl">∞</span></span>
                 <button onClick={() => setMobileMenuOpen(false)} className="p-2 rounded-xl hover:bg-surface">
                   <X className="w-5 h-5 text-text-muted" />
                 </button>
