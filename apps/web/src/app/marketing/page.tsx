@@ -15,7 +15,7 @@ export default function MarketingPage() {
         <h2 className="text-[18px] font-bold text-gray-900 mb-4">[선택동의] 이벤트·혜택 정보 수신 및 활용 동의</h2>
 
         <div className="text-[14px] text-gray-800 leading-relaxed space-y-6">
-          <p>Zacoo 서비스는 연계 서비스를 포함합니다. 이하 "서비스"라고 합니다.</p>
+          <p>Zac∞ 서비스는 연계 서비스를 포함합니다. 이하 "서비스"라고 합니다.</p>
           <p>본 동의는 서비스에서 수집한 아래와 같은 항목을 이용하여 전자적 전송매체를 통해 마케팅 등의 목적으로 개인에게 광고성 정보를 전송하는 것에 대한 수신동의 및 수집한 정보를 활용하는 것에 대한 활용 동의로서, 사용자는 본 동의를 거부할 권리가 있습니다.</p>
 
           <div className="overflow-x-auto">
@@ -46,7 +46,7 @@ export default function MarketingPage() {
           </section>
 
           <section>
-            <p className="font-bold mb-2">■ Zacoo 서비스</p>
+            <p className="font-bold mb-2">■ Zac∞ 서비스</p>
             <ul className="list-disc pl-5 space-y-2">
               <li>이벤트·혜택 알림 수신 동의 철회 : [설정 &gt; 계정 설정 &gt; 이벤트·혜택 정보 수신 및 활용 동의]</li>
               <li>야간 혜택 알림 수신 거부 : [설정 &gt; 알림 &gt; 야간 혜택 알림]</li>

@@ -3,7 +3,7 @@ import { MainLayout } from '../../components/layout/main-layout';
 import { FavoritesContent } from '../../components/favorites/favorites-content';
 
 export const metadata: Metadata = {
-  title: '즐겨찾기 | Zacoo',
+  title: '즐겨찾기 | Zac∞',
 };
 
 export default function FavoritesPage() {

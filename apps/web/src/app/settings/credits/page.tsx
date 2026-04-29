@@ -3,7 +3,7 @@ import { MainLayout } from '../../../components/layout/main-layout';
 import { CreditsContent } from '../../../components/settings/credits-content';
 
 export const metadata: Metadata = {
-  title: '크레딧 충전 | Zacoo',
+  title: '크레딧 충전 | Zac∞',
 };
 
 export default function CreditsPage() {

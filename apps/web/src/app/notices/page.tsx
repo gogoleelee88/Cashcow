@@ -66,7 +66,7 @@ export default function NoticesPage() {
       <div className="max-w-4xl mx-auto px-4 py-10">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-text-primary">공지사항</h1>
-          <p className="text-text-muted mt-2">Zacoo의 새로운 소식을 확인하세요</p>
+          <p className="text-text-muted mt-2">Zac∞의 새로운 소식을 확인하세요</p>
         </div>
 
         {/* 카테고리 필터 */}

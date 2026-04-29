@@ -13,8 +13,8 @@ import {
 import { useAuthStore } from '../../stores/auth.store';
 import { api } from '../../lib/api';
 import { cn } from '../../lib/utils';
-import { formatCount } from '@Zacoo/utils';
-import type { CharacterCategory } from '@Zacoo/types';
+import { formatCount } from '@Zac∞/utils';
+import type { CharacterCategory } from '@Zac∞/types';
 
 const MAIN_NAV = [
   { href: '/', icon: Home, label: '홈' },
@@ -85,7 +85,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
             <div className="w-8 h-8 rounded-xl bg-brand-gradient flex items-center justify-center shadow-brand">
               <Zap className="w-4 h-4 text-white" />
             </div>
-            <span className="font-bold text-lg gradient-text">Zacoo</span>
+            <span className="font-bold text-lg gradient-text">Zac∞</span>
           </Link>
         </div>
 

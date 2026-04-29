@@ -87,7 +87,7 @@ export function LoginForm() {
             <div className="w-12 h-12 rounded-xl bg-brand flex items-center justify-center">
               <span className="text-white font-black text-xl">Z</span>
             </div>
-            <span className="font-black text-2xl text-text-primary">Zacoo</span>
+            <span className="font-black text-2xl text-text-primary">Zac∞</span>
           </Link>
           <h2 className="text-2xl font-bold text-text-primary mb-3">AI 스토리 플랫폼</h2>
           <p className="text-text-secondary text-base leading-relaxed">
@@ -109,7 +109,7 @@ export function LoginForm() {
               <div className="w-10 h-10 rounded-xl bg-brand flex items-center justify-center">
                 <span className="text-white font-black text-base">Z</span>
               </div>
-              <span className="font-black text-xl text-text-primary">Zacoo</span>
+              <span className="font-black text-xl text-text-primary">Zac∞</span>
             </Link>
           </div>
 

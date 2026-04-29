@@ -15,9 +15,9 @@ export default function PrivacyPage() {
         <h2 className="text-[18px] font-bold text-gray-900 mb-4">개인정보 수집 및 이용 동의</h2>
 
         <div className="text-[14px] text-gray-800 leading-relaxed space-y-6">
-          <p>Zacoo(이하 '회사')가 운영하는 Zacoo은(는) 아래와 같이 정보주체의 개인정보를 수집·이용합니다.</p>
+          <p>Zac∞(이하 '회사')가 운영하는 Zac∞은(는) 아래와 같이 정보주체의 개인정보를 수집·이용합니다.</p>
 
-          <p>회사는 통합 로그인 및 데이터 관리 시스템을 기반으로 Zacoo 서비스 및 이에 부수하는 제반 서비스(통칭하여 이하 '서비스')를 제공하고 관리합니다.</p>
+          <p>회사는 통합 로그인 및 데이터 관리 시스템을 기반으로 Zac∞ 서비스 및 이에 부수하는 제반 서비스(통칭하여 이하 '서비스')를 제공하고 관리합니다.</p>
 
           <section>
             <p className="font-bold mb-3">■ 정보주체의 동의를 받아 처리하는 개인정보</p>
@@ -36,7 +36,7 @@ export default function PrivacyPage() {
                 </thead>
                 <tbody>
                   <tr>
-                    <td className="border border-gray-300 px-3 py-2">아이디 및 비밀번호 찾기, Zacoo 서비스 제공을 위한 회원가입 및 이용자 식별, 문의 및 민원 처리</td>
+                    <td className="border border-gray-300 px-3 py-2">아이디 및 비밀번호 찾기, Zac∞ 서비스 제공을 위한 회원가입 및 이용자 식별, 문의 및 민원 처리</td>
                     <td className="border border-gray-300 px-3 py-2">이메일, 비밀번호</td>
                     <td className="border border-gray-300 px-3 py-2">회원탈퇴 시까지</td>
                   </tr>
@@ -64,47 +64,47 @@ export default function PrivacyPage() {
                   <tr>
                     <td className="border border-gray-300 px-3 py-2">공통 및 일반</td>
                     <td className="border border-gray-300 px-3 py-2">공통</td>
-                    <td className="border border-gray-300 px-3 py-2">Zacoo AI 서비스 제공 및 서비스 성능, 알고리즘 개선</td>
+                    <td className="border border-gray-300 px-3 py-2">Zac∞ AI 서비스 제공 및 서비스 성능, 알고리즘 개선</td>
                     <td className="border border-gray-300 px-3 py-2">AI 대화 정보(텍스트·이미지·비디오·음성 등을 포함한 대화 내용) / 서비스 이용 행태 정보(입력 정보 및 결과물)</td>
                     <td className="border border-gray-300 px-3 py-2">회원탈퇴 시까지</td>
                   </tr>
                   <tr>
-                    <td className="border border-gray-300 px-3 py-2">Zacoo</td>
+                    <td className="border border-gray-300 px-3 py-2">Zac∞</td>
                     <td className="border border-gray-300 px-3 py-2">개인화 서비스</td>
                     <td className="border border-gray-300 px-3 py-2">서비스 제공과 관련한 추천 알고리즘 개선</td>
                     <td className="border border-gray-300 px-3 py-2">닉네임, 직업, 성별, 생년월일, 전화번호, 목표, 관심사</td>
                     <td className="border border-gray-300 px-3 py-2">회원탈퇴 시까지</td>
                   </tr>
                   <tr>
-                    <td className="border border-gray-300 px-3 py-2">Zacoo</td>
+                    <td className="border border-gray-300 px-3 py-2">Zac∞</td>
                     <td className="border border-gray-300 px-3 py-2">이미지 제작</td>
                     <td className="border border-gray-300 px-3 py-2">AI 서비스를 활용한 이미지 생성</td>
                     <td className="border border-gray-300 px-3 py-2">업로드 이미지, 생성 결과물</td>
                     <td className="border border-gray-300 px-3 py-2">제공 서비스사 처리 방침에 따라 기간 상이</td>
                   </tr>
                   <tr>
-                    <td className="border border-gray-300 px-3 py-2">Zacoo</td>
+                    <td className="border border-gray-300 px-3 py-2">Zac∞</td>
                     <td className="border border-gray-300 px-3 py-2">혜택</td>
                     <td className="border border-gray-300 px-3 py-2">맞춤형 광고 제공 및 광고 참여 정보 확인 및 리워드 제공</td>
                     <td className="border border-gray-300 px-3 py-2">암호화된 고객정보, Google 광고 ID, 광고주식별자, 성별, 연령, OS 정보, 마스킹된 성명, IP주소, 모바일기기 모델명, 통신사</td>
                     <td className="border border-gray-300 px-3 py-2">고객의 서비스 해지 시 또는 탈퇴 시까지</td>
                   </tr>
                   <tr>
-                    <td className="border border-gray-300 px-3 py-2">Zacoo</td>
+                    <td className="border border-gray-300 px-3 py-2">Zac∞</td>
                     <td className="border border-gray-300 px-3 py-2">최저가 협상</td>
                     <td className="border border-gray-300 px-3 py-2">상품 결제</td>
                     <td className="border border-gray-300 px-3 py-2">결제자 이름, 결제 방식, 결제 기록, 결제 금액</td>
                     <td className="border border-gray-300 px-3 py-2">배송 완료 시 즉시 삭제</td>
                   </tr>
                   <tr>
-                    <td className="border border-gray-300 px-3 py-2">Zacoo</td>
+                    <td className="border border-gray-300 px-3 py-2">Zac∞</td>
                     <td className="border border-gray-300 px-3 py-2">최저가 협상</td>
                     <td className="border border-gray-300 px-3 py-2">상품 입출고</td>
                     <td className="border border-gray-300 px-3 py-2">주문 상품 및 개수, 주문자 이름, 휴대폰 번호, 주소지, 주문 시간</td>
                     <td className="border border-gray-300 px-3 py-2">배송 완료 시 즉시 삭제</td>
                   </tr>
                   <tr>
-                    <td className="border border-gray-300 px-3 py-2">Zacoo</td>
+                    <td className="border border-gray-300 px-3 py-2">Zac∞</td>
                     <td className="border border-gray-300 px-3 py-2">최저가 협상</td>
                     <td className="border border-gray-300 px-3 py-2">상품 배송</td>
                     <td className="border border-gray-300 px-3 py-2">배송 메시지</td>

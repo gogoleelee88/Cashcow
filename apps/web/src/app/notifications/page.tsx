@@ -3,7 +3,7 @@ import { MainLayout } from '../../components/layout/main-layout';
 import { NotificationsContent } from '../../components/notifications/notifications-content';
 
 export const metadata: Metadata = {
-  title: '알림 | Zacoo',
+  title: '알림 | Zac∞',
 };
 
 export default function NotificationsPage() {
