@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { Search, Bell, X, Menu, ChevronDown, BookOpen, Users, Image as ImageIcon, Bookmark, Plus, LogOut, Settings, User, ShieldCheck, Baby } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Search, Bell, X, Menu, ChevronDown, BookOpen, Users, Image as ImageIcon, Bookmark, Plus, LogOut, Settings, User, ShieldCheck, Baby, Clock } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { cn } from '../../lib/utils';
@@ -11,6 +11,16 @@ import { api } from '../../lib/api';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
+
+const HISTORY_KEY = 'zacoo_search_history';
+const MAX_HISTORY = 10;
+
+function loadHistory(): string[] {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]'); } catch { return []; }
+}
+function saveHistory(h: string[]) {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(h));
+}
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -34,11 +44,44 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
   const [searchFocused, setSearchFocused] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  const mobileSearchInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const pathname = usePathname();
   const { user, isAuthenticated, logout, accessToken } = useAuthStore();
   const { activeProfile, clearProfile } = useProfileStore();
   const userMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setSearchHistory(loadHistory());
+  }, []);
+
+  const openMobileSearch = () => {
+    setMobileSearchOpen(true);
+    setTimeout(() => mobileSearchInputRef.current?.focus(), 80);
+  };
+
+  const addHistory = useCallback((q: string) => {
+    setSearchHistory(prev => {
+      const next = [q, ...prev.filter(h => h !== q)].slice(0, MAX_HISTORY);
+      saveHistory(next);
+      return next;
+    });
+  }, []);
+
+  const removeHistory = useCallback((idx: number) => {
+    setSearchHistory(prev => {
+      const next = prev.filter((_, i) => i !== idx);
+      saveHistory(next);
+      return next;
+    });
+  }, []);
+
+  const clearHistory = useCallback(() => {
+    setSearchHistory([]);
+    saveHistory([]);
+  }, []);
 
   const isKids = activeProfile?.isKids ?? false;
   const NAV_ITEMS = isKids ? NAV_ITEMS_KIDS : NAV_ITEMS_DEFAULT;
@@ -63,10 +106,20 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (searchQuery.trim()) {
-      router.push(`/explore?q=${encodeURIComponent(searchQuery.trim())}`);
+    const q = searchQuery.trim();
+    if (q) {
+      addHistory(q);
+      router.push(`/explore?q=${encodeURIComponent(q)}`);
       setSearchFocused(false);
     }
+  };
+
+  const handleMobileSearch = (q: string) => {
+    if (!q.trim()) return;
+    addHistory(q.trim());
+    setMobileSearchOpen(false);
+    setSearchQuery('');
+    router.push(`/explore?q=${encodeURIComponent(q.trim())}`);
   };
 
   const handleLogout = async () => {
@@ -154,32 +207,43 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
             ))}
           </nav>
 
-          {/* Search bar */}
+          {/* Search — 데스크탑: full bar / 모바일: 아이콘만 */}
           {showSearch && (
-            <form onSubmit={handleSearch} className="flex-1 max-w-sm mx-auto">
-              <div className="relative">
-                <Search className={cn(
-                  'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none transition-colors',
-                  searchFocused ? 'text-brand' : 'text-text-muted'
-                )} />
-                <input
-                  type="text"
-                  placeholder="캐릭터, 스토리 검색..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onFocus={() => setSearchFocused(true)}
-                  onBlur={() => setSearchFocused(false)}
-                  className={cn(
-                    'w-full pl-9 pr-4 py-2 bg-surface border rounded-xl text-sm',
-                    'text-text-primary placeholder-text-muted',
-                    'focus:outline-none transition-all duration-200',
-                    searchFocused
-                      ? 'border-brand/50 ring-2 ring-brand/15 bg-white'
-                      : 'border-border hover:border-border-strong'
-                  )}
-                />
-              </div>
-            </form>
+            <>
+              {/* md 이상: 전체 검색 바 */}
+              <form onSubmit={handleSearch} className="hidden md:block flex-1 max-w-sm mx-auto">
+                <div className="relative">
+                  <Search className={cn(
+                    'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none transition-colors',
+                    searchFocused ? 'text-brand' : 'text-text-muted'
+                  )} />
+                  <input
+                    type="text"
+                    placeholder="캐릭터, 스토리 검색..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onFocus={() => setSearchFocused(true)}
+                    onBlur={() => setSearchFocused(false)}
+                    className={cn(
+                      'w-full pl-9 pr-4 py-2 bg-surface border rounded-xl text-sm',
+                      'text-text-primary placeholder-text-muted',
+                      'focus:outline-none transition-all duration-200',
+                      searchFocused
+                        ? 'border-brand/50 ring-2 ring-brand/15 bg-white'
+                        : 'border-border hover:border-border-strong'
+                    )}
+                  />
+                </div>
+              </form>
+
+              {/* md 미만: 돋보기 아이콘 */}
+              <button
+                onClick={openMobileSearch}
+                className="md:hidden p-2 rounded-xl hover:bg-surface text-text-muted hover:text-brand transition-all"
+              >
+                <Search className="w-5 h-5" />
+              </button>
+            </>
           )}
 
           {/* Right side actions */}
@@ -365,6 +429,94 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
               )}
             </motion.div>
           </>
+        )}
+      </AnimatePresence>
+
+      {/* ── 모바일 검색 패널 ── */}
+      <AnimatePresence>
+        {mobileSearchOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.18 }}
+            className="fixed inset-0 z-50 bg-white flex flex-col md:hidden"
+          >
+            {/* 상단 입력 바 */}
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-white">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand pointer-events-none" />
+                <input
+                  ref={mobileSearchInputRef}
+                  type="text"
+                  placeholder="캐릭터, 스토리 검색..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleMobileSearch(searchQuery); }}
+                  className="w-full pl-9 pr-4 py-2.5 bg-surface border border-brand/40 ring-2 ring-brand/10 rounded-xl text-sm text-text-primary placeholder-text-muted focus:outline-none"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+              <button
+                onClick={() => { setMobileSearchOpen(false); setSearchQuery(''); }}
+                className="flex-shrink-0 text-sm font-medium text-text-secondary hover:text-brand transition-colors px-1"
+              >
+                취소
+              </button>
+            </div>
+
+            {/* 검색 기록 */}
+            <div className="flex-1 overflow-y-auto">
+              {searchHistory.length > 0 ? (
+                <>
+                  <div className="flex items-center justify-between px-5 pt-5 pb-2">
+                    <span className="text-xs font-bold text-text-muted tracking-wide uppercase">최근 검색</span>
+                    <button
+                      onClick={clearHistory}
+                      className="text-xs text-brand hover:text-brand/70 font-medium transition-colors"
+                    >
+                      전체 삭제
+                    </button>
+                  </div>
+                  <ul className="px-3 pb-4">
+                    {searchHistory.map((q, i) => (
+                      <li key={i}>
+                        <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-surface transition-colors group">
+                          <Clock className="w-4 h-4 text-text-muted flex-shrink-0" />
+                          <button
+                            className="flex-1 text-left text-sm text-text-primary truncate"
+                            onClick={() => { setSearchQuery(q); handleMobileSearch(q); }}
+                          >
+                            {q}
+                          </button>
+                          <button
+                            onClick={() => removeHistory(i)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-text-muted hover:text-text-primary"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <div className="flex flex-col items-center justify-center gap-3 py-20 text-text-muted">
+                  <div className="w-12 h-12 rounded-2xl bg-surface flex items-center justify-center">
+                    <Clock className="w-5 h-5" />
+                  </div>
+                  <p className="text-sm">최근 검색 기록이 없어요</p>
+                </div>
+              )}
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
