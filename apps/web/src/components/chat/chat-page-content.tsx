@@ -813,31 +813,30 @@ function ChatWindow({
 
   const character = convData?.character;
 
-  // generatedGreeting 폴링: 새 대화에서 메시지 없고 greeting 미생성 시만 (최대 10초)
-  const greetingReady = convData?.generatedGreeting != null;
+  // generatedGreeting: 없으면 즉시 생성 요청 → 완료 후 캐시 갱신
+  const greetingReady = !!convData?.generatedGreeting;
   const [greetingPolling, setGreetingPolling] = useState(false);
+  const greetingRequested = useRef(false);
   useEffect(() => {
-    // 메시지 있거나 greeting 준비됐으면 폴링 불필요
-    if (localMessages.length > 0 || greetingReady || messagesLoading) {
+    // 메시지 있거나 이미 있거나 로딩 중이면 불필요
+    if (localMessages.length > 0 || greetingReady || messagesLoading || !convData) {
       setGreetingPolling(false);
       return;
     }
-    // convData가 아직 없으면 대기
-    if (!convData) return;
+    if (greetingRequested.current) return;
+    greetingRequested.current = true;
     setGreetingPolling(true);
-    const maxTries = 10;
-    let tries = 0;
-    const timer = setInterval(() => {
-      tries++;
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
-      queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] });
-      if (tries >= maxTries) { clearInterval(timer); setGreetingPolling(false); }
-    }, 1000);
-    return () => clearInterval(timer);
+    api.chat.generateGreeting(conversationId)
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ['conversations'] });
+        queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] });
+      })
+      .catch(() => {})
+      .finally(() => setGreetingPolling(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [greetingReady, localMessages.length, messagesLoading, !!convData]);
 
-  const effectiveGreeting = convData?.generatedGreeting ?? character?.greeting ?? `안녕하세요! 저는 ${character?.name}입니다.`;
+  const effectiveGreeting = convData?.generatedGreeting ?? character?.greeting ?? '';
 
   return (
     <div className="flex flex-col h-full">

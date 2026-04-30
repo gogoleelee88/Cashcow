@@ -126,6 +126,43 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // ─────────────────────────────────────────────
+  // GENERATE GREETING FOR EXISTING CONVERSATION
+  // ─────────────────────────────────────────────
+  fastify.post('/conversations/:id/greeting', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string };
+
+      const conversation = await prisma.conversation.findFirst({
+        where: { id, userId: request.userId!, isActive: true },
+        include: {
+          character: {
+            select: { id: true, name: true, greeting: true, systemPromptEncrypted: true, systemPromptIv: true },
+          },
+        },
+      });
+
+      if (!conversation) {
+        return reply.code(404).send({ success: false, error: { code: 'NOT_FOUND', message: '대화를 찾을 수 없습니다.' } });
+      }
+
+      const char = conversation.character;
+      const systemPromptRaw = char.systemPromptEncrypted && char.systemPromptIv
+        ? decrypt(char.systemPromptEncrypted, char.systemPromptIv)
+        : '';
+
+      const generated = await generateConversationGreeting(char.name, systemPromptRaw, char.greeting);
+
+      await prisma.conversation.update({
+        where: { id },
+        data: { generatedGreeting: generated },
+      });
+
+      return reply.send({ success: true, data: { generatedGreeting: generated } });
+    },
+  });
+
+  // ─────────────────────────────────────────────
   // GET CONVERSATION MESSAGES
   // ─────────────────────────────────────────────
   fastify.get('/conversations/:id/messages', {
