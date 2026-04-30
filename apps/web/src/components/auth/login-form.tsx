@@ -132,9 +132,10 @@ export function LoginForm() {
           )}
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-text-secondary text-sm font-medium mb-1.5">이메일</label>
+          <form onSubmit={handleSubmit} className="space-y-3">
+            {/* 이메일 — 라벨 인라인 */}
+            <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 pt-2.5 pb-2 focus-within:border-brand transition-colors">
+              <label className="block text-xs text-gray-400 mb-0.5">이메일</label>
               <input
                 type="email"
                 value={email}
@@ -142,13 +143,14 @@ export function LoginForm() {
                 placeholder="name@example.com"
                 required
                 autoComplete="email"
-                className="input-base"
+                className="w-full bg-transparent text-sm text-gray-900 placeholder:text-gray-300 focus:outline-none"
               />
             </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-text-secondary text-sm font-medium">비밀번호</label>
+            {/* 비밀번호 — 라벨 인라인 */}
+            <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 pt-2.5 pb-2 focus-within:border-brand transition-colors">
+              <div className="flex items-center justify-between mb-0.5">
+                <label className="text-xs text-gray-400">비밀번호</label>
                 <Link href="/forgot-password" className="text-brand text-xs hover:underline">
                   비밀번호 찾기
                 </Link>
@@ -161,12 +163,12 @@ export function LoginForm() {
                   placeholder="••••••••"
                   required
                   autoComplete="current-password"
-                  className="input-base pr-10"
+                  className="w-full bg-transparent text-sm text-gray-900 placeholder:text-gray-300 focus:outline-none pr-8"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors"
+                  className="absolute right-0 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
