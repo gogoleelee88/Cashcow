@@ -36,7 +36,7 @@ const RATIOS: { label: string; w: number; h: number }[] = [
   { label: '9:16', w: 9,  h: 16 },
 ];
 
-const TABS = ['라이브러리', '좋아요', '신규 생성', '이미지 변형'];
+const TABS = ['라이브러리', '좋아요', '신규 생성', '포토카드 변형'];
 
 const CRACKER_PACKAGES = [
   { id: 'p1', amount: 2000,  bonus: 0,     price: 2000,  recommended: false },
@@ -234,7 +234,7 @@ export function ImageGenerationPage() {
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <span className="text-brand text-sm font-bold">✦</span>
-                    <h2 className="text-gray-900 font-bold text-base">이미지 스타일</h2>
+                    <h2 className="text-gray-900 font-bold text-base">포토카드 스타일</h2>
                   </div>
                   <div className="flex items-center gap-1">
                     <button
@@ -286,7 +286,7 @@ export function ImageGenerationPage() {
               {/* 이미지 비율 */}
               <div>
                 <p className="text-gray-800 font-bold text-sm mb-3">
-                  이미지 비율<span className="text-brand">*</span>
+                  포토카드 비율<span className="text-brand">*</span>
                 </p>
                 <div className="flex gap-2 justify-between">
                   {RATIOS.map(r => (
@@ -313,9 +313,9 @@ export function ImageGenerationPage() {
               {/* 이미지 개수 */}
               <div>
                 <p className="text-gray-800 font-bold text-sm mb-1">
-                  이미지 개수<span className="text-brand">*</span>
+                  포토카드 개수<span className="text-brand">*</span>
                 </p>
-                <p className="text-gray-400 text-xs mb-3">이미지 개수 설정에 맞게 크래커가 소비돼요</p>
+                <p className="text-gray-400 text-xs mb-3">포토카드 개수 설정에 맞게 크래커가 소비돼요</p>
                 <div className="flex gap-2 justify-between">
                   {[1, 2, 3, 4].map(n => (
                     <button
@@ -358,7 +358,7 @@ export function ImageGenerationPage() {
                 <textarea
                   value={prompt}
                   onChange={e => setPrompt(e.target.value.slice(0, 1000))}
-                  placeholder={`만들고 싶은 이미지를 차례대로 설명해 보세요\n(성별, 포즈, 얼굴, 표정, 자세, 구도, 의상, 배경, 그 외)`}
+                  placeholder={`만들고 싶은 포토카드를 차례대로 설명해 보세요\n(성별, 포즈, 얼굴, 표정, 자세, 구도, 의상, 배경, 그 외)`}
                   rows={5}
                   className="w-full px-5 py-4 text-sm text-gray-900 placeholder:text-gray-300 focus:outline-none resize-none"
                 />
@@ -379,13 +379,13 @@ export function ImageGenerationPage() {
                       className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-gray-900 text-white text-xs font-bold hover:bg-gray-800 transition-colors disabled:opacity-60"
                     >
                       <span>🔑</span>
-                      {generating ? '생성 중...' : `이미지 생성 ${cost}`}
+                      {generating ? '생성 중...' : `포토카드 생성 ${cost}`}
                     </button>
                   </div>
                 </div>
               </div>
             </div>
-          ) : activeTab === '이미지 변형' ? (
+          ) : activeTab === '포토카드 변형' ? (
             <ImageTransformTab
               ratio={ratio}
               count={count}
@@ -409,10 +409,10 @@ export function ImageGenerationPage() {
           {/* 이미지 비율 */}
           <div className="mb-7">
             <p className="text-gray-800 font-bold text-sm mb-3">
-              이미지 비율<span className="text-brand">*</span>
+              포토카드 비율<span className="text-brand">*</span>
             </p>
 
-            {activeTab === '이미지 변형' ? (
+            {activeTab === '포토카드 변형' ? (
               /* 변형 탭: 가로 스크롤 1줄 */
               <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
                 {RATIOS.filter(r => r.label !== '2:3').map(r => (
@@ -478,9 +478,9 @@ export function ImageGenerationPage() {
           {/* 이미지 개수 */}
           <div className="mb-7">
             <p className="text-gray-800 font-bold text-sm mb-1">
-              이미지 개수<span className="text-brand">*</span>
+              포토카드 개수<span className="text-brand">*</span>
             </p>
-            <p className="text-gray-400 text-xs mb-3">이미지 개수 설정에 맞게 크래커가 소비돼요</p>
+            <p className="text-gray-400 text-xs mb-3">포토카드 개수 설정에 맞게 크래커가 소비돼요</p>
             <div className="grid grid-cols-2 gap-1.5">
               {[1, 2, 3, 4].map(n => (
                 <button

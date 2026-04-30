@@ -21,7 +21,7 @@ const NAV_ITEMS_DEFAULT = [
   { href: '/story', label: '스토리', icon: BookOpen },
   { href: '/characters', label: '캐릭터', icon: Users },
   { href: '/creator', label: '내 작품', icon: Bookmark },
-  { href: '/images', label: '이미지', icon: ImageIcon },
+  { href: '/images', label: '포토카드', icon: ImageIcon },
 ];
 
 const NAV_ITEMS_KIDS = [
