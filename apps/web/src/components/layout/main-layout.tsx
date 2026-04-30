@@ -99,10 +99,12 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
   const { data: convData } = useQuery({
     queryKey: ['conversations'],
     queryFn: () => api.chat.conversations(),
-    enabled: isAuthenticated && mobileMenuOpen,
+    enabled: isAuthenticated,
     staleTime: 30_000,
+    refetchInterval: 60_000,
   });
   const conversations: any[] = (convData as any)?.data ?? [];
+  const chatUnread = conversations.reduce((sum, c) => sum + ((c as any).unreadCount ?? 0), 0);
 
   // 키즈 모드 body 클래스
   useEffect(() => {
@@ -656,7 +658,14 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
             pathname?.startsWith('/chat') ? 'text-brand' : 'text-text-muted hover:text-brand'
           )}
         >
-          <MessageSquare className="w-5 h-5" />
+          <div className="relative">
+            <MessageSquare className="w-5 h-5" />
+            {chatUnread > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center px-0.5 leading-none">
+                {chatUnread > 99 ? '99+' : chatUnread}
+              </span>
+            )}
+          </div>
           <span className="text-[10px] font-medium">채팅</span>
         </Link>
         <Link
