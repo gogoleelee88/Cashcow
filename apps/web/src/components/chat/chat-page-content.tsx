@@ -10,6 +10,7 @@ import {
   Send, MoreVertical, Pencil, Loader2, MessageCircle,
   Sparkles, ChevronDown, BookOpen, LayoutList, Smile, Plus,
   Mic, MicOff, Volume2, VolumeX, Play, Square, ChevronLeft,
+  Trash2, CheckCircle2, Circle,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { api, streamChatMessage, voiceApi } from '../../lib/api';
@@ -197,12 +198,47 @@ function MobileChatList({
   setSidebarTab: (t: 'episode' | 'party') => void;
   onSelect: (id: string) => void;
 }) {
+  const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['conversations'],
     queryFn: () => api.chat.conversations(),
     refetchInterval: 30_000,
   });
   const conversations: Conversation[] = data?.data ?? [];
+
+  const [editMode, setEditMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [leaveTarget, setLeaveTarget] = useState<Conversation | null>(null);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const deleteMutation = useMutation({
+    mutationFn: (ids: string[]) => Promise.all(ids.map((id) => api.chat.deleteConversation(id))),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      setSelectedIds(new Set());
+      setEditMode(false);
+    },
+  });
+
+  const handleDeleteSelected = () => {
+    if (selectedIds.size === 0) return;
+    deleteMutation.mutate(Array.from(selectedIds));
+  };
+
+  const handleLeaveConfirm = () => {
+    if (!leaveTarget) return;
+    api.chat.deleteConversation(leaveTarget.id).then(() => {
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      setLeaveTarget(null);
+    });
+  };
 
   return (
     <div className="flex flex-col h-full bg-white">
@@ -223,6 +259,31 @@ function MobileChatList({
             )}
           </button>
         ))}
+      </div>
+
+      {/* 히스토리 헤더 */}
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-50">
+        {editMode ? (
+          <>
+            <span className="text-[13px] text-gray-500">{selectedIds.size}개 선택됨</span>
+            <button
+              onClick={() => { setEditMode(false); setSelectedIds(new Set()); }}
+              className="text-[13px] font-medium text-gray-500"
+            >
+              완료
+            </button>
+          </>
+        ) : (
+          <>
+            <span className="text-[12px] font-semibold text-gray-400 tracking-wide">채팅 히스토리</span>
+            <button
+              onClick={() => setEditMode(true)}
+              className="flex items-center gap-0.5 text-[12px] text-gray-400 hover:text-gray-600"
+            >
+              <Pencil className="w-3 h-3" />편집
+            </button>
+          </>
+        )}
       </div>
 
       {/* 대화 목록 */}
@@ -253,25 +314,105 @@ function MobileChatList({
               key={conv.id}
               conv={conv}
               isActive={conv.id === activeConvId}
+              editMode={editMode}
+              selected={selectedIds.has(conv.id)}
               onSelect={onSelect}
+              onToggleSelect={toggleSelect}
+              onLongPress={() => setLeaveTarget(conv)}
             />
           ))
         )}
       </div>
+
+      {/* 편집 모드 하단 삭제 버튼 */}
+      <AnimatePresence>
+        {editMode && (
+          <motion.div
+            initial={{ y: 80 }}
+            animate={{ y: 0 }}
+            exit={{ y: 80 }}
+            className="flex-shrink-0 p-4 border-t border-gray-100 bg-white"
+          >
+            <button
+              onClick={handleDeleteSelected}
+              disabled={selectedIds.size === 0 || deleteMutation.isPending}
+              className={cn(
+                'w-full py-3.5 rounded-2xl text-[15px] font-bold flex items-center justify-center gap-2 transition-colors',
+                selectedIds.size > 0
+                  ? 'bg-red-500 text-white active:bg-red-600'
+                  : 'bg-gray-100 text-gray-300 cursor-not-allowed'
+              )}
+            >
+              <Trash2 className="w-4 h-4" />
+              {selectedIds.size > 0 ? `${selectedIds.size}개 삭제` : '삭제'}
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 채팅 나가기 모달 */}
+      <AnimatePresence>
+        {leaveTarget && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 z-50"
+              onClick={() => setLeaveTarget(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.92 }}
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white rounded-3xl shadow-2xl w-[80vw] max-w-xs overflow-hidden"
+            >
+              <div className="px-6 pt-7 pb-5 text-center">
+                <p className="text-[16px] font-bold text-gray-900 mb-2">채팅 나가기</p>
+                <p className="text-[13px] text-gray-500 leading-relaxed">
+                  <span className="font-semibold text-gray-700">{leaveTarget.character?.name}</span>과의<br />
+                  채팅 기록이 모두 삭제돼요.<br />
+                  나가시겠어요?
+                </p>
+              </div>
+              <div className="flex border-t border-gray-100">
+                <button
+                  onClick={() => setLeaveTarget(null)}
+                  className="flex-1 py-4 text-[15px] text-gray-500 font-medium border-r border-gray-100 active:bg-gray-50"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleLeaveConfirm}
+                  className="flex-1 py-4 text-[15px] text-red-500 font-bold active:bg-red-50"
+                >
+                  나가기
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
-function MobileConvItem({ conv, isActive, onSelect }: {
+function MobileConvItem({ conv, isActive, editMode, selected, onSelect, onToggleSelect, onLongPress }: {
   conv: Conversation;
   isActive: boolean;
+  editMode: boolean;
+  selected: boolean;
   onSelect: (id: string) => void;
+  onToggleSelect: (id: string) => void;
+  onLongPress: () => void;
 }) {
   const [imgErr, setImgErr] = useState(false);
   const char = conv.character;
   const src = imgErr ? getCharacterAvatarUrl(null, char?.name ?? '') : char?.avatarUrl;
   const lastMsg = (conv as any).lastMessage?.content ?? '대화를 시작해보세요';
   const unreadCount: number = (conv as any).unreadCount ?? 0;
+
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const formatTime = (d: string) => {
     if (!d) return '';
@@ -285,14 +426,41 @@ function MobileConvItem({ conv, isActive, onSelect }: {
   };
   const timeStr = formatTime((conv as any).lastMessageAt ?? (conv as any).updatedAt ?? '');
 
+  const handlePointerDown = () => {
+    if (editMode) return;
+    longPressTimer.current = setTimeout(() => { onLongPress(); }, 600);
+  };
+  const handlePointerUp = () => {
+    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+  };
+
+  const handleClick = () => {
+    if (editMode) { onToggleSelect(conv.id); return; }
+    onSelect(conv.id);
+  };
+
   return (
     <div
-      onClick={() => onSelect(conv.id)}
+      onClick={handleClick}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerLeave={handlePointerUp}
       className={cn(
-        'flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-colors border-b border-gray-50',
-        isActive ? 'bg-brand/5' : 'active:bg-gray-50'
+        'flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-colors border-b border-gray-50 select-none',
+        isActive && !editMode ? 'bg-brand/5' : '',
+        selected ? 'bg-red-50' : 'active:bg-gray-50'
       )}
     >
+      {/* 편집 모드 체크박스 */}
+      {editMode && (
+        <div className="flex-shrink-0">
+          {selected
+            ? <CheckCircle2 className="w-5 h-5 text-red-500" />
+            : <Circle className="w-5 h-5 text-gray-300" />
+          }
+        </div>
+      )}
+
       <div className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0 bg-gray-100">
         {src
           ? <Image src={src} alt={char?.name ?? ''} width={48} height={48} className="object-cover" onError={() => setImgErr(true)} />
@@ -302,11 +470,11 @@ function MobileConvItem({ conv, isActive, onSelect }: {
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-0.5">
           <p className="text-[14px] font-bold text-gray-900 truncate pr-1">{char?.name ?? '알 수 없음'}</p>
-          <span className="text-[11px] text-gray-400 flex-shrink-0">{timeStr}</span>
+          {!editMode && <span className="text-[11px] text-gray-400 flex-shrink-0">{timeStr}</span>}
         </div>
         <div className="flex items-center justify-between gap-2">
           <p className="text-[13px] text-gray-500 truncate flex-1">{lastMsg}</p>
-          {unreadCount > 0 && (
+          {!editMode && unreadCount > 0 && (
             <span className="flex-shrink-0 min-w-[20px] h-5 rounded-full bg-brand text-white text-[11px] font-bold flex items-center justify-center px-1.5 leading-none">
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>
