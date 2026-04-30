@@ -270,7 +270,7 @@ function MobileConvItem({ conv, isActive, onSelect }: {
   const [imgErr, setImgErr] = useState(false);
   const char = conv.character;
   const src = imgErr ? getCharacterAvatarUrl(null, char?.name ?? '') : char?.avatarUrl;
-  const lastMsg = (conv as any).messages?.[0]?.content ?? '대화를 시작해보세요';
+  const lastMsg = (conv as any).lastMessage?.content ?? '대화를 시작해보세요';
   const unreadCount: number = (conv as any).unreadCount ?? 0;
 
   const formatTime = (d: string) => {
@@ -386,7 +386,7 @@ function SidebarConvItem({
   const [imgErr, setImgErr] = useState(false);
   const char = conv.character;
   const src = imgErr ? getCharacterAvatarUrl(null, char?.name ?? '') : char?.avatarUrl;
-  const lastMsg = (conv as any).messages?.[0]?.content ?? '대화를 시작해보세요';
+  const lastMsg = (conv as any).lastMessage?.content ?? '대화를 시작해보세요';
 
   const formatTime = (d: string) => {
     if (!d) return '';

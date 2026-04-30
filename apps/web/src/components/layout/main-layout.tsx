@@ -467,7 +467,7 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
                       ) : (
                         conversations.slice(0, 6).map((conv: any) => {
                           const char = conv.character;
-                          const lastMsg = conv.messages?.[0]?.content ?? '대화를 시작해보세요';
+                          const lastMsg = conv.lastMessage?.content ?? '대화를 시작해보세요';
                           return (
                             <button
                               key={conv.id}

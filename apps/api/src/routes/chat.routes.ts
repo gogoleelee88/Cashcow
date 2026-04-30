@@ -29,12 +29,18 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
           messages: {
             orderBy: { createdAt: 'desc' },
             take: 1,
+            where: { isHidden: false },
             select: { id: true, role: true, content: true, createdAt: true },
           },
         },
       });
 
-      return reply.send({ success: true, data: conversations });
+      const result = conversations.map(({ messages, ...conv }) => ({
+        ...conv,
+        lastMessage: messages[0] ?? null,
+      }));
+
+      return reply.send({ success: true, data: result });
     },
   });
 

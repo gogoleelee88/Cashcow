@@ -111,8 +111,8 @@ export interface Conversation {
   characterId: string;
   userId: string;
   character?: CharacterListItem;
-  messages?: ChatMessage[];
-  lastMessage?: ChatMessage;
+  lastMessage?: ChatMessage | null;
+  lastMessageAt?: string | null;
   messageCount: number;
   title: string | null;
   isPinned: boolean;
