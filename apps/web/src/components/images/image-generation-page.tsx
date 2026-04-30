@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '../../lib/utils';
 import { MainLayout } from '../layout/main-layout';
 import { useAuthStore } from '../../stores/auth.store';
 import { api } from '../../lib/api';
 import { AnimatePresence, motion } from 'framer-motion';
-import { X, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, Sparkles, ChevronLeft, ChevronRight, Plus, SlidersHorizontal } from 'lucide-react';
 import { ImageTransformTab } from './image-transform-tab';
 
 // ── 상수 ────────────────────────────────────────────────────────────────────
@@ -178,6 +178,53 @@ export function ImageGenerationPage() {
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [styleIndex, setStyleIndex] = useState(0);
   const VISIBLE_STYLES = 5;
+  const [attachedImages, setAttachedImages] = useState<{ url: string; file: File }[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [advancedFields, setAdvancedFields] = useState({
+    subject: '', composition: '', pose: '', environment: '',
+    lighting: '', camera: '', style: '', negative: '',
+  });
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const ADVANCED_DEFS = [
+    { key: 'subject',     label: '주제 (Subject)',           placeholder: '무엇을 그릴지 (예: 20대 여성, 옆을 바라보는)' },
+    { key: 'composition', label: '구도·구성 (Composition)',   placeholder: '화면 배치 (예: 상반신 클로즈업, 중앙 정렬)' },
+    { key: 'pose',        label: '자세·동작 (Pose)',          placeholder: '캐릭터 자세 (예: 미소 짓는, 머리 쓸어 넘기는)' },
+    { key: 'environment', label: '장소·배경 (Environment)',   placeholder: '배경 (예: 벚꽃 공원, 도시 야경)' },
+    { key: 'lighting',    label: '조명 (Lighting)',           placeholder: '빛 (예: 황금빛 역광, 부드러운 자연광)' },
+    { key: 'camera',      label: '카메라·렌즈 (Camera)',      placeholder: '촬영 느낌 (예: f1.8 얕은 심도, 35mm 렌즈)' },
+    { key: 'style',       label: '스타일 (Style)',            placeholder: '미적 방향 (예: 수채화풍, 일러스트, 실사)' },
+    { key: 'negative',    label: '금지 (Negative Prompt)',    placeholder: '제외 요소 (예: 텍스트, 워터마크, 손가락 이상)' },
+  ] as const;
+
+  const handleFileSelect = (files: FileList | null) => {
+    if (!files) return;
+    const newImgs = Array.from(files)
+      .filter(f => f.type.startsWith('image/'))
+      .map(file => ({ url: URL.createObjectURL(file), file }));
+    setAttachedImages(prev => [...prev, ...newImgs].slice(0, 4));
+  };
+
+  const removeAttached = (idx: number) => {
+    setAttachedImages(prev => {
+      const next = [...prev];
+      URL.revokeObjectURL(next[idx].url);
+      next.splice(idx, 1);
+      return next;
+    });
+  };
+
+  const applyAdvancedToPrompt = () => {
+    const positive = (['subject', 'composition', 'pose', 'environment', 'lighting', 'camera', 'style'] as const)
+      .map(k => advancedFields[k]).filter(Boolean).join(', ');
+    const parts: string[] = [];
+    if (positive) parts.push(positive);
+    if (advancedFields.negative) parts.push(`[부정: ${advancedFields.negative}]`);
+    if (!parts.length) return;
+    const compiled = parts.join('\n');
+    setPrompt(prev => prev ? `${prev}\n${compiled}` : compiled);
+  };
 
   const cost = count * IMAGE_GEN_COST;
 
@@ -354,35 +401,130 @@ export function ImageGenerationPage() {
               </div>
 
               {/* 프롬프트 */}
-              <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
-                <textarea
-                  value={prompt}
-                  onChange={e => setPrompt(e.target.value.slice(0, 1000))}
-                  placeholder={`만들고 싶은 포토카드를 차례대로 설명해 보세요\n(성별, 포즈, 얼굴, 표정, 자세, 구도, 의상, 배경, 그 외)`}
-                  rows={5}
-                  className="w-full px-5 py-4 text-sm text-gray-900 placeholder:text-gray-300 focus:outline-none resize-none"
+              <div className="space-y-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={e => { handleFileSelect(e.target.files); e.target.value = ''; }}
                 />
-                <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50/50">
-                  <span className="text-gray-300 text-xs">{prompt.length}/1000</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handlePromptHelper}
-                      disabled={helperLoading}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-200 text-purple-600 text-xs font-medium hover:bg-purple-50 transition-colors disabled:opacity-50"
-                    >
-                      <Sparkles className="w-3 h-3" />
-                      {helperLoading ? 'AI 생성 중...' : '프롬프트 헬퍼'}
-                    </button>
-                    <button
-                      onClick={handleGenerate}
-                      disabled={generating}
-                      className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-gray-900 text-white text-xs font-bold hover:bg-gray-800 transition-colors disabled:opacity-60"
-                    >
-                      <span>🔑</span>
-                      {generating ? '생성 중...' : `포토카드 생성 ${cost}`}
-                    </button>
+                <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+                  {/* 첨부 이미지 미리보기 */}
+                  {attachedImages.length > 0 && (
+                    <div className="flex gap-2 px-4 pt-3 flex-wrap">
+                      {attachedImages.map((img, i) => (
+                        <div key={i} className="relative w-16 h-16 rounded-xl overflow-hidden border border-gray-200 flex-shrink-0">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={img.url} alt="" className="w-full h-full object-cover" />
+                          <button
+                            onClick={() => removeAttached(i)}
+                            className="absolute top-0.5 right-0.5 w-4 h-4 bg-black/60 rounded-full flex items-center justify-center hover:bg-black/80 transition-colors"
+                          >
+                            <X className="w-2.5 h-2.5 text-white" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* 드래그앤드롭 영역 */}
+                  <div
+                    className={cn('relative transition-colors', isDragging && 'bg-brand/5')}
+                    onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+                    onDragLeave={() => setIsDragging(false)}
+                    onDrop={e => { e.preventDefault(); setIsDragging(false); handleFileSelect(e.dataTransfer.files); }}
+                  >
+                    <textarea
+                      value={prompt}
+                      onChange={e => setPrompt(e.target.value.slice(0, 1000))}
+                      placeholder={`만들고 싶은 포토카드를 차례대로 설명해 보세요\n(성별, 포즈, 얼굴, 표정, 자세, 구도, 의상, 배경, 그 외)`}
+                      rows={5}
+                      className="w-full px-5 py-4 text-sm text-gray-900 placeholder:text-gray-300 focus:outline-none resize-none bg-transparent"
+                    />
+                    {isDragging && (
+                      <div className="absolute inset-0 flex items-center justify-center m-2 rounded-xl border-2 border-dashed border-brand/50 bg-brand/5 pointer-events-none">
+                        <p className="text-brand text-sm font-semibold">이미지를 여기에 놓으세요</p>
+                      </div>
+                    )}
+                  </div>
+                  {/* 하단 바 */}
+                  <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50/50">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        title="이미지 첨부"
+                        className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:border-gray-400 hover:text-gray-700 transition-colors"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                      <span className="text-gray-300 text-xs">{prompt.length}/1000</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handlePromptHelper}
+                        disabled={helperLoading}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-200 text-purple-600 text-xs font-medium hover:bg-purple-50 transition-colors disabled:opacity-50"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        {helperLoading ? 'AI 생성 중...' : '프롬프트 헬퍼'}
+                      </button>
+                      <button
+                        onClick={() => setShowAdvanced(v => !v)}
+                        className={cn(
+                          'flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors',
+                          showAdvanced
+                            ? 'border-blue-300 bg-blue-50 text-blue-600'
+                            : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                        )}
+                      >
+                        <SlidersHorizontal className="w-3 h-3" />
+                        고급상세
+                      </button>
+                      <button
+                        onClick={handleGenerate}
+                        disabled={generating}
+                        className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-gray-900 text-white text-xs font-bold hover:bg-gray-800 transition-colors disabled:opacity-60"
+                      >
+                        <span>🔑</span>
+                        {generating ? '생성 중...' : `포토카드 생성 ${cost}`}
+                      </button>
+                    </div>
                   </div>
                 </div>
+
+                {/* 고급상세 패널 */}
+                {showAdvanced && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="rounded-2xl border border-blue-100 bg-blue-50/40 p-5"
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-sm font-bold text-gray-800">고급 상세 설정</h3>
+                      <button
+                        onClick={applyAdvancedToPrompt}
+                        className="px-3 py-1.5 rounded-lg bg-blue-500 text-white text-xs font-semibold hover:bg-blue-600 transition-colors"
+                      >
+                        프롬프트에 적용
+                      </button>
+                    </div>
+                    <div className="space-y-3">
+                      {ADVANCED_DEFS.map(({ key, label, placeholder }) => (
+                        <div key={key}>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
+                          <input
+                            type="text"
+                            value={advancedFields[key]}
+                            onChange={e => setAdvancedFields(prev => ({ ...prev, [key]: e.target.value }))}
+                            placeholder={placeholder}
+                            className="w-full px-3 py-2 rounded-xl border border-gray-200 bg-white text-xs text-gray-800 placeholder:text-gray-300 focus:outline-none focus:border-blue-300 transition-colors"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
               </div>
             </div>
           ) : activeTab === '포토카드 변형' ? (
