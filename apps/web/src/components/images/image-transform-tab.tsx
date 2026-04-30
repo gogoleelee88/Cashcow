@@ -3,11 +3,27 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { cn } from '../../lib/utils';
 import { api } from '../../lib/api';
-import { Upload, Download, ChevronRight, Sparkles, RotateCcw, ZoomIn } from 'lucide-react';
+import { Upload, Download, ChevronLeft, ChevronRight, Sparkles, RotateCcw, ZoomIn, Check } from 'lucide-react';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const TRANSFORM_COST = 190;
+
+const STYLES = [
+  { name: '청초',   img: '/styles/청초.jpg' },
+  { name: '순정',   img: '/styles/순정.jpg' },
+  { name: '키치',   img: '/styles/키치.jpg' },
+  { name: '로판',   img: '/styles/로판.jpg' },
+  { name: '모에',   img: '/styles/모에.jpg' },
+  { name: '액션',   img: '/styles/액션.jpg' },
+  { name: '모던',   img: '/styles/모던.jpg' },
+  { name: '와일드', img: '/styles/와일드.jpg' },
+  { name: '남사친', img: '/styles/남사친.jpg' },
+  { name: '육아물', img: '/styles/육아물.jpg' },
+  { name: '집착',   img: '/styles/집착.jpg' },
+];
+
+const VISIBLE_STYLES = 5;
 
 const RATIOS = [
   { label: '1:1',  w: 1,  h: 1  },
@@ -145,6 +161,8 @@ function ResultCard({ url, index }: { url: string; index: number }) {
 
 // ── 메인 컴포넌트 ────────────────────────────────────────────────────────────
 export function ImageTransformTab({ ratio, count, credits, onNeedPayment, onRatioChange, onCountChange }: Props) {
+  const [styleIndex, setStyleIndex]     = useState(0);
+  const [selectedStyle, setSelectedStyle] = useState(STYLES[0].name);
   const [prompt, setPrompt] = useState('');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadedPreview, setUploadedPreview] = useState<string | null>(null);
@@ -197,6 +215,7 @@ export function ImageTransformTab({ ratio, count, credits, onNeedPayment, onRati
       const formData = new FormData();
       formData.append('image', uploadedFile);
       formData.append('prompt', prompt);
+      formData.append('style', selectedStyle);
       formData.append('count', String(count));
       formData.append('ratio', ratio);
 
@@ -238,7 +257,57 @@ export function ImageTransformTab({ ratio, count, credits, onNeedPayment, onRati
   };
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="max-w-2xl mx-auto space-y-6">
+
+      {/* ── 포토카드 스타일 ── */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-gray-800 font-bold text-sm">
+            포토카드 스타일<span className="text-brand">*</span>
+          </p>
+          <div className="flex gap-1">
+            <button
+              onClick={() => setStyleIndex(i => Math.max(0, i - 1))}
+              disabled={styleIndex === 0}
+              className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 disabled:opacity-30 flex items-center justify-center transition-all"
+            >
+              <ChevronLeft className="w-4 h-4 text-gray-600" />
+            </button>
+            <button
+              onClick={() => setStyleIndex(i => Math.min(STYLES.length - VISIBLE_STYLES, i + 1))}
+              disabled={styleIndex >= STYLES.length - VISIBLE_STYLES}
+              className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 disabled:opacity-30 flex items-center justify-center transition-all"
+            >
+              <ChevronRight className="w-4 h-4 text-gray-600" />
+            </button>
+          </div>
+        </div>
+        <div className="flex gap-2 h-44">
+          {STYLES.slice(styleIndex, styleIndex + VISIBLE_STYLES).map(style => (
+            <button
+              key={style.name}
+              onClick={() => setSelectedStyle(style.name)}
+              className={cn(
+                'flex-1 relative rounded-xl overflow-hidden border-2 transition-all duration-200',
+                selectedStyle === style.name
+                  ? 'border-brand shadow-[0_0_0_2px_rgba(230,51,37,0.3)]'
+                  : 'border-transparent hover:border-gray-300'
+              )}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={style.img} alt={style.name} className="w-full h-full object-cover" />
+              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent pt-4 pb-1.5 px-1 text-center">
+                <span className="text-white text-[10px] font-semibold">{style.name}</span>
+              </div>
+              {selectedStyle === style.name && (
+                <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-brand flex items-center justify-center">
+                  <Check className="w-2.5 h-2.5 text-white" />
+                </div>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* ── 포토카드 비율 ── */}
       <div>
@@ -289,25 +358,6 @@ export function ImageTransformTab({ ratio, count, credits, onNeedPayment, onRati
             </button>
           ))}
         </div>
-      </div>
-
-      {/* ── 보유 크래커 ── */}
-      <div className="flex items-center justify-between rounded-xl bg-gray-50 border border-gray-200 px-4 py-3">
-        <div>
-          <p className="text-xs text-gray-400 mb-0.5">보유 크래커</p>
-          <p className="text-sm font-bold text-gray-800">{credits.toLocaleString()}개</p>
-          <p className={cn('text-xs mt-0.5 font-medium', credits >= cost ? 'text-green-500' : 'text-brand')}>
-            {credits >= cost ? `차감 예정: ${cost}개` : `부족: ${(cost - credits).toLocaleString()}개`}
-          </p>
-        </div>
-        {credits < cost && (
-          <button
-            onClick={onNeedPayment}
-            className="px-4 py-2 rounded-lg bg-brand text-white text-xs font-bold hover:brightness-110 transition-all"
-          >
-            충전하기
-          </button>
-        )}
       </div>
 
       {/* ── 프롬프트 입력 ── */}
