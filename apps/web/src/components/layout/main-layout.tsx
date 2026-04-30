@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Search, Bell, X, Menu, ChevronDown, BookOpen, Users, Image as ImageIcon, Bookmark, Plus, LogOut, Settings, User, ShieldCheck, Baby, Clock } from 'lucide-react';
+import { Search, Bell, X, Menu, ChevronDown, BookOpen, Users, Image as ImageIcon, Bookmark, Plus, LogOut, Settings, User, ShieldCheck, Baby, Clock, MessageSquare } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { cn } from '../../lib/utils';
@@ -185,12 +185,12 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
             <div className="w-8 h-8 rounded-lg bg-brand flex items-center justify-center">
               <span className="text-white font-black text-sm">Z</span>
             </div>
-            <div className="hidden sm:flex items-baseline gap-1.5">
+            <div className="flex items-baseline gap-1.5">
               <span className="font-black text-lg text-text-primary tracking-tight">
                 Zac<span className="text-xl">∞</span>
               </span>
               {isKids && (
-                <span className="text-xs font-bold text-sky-500 tracking-tight">
+                <span className="text-xs font-bold text-sky-500 tracking-tight hidden sm:inline">
                   키즈&amp;패밀리
                 </span>
               )}
@@ -217,43 +217,32 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
             ))}
           </nav>
 
-          {/* Search — 데스크탑: full bar / 모바일: 아이콘만 */}
+          {/* Search — 데스크탑: full bar */}
           {showSearch && (
-            <>
-              {/* md 이상: 전체 검색 바 */}
-              <form onSubmit={handleSearch} className="hidden md:block flex-1 max-w-sm mx-auto">
-                <div className="relative">
-                  <Search className={cn(
-                    'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none transition-colors',
-                    searchFocused ? 'text-brand' : 'text-text-muted'
-                  )} />
-                  <input
-                    type="text"
-                    placeholder="캐릭터, 스토리 검색..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onFocus={() => setSearchFocused(true)}
-                    onBlur={() => setSearchFocused(false)}
-                    className={cn(
-                      'w-full pl-9 pr-4 py-2 bg-surface border rounded-xl text-sm',
-                      'text-text-primary placeholder-text-muted',
-                      'focus:outline-none transition-all duration-200',
-                      searchFocused
-                        ? 'border-brand/50 ring-2 ring-brand/15 bg-white'
-                        : 'border-border hover:border-border-strong'
-                    )}
-                  />
-                </div>
-              </form>
-
-              {/* md 미만: 돋보기 아이콘 */}
-              <button
-                onClick={openMobileSearch}
-                className="md:hidden p-2 rounded-xl hover:bg-surface text-text-muted hover:text-brand transition-all"
-              >
-                <Search className="w-5 h-5" />
-              </button>
-            </>
+            <form onSubmit={handleSearch} className="hidden md:block flex-1 max-w-sm mx-auto">
+              <div className="relative">
+                <Search className={cn(
+                  'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none transition-colors',
+                  searchFocused ? 'text-brand' : 'text-text-muted'
+                )} />
+                <input
+                  type="text"
+                  placeholder="캐릭터, 스토리 검색..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => setSearchFocused(false)}
+                  className={cn(
+                    'w-full pl-9 pr-4 py-2 bg-surface border rounded-xl text-sm',
+                    'text-text-primary placeholder-text-muted',
+                    'focus:outline-none transition-all duration-200',
+                    searchFocused
+                      ? 'border-brand/50 ring-2 ring-brand/15 bg-white'
+                      : 'border-border hover:border-border-strong'
+                  )}
+                />
+              </div>
+            </form>
           )}
 
           {/* Right side actions */}
@@ -358,9 +347,19 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
               </Link>
             )}
 
+            {/* 모바일 돋보기 — 햄버거 바로 왼쪽 */}
+            {showSearch && (
+              <button
+                onClick={openMobileSearch}
+                className="md:hidden p-2 rounded-xl hover:bg-surface text-text-muted hover:text-brand transition-all"
+              >
+                <Search className="w-5 h-5" />
+              </button>
+            )}
+
             {/* Mobile menu button — 알림 배지 포함 */}
             <button
-              className="md:hidden relative p-2 rounded-xl hover:bg-surface text-text-muted hover:text-text-primary transition-all ml-1"
+              className="md:hidden relative p-2 rounded-xl hover:bg-surface text-text-muted hover:text-text-primary transition-all"
               onClick={() => setMobileMenuOpen(true)}
             >
               <Menu className="w-5 h-5" />
@@ -644,9 +643,35 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
       </AnimatePresence>
 
       {/* Page content */}
-      <main className="flex-1 bg-background">
+      <main className="flex-1 bg-background pb-16 md:pb-0">
         {children}
       </main>
+
+      {/* ── 하단 고정 내비게이션 (모바일 전용) ── */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-border flex items-center h-16 shadow-[0_-1px_8px_rgba(0,0,0,0.06)]">
+        <Link
+          href="/chat"
+          className={cn(
+            'flex-1 flex flex-col items-center justify-center gap-1 py-2 transition-colors',
+            pathname?.startsWith('/chat') ? 'text-brand' : 'text-text-muted hover:text-brand'
+          )}
+        >
+          <MessageSquare className="w-5 h-5" />
+          <span className="text-[10px] font-medium">채팅</span>
+        </Link>
+        <Link
+          href="/creator/new"
+          className={cn(
+            'flex-1 flex flex-col items-center justify-center gap-1 py-2 transition-colors',
+            pathname?.startsWith('/creator/new') ? 'text-brand' : 'text-text-muted hover:text-brand'
+          )}
+        >
+          <div className="w-8 h-8 rounded-full bg-brand flex items-center justify-center shadow-sm">
+            <Plus className="w-4 h-4 text-white" />
+          </div>
+          <span className="text-[10px] font-medium">만들기</span>
+        </Link>
+      </nav>
     </div>
   );
 }

@@ -2,16 +2,22 @@ import { test } from '@playwright/test';
 
 test.use({ storageState: 'e2e/.auth/user.json', viewport: { width: 390, height: 844 } });
 
-test('모바일 헤더 (종 없음, 햄버거만)', async ({ page }) => {
+test('모바일 UI 전체 확인', async ({ page }) => {
   await page.goto('http://localhost:3000/');
-  await page.waitForTimeout(1500);
-  await page.screenshot({ path: 'test-results/mobile_menu_01_header.png' });
-});
+  await page.waitForLoadState('networkidle');
 
-test('모바일 드로어 열기', async ({ page }) => {
-  await page.goto('http://localhost:3000/');
-  await page.waitForTimeout(1500);
-  await page.locator('header').getByRole('button').filter({ has: page.locator('.lucide-menu') }).click();
-  await page.waitForTimeout(500);
-  await page.screenshot({ path: 'test-results/mobile_menu_02_drawer.png' });
+  // 헤더 (로고+zacoo, 돋보기, 햄버거)
+  await page.screenshot({ path: 'test-results/mobile_01_header.png' });
+
+  // 드로어 열기 — 마지막 버튼이 햄버거
+  await page.locator('header button').last().click();
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: 'test-results/mobile_02_drawer.png' });
+
+  // 드로어 닫기
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(400);
+
+  // 하단 내비게이션 바
+  await page.screenshot({ path: 'test-results/mobile_03_bottom_nav.png' });
 });
