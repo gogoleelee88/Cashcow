@@ -79,32 +79,14 @@ export function LoginForm() {
   const isAndroid = typeof navigator !== 'undefined' && /Android/.test(navigator.userAgent);
 
   return (
-    <div className="min-h-screen bg-white flex">
-      {/* Left panel — brand */}
-      <div className="hidden lg:flex flex-col justify-center items-center flex-1 bg-gradient-to-br from-brand/5 to-brand/10 px-12">
-        <div className="max-w-sm text-center">
-          <Link href="/" className="inline-flex items-center gap-2 mb-8">
-            <div className="w-12 h-12 rounded-xl bg-brand flex items-center justify-center">
-              <span className="text-white font-black text-xl">Z</span>
-            </div>
-            <span className="font-black text-2xl text-text-primary">Zac<span className="text-3xl">∞</span></span>
-          </Link>
-          <h2 className="text-2xl font-bold text-text-primary mb-3">AI 스토리 플랫폼</h2>
-          <p className="text-text-secondary text-base leading-relaxed">
-            수천 개의 캐릭터와 스토리가 기다리고 있어요. 나만의 이야기를 만들어보세요.
-          </p>
-        </div>
-      </div>
-
-      {/* Right panel — form */}
-      <div className="flex-1 flex items-center justify-center px-6 py-12">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-sm"
-        >
-          {/* Mobile logo */}
-          <div className="lg:hidden text-center mb-10">
+    <div className="min-h-screen bg-white flex items-center justify-center px-6 py-12">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="w-full max-w-sm"
+      >
+          {/* Logo */}
+          <div className="text-center mb-10">
             <Link href="/" className="inline-flex items-center gap-4">
               <div className="w-[4.5rem] h-[4.5rem] rounded-2xl bg-brand flex items-center justify-center">
                 <span className="text-white font-black text-4xl">Z</span>
@@ -235,8 +217,7 @@ export function LoginForm() {
               회원가입
             </Link>
           </p>
-        </motion.div>
-      </div>
+      </motion.div>
     </div>
   );
 }
