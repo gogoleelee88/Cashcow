@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Send, MoreVertical, Pencil, Loader2, MessageCircle,
   Sparkles, ChevronDown, BookOpen, LayoutList, Smile, Plus,
-  Mic, MicOff, Volume2, VolumeX, Play, Square,
+  Mic, MicOff, Volume2, VolumeX, Play, Square, ChevronLeft,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { api, streamChatMessage, voiceApi } from '../../lib/api';
@@ -30,6 +30,7 @@ export function ChatPageContent() {
   const queryClient = useQueryClient();
   const [activeConvId, setActiveConvId] = useState<string | null>(conversationId ?? null);
   const [sidebarTab, setSidebarTab] = useState<'episode' | 'party'>('episode');
+  const [mobileShowList, setMobileShowList] = useState(!conversationId);
   const [uiStyle, setUiStyle] = useState<UiStyle>(() => {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('chatUiStyle') as UiStyle) ?? 'story';
@@ -149,8 +150,22 @@ export function ChatPageContent() {
           </div>
         </aside>
 
-        {/* ── 메인 채팅 영역 ── */}
-        <div className="flex-1 flex flex-col min-w-0">
+        {/* ── 모바일 전체화면 대화 목록 (lg 미만 + mobileShowList) ── */}
+        <div className={cn('flex-col flex-1 min-w-0 lg:hidden', mobileShowList ? 'flex' : 'hidden')}>
+          <MobileChatList
+            activeConvId={activeConvId}
+            sidebarTab={sidebarTab}
+            setSidebarTab={setSidebarTab}
+            onSelect={(id) => {
+              setActiveConvId(id);
+              setMobileShowList(false);
+              router.replace(`/chat?conversationId=${id}`, { scroll: false });
+            }}
+          />
+        </div>
+
+        {/* ── 메인 채팅 영역 (데스크탑 항상 / 모바일은 대화 선택 후) ── */}
+        <div className={cn('flex-col min-w-0', !mobileShowList ? 'flex flex-1' : 'hidden lg:flex lg:flex-1')}>
           {activeConvId ? (
             <ChatWindow
               conversationId={activeConvId}
@@ -158,6 +173,11 @@ export function ChatPageContent() {
               user={user!}
               uiStyle={uiStyle}
               onToggleUiStyle={toggleUiStyle}
+              onBack={() => {
+                setMobileShowList(true);
+                setActiveConvId(null);
+                router.replace('/chat', { scroll: false });
+              }}
             />
           ) : (
             <EmptyChatState />
@@ -165,6 +185,135 @@ export function ChatPageContent() {
         </div>
       </div>
     </MainLayout>
+  );
+}
+
+// ── 모바일 전체화면 대화 목록 ──────────────────────────────────────
+function MobileChatList({
+  activeConvId, sidebarTab, setSidebarTab, onSelect,
+}: {
+  activeConvId: string | null;
+  sidebarTab: 'episode' | 'party';
+  setSidebarTab: (t: 'episode' | 'party') => void;
+  onSelect: (id: string) => void;
+}) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['conversations'],
+    queryFn: () => api.chat.conversations(),
+    refetchInterval: 30_000,
+  });
+  const conversations: Conversation[] = data?.data ?? [];
+
+  return (
+    <div className="flex flex-col h-full bg-white">
+      {/* 에피소드 / 파티챗 탭 */}
+      <div className="flex border-b border-gray-100 flex-shrink-0">
+        {(['episode', 'party'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setSidebarTab(t)}
+            className={cn(
+              'flex-1 py-3.5 text-sm font-semibold transition-colors relative',
+              sidebarTab === t ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'
+            )}
+          >
+            {t === 'episode' ? '에피소드' : '파티챗'}
+            {sidebarTab === t && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-900 rounded-t" />
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* 대화 목록 */}
+      <div className="flex-1 overflow-y-auto">
+        {isLoading ? (
+          <div className="p-4 space-y-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 px-1">
+                <div className="w-12 h-12 rounded-full bg-gray-100 animate-pulse flex-shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3 bg-gray-100 animate-pulse rounded w-1/3" />
+                  <div className="h-2.5 bg-gray-100 animate-pulse rounded w-2/3" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : conversations.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center">
+              <MessageCircle className="w-7 h-7 text-gray-300" />
+            </div>
+            <p className="text-sm text-gray-400">아직 대화가 없어요</p>
+            <Link href="/" className="text-sm text-brand font-medium hover:underline">캐릭터 탐색</Link>
+          </div>
+        ) : (
+          conversations.map((conv) => (
+            <MobileConvItem
+              key={conv.id}
+              conv={conv}
+              isActive={conv.id === activeConvId}
+              onSelect={onSelect}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MobileConvItem({ conv, isActive, onSelect }: {
+  conv: Conversation;
+  isActive: boolean;
+  onSelect: (id: string) => void;
+}) {
+  const [imgErr, setImgErr] = useState(false);
+  const char = conv.character;
+  const src = imgErr ? getCharacterAvatarUrl(null, char?.name ?? '') : char?.avatarUrl;
+  const lastMsg = (conv as any).messages?.[0]?.content ?? '대화를 시작해보세요';
+  const unreadCount: number = (conv as any).unreadCount ?? 0;
+
+  const formatTime = (d: string) => {
+    if (!d) return '';
+    const diff = Date.now() - new Date(d).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return '방금';
+    if (mins < 60) return `${mins}분`;
+    const h = Math.floor(mins / 60);
+    if (h < 24) return `${h}시간`;
+    return `${Math.floor(h / 24)}일`;
+  };
+  const timeStr = formatTime((conv as any).lastMessageAt ?? (conv as any).updatedAt ?? '');
+
+  return (
+    <div
+      onClick={() => onSelect(conv.id)}
+      className={cn(
+        'flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-colors border-b border-gray-50',
+        isActive ? 'bg-brand/5' : 'active:bg-gray-50'
+      )}
+    >
+      <div className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0 bg-gray-100">
+        {src
+          ? <Image src={src} alt={char?.name ?? ''} width={48} height={48} className="object-cover" onError={() => setImgErr(true)} />
+          : <div className="w-full h-full bg-brand/10 flex items-center justify-center text-brand text-base font-bold">{char?.name?.[0] ?? '?'}</div>
+        }
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between mb-0.5">
+          <p className="text-[14px] font-bold text-gray-900 truncate pr-1">{char?.name ?? '알 수 없음'}</p>
+          <span className="text-[11px] text-gray-400 flex-shrink-0">{timeStr}</span>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[13px] text-gray-500 truncate flex-1">{lastMsg}</p>
+          {unreadCount > 0 && (
+            <span className="flex-shrink-0 min-w-[20px] h-5 rounded-full bg-brand text-white text-[11px] font-bold flex items-center justify-center px-1.5 leading-none">
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -311,13 +460,14 @@ function SidebarConvItem({
 
 // ── 채팅 윈도우 ───────────────────────────────────────────────────
 function ChatWindow({
-  conversationId, accessToken, user, uiStyle, onToggleUiStyle,
+  conversationId, accessToken, user, uiStyle, onToggleUiStyle, onBack,
 }: {
   conversationId: string;
   accessToken: string;
   user: any;
   uiStyle: UiStyle;
   onToggleUiStyle: () => void;
+  onBack?: () => void;
 }) {
   const [inputValue, setInputValue] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -502,6 +652,12 @@ function ChatWindow({
         <div className="flex-shrink-0 bg-white border-b border-gray-200">
           {/* 캐릭터 행 */}
           <div className="flex items-center px-4 h-[52px]">
+            {/* 모바일 뒤로 가기 */}
+            {onBack && (
+              <button onClick={onBack} className="lg:hidden mr-2 p-1 -ml-1 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors">
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+            )}
             {character && (
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-xl overflow-hidden bg-gray-200">
@@ -526,6 +682,12 @@ function ChatWindow({
         </div>
       ) : (
         <div className="flex items-center flex-shrink-0 px-3 bg-white border-b border-gray-100 h-[44px]">
+          {/* 모바일 뒤로 가기 */}
+          {onBack && (
+            <button onClick={onBack} className="lg:hidden mr-1 p-1 -ml-1 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors">
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+          )}
           {character && (
             <Link
               href={`/characters/${character.id}`}
