@@ -87,11 +87,11 @@ export function LoginForm() {
       >
           {/* Logo */}
           <div className="text-center mb-10">
-            <Link href="/" className="inline-flex items-center gap-4">
-              <div className="w-[4.5rem] h-[4.5rem] rounded-2xl bg-brand flex items-center justify-center">
-                <span className="text-white font-black text-4xl">Z</span>
+            <Link href="/" className="inline-flex items-center gap-2">
+              <div className="w-10 h-10 rounded-xl bg-brand flex items-center justify-center">
+                <span className="text-white font-black text-xl">Z</span>
               </div>
-              <span className="font-black text-6xl text-text-primary">Zac<span className="text-7xl">∞</span></span>
+              <span className="font-black text-3xl text-text-primary">Zac<span className="text-4xl">∞</span></span>
             </Link>
           </div>
 
@@ -118,34 +118,6 @@ export function LoginForm() {
             </div>
           )}
 
-
-          {/* OAuth buttons */}
-          <div className="space-y-3 mb-6">
-            <button
-              onClick={() => handleOAuth('kakao')}
-              className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl
-                         bg-[#FEE500] hover:bg-[#F5D800] text-[#3B1E1E] font-semibold text-sm
-                         transition-all duration-200"
-            >
-              <KakaoIcon />
-              카카오로 계속하기
-            </button>
-            <button
-              onClick={() => handleOAuth('google')}
-              className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl
-                         bg-white hover:bg-gray-50 text-gray-700 font-semibold text-sm
-                         border border-gray-200 transition-all duration-200"
-            >
-              <GoogleIcon />
-              Google로 계속하기
-            </button>
-          </div>
-
-          <div className="flex items-center gap-3 mb-6">
-            <div className="flex-1 h-px bg-border" />
-            <span className="text-text-muted text-xs">또는 이메일로</span>
-            <div className="flex-1 h-px bg-border" />
-          </div>
 
           {/* Error */}
           {error && (
@@ -210,6 +182,28 @@ export function LoginForm() {
               {isLoading ? '로그인 중...' : '로그인'}
             </button>
           </form>
+
+          {/* OAuth buttons */}
+          <div className="space-y-3 mt-4">
+            <button
+              onClick={() => handleOAuth('kakao')}
+              className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl
+                         bg-[#FEE500] hover:bg-[#F5D800] text-[#3B1E1E] font-semibold text-sm
+                         transition-all duration-200"
+            >
+              <KakaoIcon />
+              카카오로 계속하기
+            </button>
+            <button
+              onClick={() => handleOAuth('google')}
+              className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl
+                         bg-white hover:bg-gray-50 text-gray-700 font-semibold text-sm
+                         border border-gray-200 transition-all duration-200"
+            >
+              <GoogleIcon />
+              Google로 계속하기
+            </button>
+          </div>
 
           <p className="text-center text-text-muted text-sm mt-6">
             계정이 없으신가요?{' '}
