@@ -185,8 +185,15 @@ export function LoginForm() {
             </button>
           </form>
 
+          {/* 간편 로그인 divider */}
+          <div className="flex items-center gap-3 mt-6 mb-3">
+            <div className="flex-1 h-px bg-gray-200" />
+            <span className="text-xs text-gray-400 flex-shrink-0">간편 로그인</span>
+            <div className="flex-1 h-px bg-gray-200" />
+          </div>
+
           {/* OAuth buttons */}
-          <div className="space-y-3 mt-4">
+          <div className="space-y-3">
             <button
               onClick={() => handleOAuth('kakao')}
               className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl
