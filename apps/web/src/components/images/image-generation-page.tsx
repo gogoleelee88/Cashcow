@@ -7,7 +7,7 @@ import { MainLayout } from '../layout/main-layout';
 import { useAuthStore } from '../../stores/auth.store';
 import { api } from '../../lib/api';
 import { AnimatePresence, motion } from 'framer-motion';
-import { X, Sparkles } from 'lucide-react';
+import { X, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ImageTransformTab } from './image-transform-tab';
 
 // ── 상수 ────────────────────────────────────────────────────────────────────
@@ -159,14 +159,14 @@ function CrackerPaymentModal({ onClose }: { onClose: () => void }) {
 // ── 메인 페이지 컴포넌트 ────────────────────────────────────────────────────
 export function ImageGenerationPage() {
   const router = useRouter();
-  const { user, isAuthenticated } = useAuthStore();
+  const { user, isAuthenticated, isLoading } = useAuthStore();
   const credits = user?.creditBalance ?? 0;
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isLoading && !isAuthenticated) {
       router.replace('/login');
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, isLoading, router]);
 
   const [activeTab, setActiveTab] = useState('신규 생성');
   const [prompt, setPrompt] = useState('');
@@ -176,6 +176,8 @@ export function ImageGenerationPage() {
   const [generating, setGenerating] = useState(false);
   const [helperLoading, setHelperLoading] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [styleIndex, setStyleIndex] = useState(0);
+  const VISIBLE_STYLES = 5;
 
   const cost = count * IMAGE_GEN_COST;
 
@@ -227,35 +229,54 @@ export function ImageGenerationPage() {
 
           {activeTab === '신규 생성' ? (
             <div className="max-w-2xl space-y-6">
-              {/* 이미지 스타일 — 가로 스크롤 */}
+              {/* 이미지 스타일 — 버튼 캐러셀 */}
               <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-brand text-sm font-bold">✦</span>
-                  <h2 className="text-gray-900 font-bold text-base">이미지 스타일</h2>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-brand text-sm font-bold">✦</span>
+                    <h2 className="text-gray-900 font-bold text-base">이미지 스타일</h2>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setStyleIndex(i => Math.max(0, i - 1))}
+                      disabled={styleIndex === 0}
+                      className="w-8 h-8 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:border-gray-400 hover:text-gray-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setStyleIndex(i => Math.min(STYLES.length - VISIBLE_STYLES, i + 1))}
+                      disabled={styleIndex >= STYLES.length - VISIBLE_STYLES}
+                      className="w-8 h-8 flex items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:border-gray-400 hover:text-gray-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-                  {STYLES.map(style => (
+                <div className="flex gap-2">
+                  {STYLES.slice(styleIndex, styleIndex + VISIBLE_STYLES).map(style => (
                     <button
                       key={style.name}
                       onClick={() => setSelectedStyle(style.name)}
                       className={cn(
-                        'relative flex-shrink-0 w-20 h-20 rounded-2xl overflow-hidden border-2 transition-all hover:scale-[1.03]',
+                        'relative flex-1 rounded-2xl overflow-hidden border-2 transition-all hover:scale-[1.02]',
                         selectedStyle === style.name
                           ? 'border-brand shadow-[0_0_0_2px_rgba(230,51,37,0.3)]'
                           : 'border-transparent'
                       )}
+                      style={{ aspectRatio: '2/3' }}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={style.img} alt={style.name} className="w-full h-full object-cover" />
                       {selectedStyle === style.name && (
-                        <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-brand flex items-center justify-center shadow-md">
+                        <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-brand flex items-center justify-center shadow-md">
                           <svg width="8" height="7" viewBox="0 0 10 8" fill="none">
                             <path d="M1 4l2.5 2.5L9 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
                           </svg>
                         </div>
                       )}
-                      <div className="absolute bottom-0 left-0 right-0 py-1 bg-gradient-to-t from-black/60 to-transparent">
-                        <span className="text-white text-[10px] font-semibold drop-shadow">{style.name}</span>
+                      <div className="absolute bottom-0 left-0 right-0 py-1.5 bg-gradient-to-t from-black/70 to-transparent">
+                        <span className="text-white text-xs font-semibold drop-shadow">{style.name}</span>
                       </div>
                     </button>
                   ))}
@@ -267,13 +288,13 @@ export function ImageGenerationPage() {
                 <p className="text-gray-800 font-bold text-sm mb-3">
                   이미지 비율<span className="text-brand">*</span>
                 </p>
-                <div className="flex gap-2">
+                <div className="flex gap-2 justify-between">
                   {RATIOS.map(r => (
                     <button
                       key={r.label}
                       onClick={() => setRatio(r.label)}
                       className={cn(
-                        'flex flex-col items-center justify-center gap-1 w-14 py-2.5 rounded-xl border text-xs font-medium transition-all',
+                        'flex-1 flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border text-xs font-medium transition-all',
                         ratio === r.label
                           ? 'border-[#E8A020] bg-[#FFF8EC] text-[#E8A020]'
                           : 'border-gray-200 text-gray-400 hover:border-gray-300'
@@ -295,13 +316,13 @@ export function ImageGenerationPage() {
                   이미지 개수<span className="text-brand">*</span>
                 </p>
                 <p className="text-gray-400 text-xs mb-3">이미지 개수 설정에 맞게 크래커가 소비돼요</p>
-                <div className="flex gap-2">
+                <div className="flex gap-2 justify-between">
                   {[1, 2, 3, 4].map(n => (
                     <button
                       key={n}
                       onClick={() => setCount(n)}
                       className={cn(
-                        'w-14 py-2 rounded-xl border text-sm font-semibold transition-all',
+                        'flex-1 py-2 rounded-xl border text-sm font-semibold transition-all',
                         count === n
                           ? 'border-[#E8A020] bg-[#FFF8EC] text-[#E8A020]'
                           : 'border-gray-200 text-gray-400 hover:border-gray-300'
