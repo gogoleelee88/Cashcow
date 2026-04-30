@@ -341,7 +341,7 @@ export function ImageTransformTab({ ratio, count, credits, onNeedPayment, onRati
         <p className="text-gray-800 font-bold text-sm mb-1">
           포토카드 개수<span className="text-brand">*</span>
         </p>
-        <p className="text-gray-400 text-xs mb-3">포토카드 개수 설정에 맞게 크래커가 소비돼요</p>
+        <p className="text-gray-400 text-xs mb-3">포토카드 개수 설정에 맞게 단짠초코감자칩가 소비돼요</p>
         <div className="flex gap-2 justify-between">
           {[1, 2, 3, 4].map(n => (
             <button

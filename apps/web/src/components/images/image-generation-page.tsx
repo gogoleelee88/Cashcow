@@ -69,7 +69,7 @@ function CrackerPaymentModal({ onClose }: { onClose: () => void }) {
         exit={{ opacity: 0, scale: 0.96, y: 12 }} transition={{ duration: 0.2 }}
         className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white">
-          <h3 className="text-gray-900 font-bold text-base">크래커 충전하기</h3>
+          <h3 className="text-gray-900 font-bold text-base">단짠초코감자칩 충전하기</h3>
           <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-400">
             <X className="w-4 h-4" />
           </button>
@@ -79,7 +79,7 @@ function CrackerPaymentModal({ onClose }: { onClose: () => void }) {
           <button className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 mb-5 hover:bg-amber-100 transition-colors">
             <div className="flex items-center gap-2">
               <span className="text-lg">🎫</span>
-              <span className="text-amber-700 font-semibold text-sm">더 많은 크래커 혜택, 자동 구매 바로가기!</span>
+              <span className="text-amber-700 font-semibold text-sm">더 많은 단짠초코감자칩 혜택, 자동 구매 바로가기!</span>
             </div>
             <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
@@ -137,13 +137,13 @@ function CrackerPaymentModal({ onClose }: { onClose: () => void }) {
 
           {/* 환불정책 */}
           <div className="mb-5 text-xs text-gray-400 leading-relaxed space-y-1">
-            <p className="font-semibold text-gray-500 mb-1.5">완불 정책 및 크래커 이용 안내</p>
+            <p className="font-semibold text-gray-500 mb-1.5">완불 정책 및 단짠초코감자칩 이용 안내</p>
             {[
               '모든 결제 상품은 결제일로부터 7일 이내 완불을 요청할 수 있습니다.',
-              '7일 이내라도 구매한 크래커 목록을 사용한 이력이 있다면 완불이 불가합니다.',
-              '사용 이력이 있을 경우, 남은 크래커에 대한 완불은 불가합니다.',
+              '7일 이내라도 구매한 단짠초코감자칩 목록을 사용한 이력이 있다면 완불이 불가합니다.',
+              '사용 이력이 있을 경우, 남은 단짠초코감자칩에 대한 완불은 불가합니다.',
               '주관적인 AI 생성의 불만족으로 인한 완불은 불가합니다.',
-              '무료로 구매한 크래커의 유효기간은 취득 시점으로부터 5년입니다.',
+              '무료로 구매한 단짠초코감자칩의 유효기간은 취득 시점으로부터 5년입니다.',
             ].map((text, i) => <p key={i}>• {text}</p>)}
           </div>
 
@@ -339,7 +339,7 @@ export function ImageGenerationPage() {
           </nav>
           <div className="px-4 pb-5 pt-3 border-t border-gray-100">
             <div className="rounded-xl bg-gray-50 border border-gray-200 px-3 py-3">
-              <p className="text-[11px] text-gray-400 mb-0.5">보유 크래커</p>
+              <p className="text-[11px] text-gray-400 mb-0.5">보유 단짠초코감자칩</p>
               <p className="text-base font-bold text-gray-800">{credits.toLocaleString()}<span className="text-xs font-normal text-gray-500 ml-0.5">개</span></p>
               <button
                 onClick={() => setPaymentOpen(true)}
@@ -373,9 +373,9 @@ export function ImageGenerationPage() {
                 </button>
               ))}
             </div>
-            {/* 모바일 크래커 */}
+            {/* 모바일 단짠초코감자칩 */}
             <div className="flex items-center gap-2 px-4 py-2 border-t border-gray-100 bg-gray-50/50">
-              <span className="text-xs text-gray-400">보유 크래커</span>
+              <span className="text-xs text-gray-400">보유 단짠초코감자칩</span>
               <span className="text-xs font-bold text-gray-800">{credits.toLocaleString()}개</span>
               <button
                 onClick={() => setPaymentOpen(true)}
@@ -476,7 +476,7 @@ export function ImageGenerationPage() {
                 <p className="text-gray-800 font-bold text-sm mb-1">
                   포토카드 개수<span className="text-brand">*</span>
                 </p>
-                <p className="text-gray-400 text-xs mb-3">포토카드 개수 설정에 맞게 크래커가 소비돼요</p>
+                <p className="text-gray-400 text-xs mb-3">포토카드 개수 설정에 맞게 단짠초코감자칩가 소비돼요</p>
                 <div className="flex gap-2 justify-between">
                   {[1, 2, 3, 4].map(n => (
                     <button

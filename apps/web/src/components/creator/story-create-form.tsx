@@ -3687,12 +3687,12 @@ function ChatInputBar({ validation, inputValue, setInputValue, onSend, onLockedC
 // CRACKER CHARGE MODAL
 // ─────────────────────────────────────────────
 const CRACKER_PACKAGES = [
-  { id: 'cracker_200',   label: '200 크래커',    price: 2000,  crackers: 200,   bonus: 0,    popular: false },
-  { id: 'cracker_500',   label: '500 크래커',    price: 4900,  crackers: 500,   bonus: 50,   popular: false },
-  { id: 'cracker_1000',  label: '1,000 크래커',  price: 9600,  crackers: 1000,  bonus: 100,  popular: false },
-  { id: 'cracker_3000',  label: '3,000 크래커',  price: 28000, crackers: 3000,  bonus: 500,  popular: true  },
-  { id: 'cracker_5000',  label: '5,000 크래커',  price: 46000, crackers: 5000,  bonus: 1000, popular: false },
-  { id: 'cracker_10000', label: '10,000 크래커', price: 90000, crackers: 10000, bonus: 3000, popular: false },
+  { id: 'cracker_200',   label: '200 단짠초코감자칩',    price: 2000,  crackers: 200,   bonus: 0,    popular: false },
+  { id: 'cracker_500',   label: '500 단짠초코감자칩',    price: 4900,  crackers: 500,   bonus: 50,   popular: false },
+  { id: 'cracker_1000',  label: '1,000 단짠초코감자칩',  price: 9600,  crackers: 1000,  bonus: 100,  popular: false },
+  { id: 'cracker_3000',  label: '3,000 단짠초코감자칩',  price: 28000, crackers: 3000,  bonus: 500,  popular: true  },
+  { id: 'cracker_5000',  label: '5,000 단짠초코감자칩',  price: 46000, crackers: 5000,  bonus: 1000, popular: false },
+  { id: 'cracker_10000', label: '10,000 단짠초코감자칩', price: 90000, crackers: 10000, bonus: 3000, popular: false },
 ];
 
 // ── 임시저장 내역 모달 ─────────────────────────────────────────────────────
@@ -3864,8 +3864,8 @@ function CrackerChargeModal({ onClose }: { onClose: () => void }) {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div className="flex items-center gap-2">
-            <span className="text-lg">◆</span>
-            <h2 className="text-gray-900 font-bold text-base">크래커 충전하기</h2>
+            <span className="text-lg">🍟🍫</span>
+            <h2 className="text-gray-900 font-bold text-base">단짠초코감자칩 충전하기</h2>
           </div>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-400 transition-colors">
             <X className="w-4 h-4" />
@@ -3889,7 +3889,7 @@ function CrackerChargeModal({ onClose }: { onClose: () => void }) {
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-gray-900 font-semibold text-sm">◆ {p.crackers.toLocaleString()}</span>
+                    <span className="text-gray-900 font-semibold text-sm">🍟🍫 {p.crackers.toLocaleString()}</span>
                     {p.bonus > 0 && (
                       <span className="px-1.5 py-0.5 bg-orange-100 text-orange-600 text-[10px] font-bold rounded">+{p.bonus.toLocaleString()} 보너스</span>
                     )}
@@ -3918,7 +3918,7 @@ function CrackerChargeModal({ onClose }: { onClose: () => void }) {
           <div className="flex items-center justify-between text-sm">
             <span className="text-gray-500">선택 패키지</span>
             <span className="font-semibold text-gray-900">
-              ◆ {pkg.crackers.toLocaleString()}
+              🍟🍫 {pkg.crackers.toLocaleString()}
               {pkg.bonus > 0 && <span className="text-orange-500"> +{pkg.bonus.toLocaleString()}</span>}
             </span>
           </div>
@@ -4021,7 +4021,7 @@ export function StoryCreateForm({ initialStoryId }: { initialStoryId?: string } 
   // AI model selector
   const [selectedModel, setSelectedModel] = useState<ChatModel>(CHAT_MODELS[2]);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
-  // 크래커 충전 모달
+  // 단짠초코감자칩 충전 모달
   const [crackerModalOpen, setCrackerModalOpen] = useState(false);
 
   const getChatValidation = (): ChatValidation => {
@@ -4144,7 +4144,7 @@ export function StoryCreateForm({ initialStoryId }: { initialStoryId?: string } 
 
   return (
     <div className="h-screen flex flex-col bg-white overflow-hidden">
-      {/* 크래커 충전 모달 */}
+      {/* 단짠초코감자칩 충전 모달 */}
       <AnimatePresence>
         {crackerModalOpen && (
           <CrackerChargeModal onClose={() => setCrackerModalOpen(false)} />
