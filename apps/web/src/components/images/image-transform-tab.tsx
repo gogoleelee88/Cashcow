@@ -9,11 +9,21 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 const TRANSFORM_COST = 190;
 
+const RATIOS = [
+  { label: '1:1',  w: 1,  h: 1  },
+  { label: '4:3',  w: 4,  h: 3  },
+  { label: '3:4',  w: 3,  h: 4  },
+  { label: '16:9', w: 16, h: 9  },
+  { label: '9:16', w: 9,  h: 16 },
+];
+
 interface Props {
   ratio: string;
   count: number;
   credits: number;
   onNeedPayment: () => void;
+  onRatioChange: (r: string) => void;
+  onCountChange: (n: number) => void;
 }
 
 // ── 업로드 일러스트 placeholder ──────────────────────────────────────────────
@@ -134,7 +144,7 @@ function ResultCard({ url, index }: { url: string; index: number }) {
 }
 
 // ── 메인 컴포넌트 ────────────────────────────────────────────────────────────
-export function ImageTransformTab({ ratio, count, credits, onNeedPayment }: Props) {
+export function ImageTransformTab({ ratio, count, credits, onNeedPayment, onRatioChange, onCountChange }: Props) {
   const [prompt, setPrompt] = useState('');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadedPreview, setUploadedPreview] = useState<string | null>(null);
@@ -228,9 +238,80 @@ export function ImageTransformTab({ ratio, count, credits, onNeedPayment }: Prop
   };
 
   return (
-    <div className="max-w-4xl">
+    <div className="max-w-2xl space-y-6">
+
+      {/* ── 포토카드 비율 ── */}
+      <div>
+        <p className="text-gray-800 font-bold text-sm mb-3">
+          포토카드 비율<span className="text-brand">*</span>
+        </p>
+        <div className="flex gap-2 justify-between">
+          {RATIOS.map(r => (
+            <button
+              key={r.label}
+              onClick={() => onRatioChange(r.label)}
+              className={cn(
+                'flex-1 flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border text-xs font-medium transition-all',
+                ratio === r.label
+                  ? 'border-[#E8A020] bg-[#FFF8EC] text-[#E8A020]'
+                  : 'border-gray-200 text-gray-400 hover:border-gray-300'
+              )}
+            >
+              <div
+                className={cn('border-2 rounded-sm', ratio === r.label ? 'border-[#E8A020]' : 'border-gray-300')}
+                style={{ width: r.w <= r.h ? 14 : 20, height: r.h <= r.w ? 14 : 20 }}
+              />
+              <span>{r.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── 포토카드 개수 ── */}
+      <div>
+        <p className="text-gray-800 font-bold text-sm mb-1">
+          포토카드 개수<span className="text-brand">*</span>
+        </p>
+        <p className="text-gray-400 text-xs mb-3">포토카드 개수 설정에 맞게 크래커가 소비돼요</p>
+        <div className="flex gap-2 justify-between">
+          {[1, 2, 3, 4].map(n => (
+            <button
+              key={n}
+              onClick={() => onCountChange(n)}
+              className={cn(
+                'flex-1 py-2 rounded-xl border text-sm font-semibold transition-all',
+                count === n
+                  ? 'border-[#E8A020] bg-[#FFF8EC] text-[#E8A020]'
+                  : 'border-gray-200 text-gray-400 hover:border-gray-300'
+              )}
+            >
+              {n}개
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── 보유 크래커 ── */}
+      <div className="flex items-center justify-between rounded-xl bg-gray-50 border border-gray-200 px-4 py-3">
+        <div>
+          <p className="text-xs text-gray-400 mb-0.5">보유 크래커</p>
+          <p className="text-sm font-bold text-gray-800">{credits.toLocaleString()}개</p>
+          <p className={cn('text-xs mt-0.5 font-medium', credits >= cost ? 'text-green-500' : 'text-brand')}>
+            {credits >= cost ? `차감 예정: ${cost}개` : `부족: ${(cost - credits).toLocaleString()}개`}
+          </p>
+        </div>
+        {credits < cost && (
+          <button
+            onClick={onNeedPayment}
+            className="px-4 py-2 rounded-lg bg-brand text-white text-xs font-bold hover:brightness-110 transition-all"
+          >
+            충전하기
+          </button>
+        )}
+      </div>
+
       {/* ── 프롬프트 입력 ── */}
-      <div className="mb-6">
+      <div>
         <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-sm">
           <textarea
             value={prompt}
@@ -282,7 +363,7 @@ export function ImageTransformTab({ ratio, count, credits, onNeedPayment }: Prop
       </div>
 
       {/* ── 업로드 / 결과 패널 ── */}
-      <div className="flex gap-4 items-stretch">
+      <div className="flex gap-4 items-stretch" style={{ marginTop: 0 }}>
 
         {/* 왼쪽: 업로드 존 */}
         <div

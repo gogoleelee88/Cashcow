@@ -711,6 +711,8 @@ export function ImageGenerationPage() {
               count={count}
               credits={credits}
               onNeedPayment={() => setPaymentOpen(true)}
+              onRatioChange={setRatio}
+              onCountChange={setCount}
             />
           ) : activeTab === '라이브러리' || activeTab === '좋아요' ? (
             <ImageLibraryTab
@@ -728,7 +730,7 @@ export function ImageGenerationPage() {
         {/* ── 오른쪽 사이드바 (이미지 변형 탭 전용) ── */}
         <aside className={cn(
           'w-52 flex-shrink-0 border-l border-gray-100 overflow-y-auto py-6 px-4 bg-white',
-          (activeTab === '신규 생성' || activeTab === '라이브러리' || activeTab === '좋아요') && 'hidden'
+          activeTab !== 'NEVER_SHOW' && 'hidden'
         )}>
 
           {/* 이미지 비율 */}
