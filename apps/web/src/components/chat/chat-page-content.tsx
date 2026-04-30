@@ -813,11 +813,17 @@ function ChatWindow({
 
   const character = convData?.character;
 
-  // generatedGreeting이 아직 생성 중이면 폴링 (최대 10초)
+  // generatedGreeting 폴링: 새 대화에서 메시지 없고 greeting 미생성 시만 (최대 10초)
   const greetingReady = convData?.generatedGreeting != null;
   const [greetingPolling, setGreetingPolling] = useState(false);
   useEffect(() => {
-    if (localMessages.length > 0 || greetingReady) return;
+    // 메시지 있거나 greeting 준비됐으면 폴링 불필요
+    if (localMessages.length > 0 || greetingReady || messagesLoading) {
+      setGreetingPolling(false);
+      return;
+    }
+    // convData가 아직 없으면 대기
+    if (!convData) return;
     setGreetingPolling(true);
     const maxTries = 10;
     let tries = 0;
@@ -829,8 +835,7 @@ function ChatWindow({
     }, 1000);
     return () => clearInterval(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [greetingReady, localMessages.length]);
-  useEffect(() => { if (greetingReady) setGreetingPolling(false); }, [greetingReady]);
+  }, [greetingReady, localMessages.length, messagesLoading, !!convData]);
 
   const effectiveGreeting = convData?.generatedGreeting ?? character?.greeting ?? `안녕하세요! 저는 ${character?.name}입니다.`;
 
