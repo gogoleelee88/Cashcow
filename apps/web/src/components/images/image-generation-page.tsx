@@ -226,9 +226,9 @@ export function ImageGenerationPage() {
         <main className="flex-1 min-w-0 overflow-y-auto px-8 py-8">
 
           {activeTab === '신규 생성' ? (
-            <>
-              {/* 이미지 스타일 — 상단 가로 스크롤 */}
-              <div className="mb-6">
+            <div className="max-w-2xl space-y-6">
+              {/* 이미지 스타일 — 가로 스크롤 */}
+              <div>
                 <div className="flex items-center gap-2 mb-3">
                   <span className="text-brand text-sm font-bold">✦</span>
                   <h2 className="text-gray-900 font-bold text-base">이미지 스타일</h2>
@@ -247,16 +247,13 @@ export function ImageGenerationPage() {
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={style.img} alt={style.name} className="w-full h-full object-cover" />
-
                       {selectedStyle === style.name && (
                         <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-brand flex items-center justify-center shadow-md">
                           <svg width="8" height="7" viewBox="0 0 10 8" fill="none">
-                            <path d="M1 4l2.5 2.5L9 1" stroke="white" strokeWidth="1.8"
-                              strokeLinecap="round" strokeLinejoin="round"/>
+                            <path d="M1 4l2.5 2.5L9 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
                           </svg>
                         </div>
                       )}
-
                       <div className="absolute bottom-0 left-0 right-0 py-1 bg-gradient-to-t from-black/60 to-transparent">
                         <span className="text-white text-[10px] font-semibold drop-shadow">{style.name}</span>
                       </div>
@@ -265,40 +262,108 @@ export function ImageGenerationPage() {
                 </div>
               </div>
 
-              {/* 프롬프트 영역 */}
-              <div className="max-w-2xl">
-                <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
-                  <textarea
-                    value={prompt}
-                    onChange={e => setPrompt(e.target.value.slice(0, 1000))}
-                    placeholder={`만들고 싶은 이미지를 차례대로 설명해 보세요\n(성별, 포즈, 얼굴, 표정, 자세, 구도, 의상, 배경, 그 외)`}
-                    rows={5}
-                    className="w-full px-5 py-4 text-sm text-gray-900 placeholder:text-gray-300 focus:outline-none resize-none"
-                  />
-                  <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50/50">
-                    <span className="text-gray-300 text-xs">{prompt.length}/1000</span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={handlePromptHelper}
-                        disabled={helperLoading}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-200 text-purple-600 text-xs font-medium hover:bg-purple-50 transition-colors disabled:opacity-50"
-                      >
-                        <Sparkles className="w-3 h-3" />
-                        {helperLoading ? 'AI 생성 중...' : '프롬프트 헬퍼'}
-                      </button>
-                      <button
-                        onClick={handleGenerate}
-                        disabled={generating}
-                        className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-gray-900 text-white text-xs font-bold hover:bg-gray-800 transition-colors disabled:opacity-60"
-                      >
-                        <span>🔑</span>
-                        {generating ? '생성 중...' : `이미지 생성 ${cost}`}
-                      </button>
-                    </div>
+              {/* 이미지 비율 */}
+              <div>
+                <p className="text-gray-800 font-bold text-sm mb-3">
+                  이미지 비율<span className="text-brand">*</span>
+                </p>
+                <div className="flex gap-2">
+                  {RATIOS.map(r => (
+                    <button
+                      key={r.label}
+                      onClick={() => setRatio(r.label)}
+                      className={cn(
+                        'flex flex-col items-center justify-center gap-1 w-14 py-2.5 rounded-xl border text-xs font-medium transition-all',
+                        ratio === r.label
+                          ? 'border-[#E8A020] bg-[#FFF8EC] text-[#E8A020]'
+                          : 'border-gray-200 text-gray-400 hover:border-gray-300'
+                      )}
+                    >
+                      <div
+                        className={cn('border-2 rounded-sm', ratio === r.label ? 'border-[#E8A020]' : 'border-gray-300')}
+                        style={{ width: r.w <= r.h ? 14 : 20, height: r.h <= r.w ? 14 : 20 }}
+                      />
+                      <span>{r.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 이미지 개수 */}
+              <div>
+                <p className="text-gray-800 font-bold text-sm mb-1">
+                  이미지 개수<span className="text-brand">*</span>
+                </p>
+                <p className="text-gray-400 text-xs mb-3">이미지 개수 설정에 맞게 크래커가 소비돼요</p>
+                <div className="flex gap-2">
+                  {[1, 2, 3, 4].map(n => (
+                    <button
+                      key={n}
+                      onClick={() => setCount(n)}
+                      className={cn(
+                        'w-14 py-2 rounded-xl border text-sm font-semibold transition-all',
+                        count === n
+                          ? 'border-[#E8A020] bg-[#FFF8EC] text-[#E8A020]'
+                          : 'border-gray-200 text-gray-400 hover:border-gray-300'
+                      )}
+                    >
+                      {n}개
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 보유 크래커 */}
+              <div className="flex items-center justify-between rounded-xl bg-gray-50 border border-gray-200 px-4 py-3">
+                <div>
+                  <p className="text-xs text-gray-400 mb-0.5">보유 크래커</p>
+                  <p className="text-sm font-bold text-gray-800">{credits.toLocaleString()}개</p>
+                  <p className={cn('text-xs mt-0.5 font-medium', credits >= cost ? 'text-green-500' : 'text-brand')}>
+                    {credits >= cost ? `차감 예정: ${cost}개` : `부족: ${(cost - credits).toLocaleString()}개`}
+                  </p>
+                </div>
+                {credits < cost && (
+                  <button
+                    onClick={() => setPaymentOpen(true)}
+                    className="px-4 py-2 rounded-lg bg-brand text-white text-xs font-bold hover:brightness-110 transition-all"
+                  >
+                    충전하기
+                  </button>
+                )}
+              </div>
+
+              {/* 프롬프트 */}
+              <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+                <textarea
+                  value={prompt}
+                  onChange={e => setPrompt(e.target.value.slice(0, 1000))}
+                  placeholder={`만들고 싶은 이미지를 차례대로 설명해 보세요\n(성별, 포즈, 얼굴, 표정, 자세, 구도, 의상, 배경, 그 외)`}
+                  rows={5}
+                  className="w-full px-5 py-4 text-sm text-gray-900 placeholder:text-gray-300 focus:outline-none resize-none"
+                />
+                <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50/50">
+                  <span className="text-gray-300 text-xs">{prompt.length}/1000</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handlePromptHelper}
+                      disabled={helperLoading}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-200 text-purple-600 text-xs font-medium hover:bg-purple-50 transition-colors disabled:opacity-50"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      {helperLoading ? 'AI 생성 중...' : '프롬프트 헬퍼'}
+                    </button>
+                    <button
+                      onClick={handleGenerate}
+                      disabled={generating}
+                      className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-gray-900 text-white text-xs font-bold hover:bg-gray-800 transition-colors disabled:opacity-60"
+                    >
+                      <span>🔑</span>
+                      {generating ? '생성 중...' : `이미지 생성 ${cost}`}
+                    </button>
                   </div>
                 </div>
               </div>
-            </>
+            </div>
           ) : activeTab === '이미지 변형' ? (
             <ImageTransformTab
               ratio={ratio}
@@ -314,8 +379,11 @@ export function ImageGenerationPage() {
           )}
         </main>
 
-        {/* ── 오른쪽 사이드바 ── */}
-        <aside className="w-52 flex-shrink-0 border-l border-gray-100 overflow-y-auto py-6 px-4 bg-white">
+        {/* ── 오른쪽 사이드바 (이미지 변형 탭 전용) ── */}
+        <aside className={cn(
+          'w-52 flex-shrink-0 border-l border-gray-100 overflow-y-auto py-6 px-4 bg-white',
+          activeTab === '신규 생성' && 'hidden'
+        )}>
 
           {/* 이미지 비율 */}
           <div className="mb-7">
