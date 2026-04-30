@@ -259,10 +259,10 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
                   <span className="hidden lg:block">만들기</span>
                 </Link>
 
-                {/* Notifications */}
+                {/* Notifications — 데스크탑(md+)에서만 */}
                 <Link
                   href="/notifications"
-                  className="relative p-2 rounded-xl hover:bg-surface text-text-muted hover:text-text-primary transition-all"
+                  className="relative hidden md:flex p-2 rounded-xl hover:bg-surface text-text-muted hover:text-text-primary transition-all"
                 >
                   <Bell className="w-5 h-5" />
                   {unreadCount > 0 && (
@@ -270,8 +270,8 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
                   )}
                 </Link>
 
-                {/* User avatar + dropdown */}
-                <div className="relative" ref={userMenuRef}>
+                {/* User avatar + dropdown — 데스크탑(md+)에서만 */}
+                <div className="relative hidden md:block" ref={userMenuRef}>
                   <button
                     onClick={() => setUserMenuOpen((v) => !v)}
                     className="flex items-center gap-1.5 p-1 rounded-xl hover:bg-surface transition-all"
@@ -285,7 +285,7 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
                         </div>
                       )}
                     </div>
-                    <ChevronDown className={cn('w-3.5 h-3.5 text-text-muted transition-transform hidden sm:block', userMenuOpen && 'rotate-180')} />
+                    <ChevronDown className={cn('w-3.5 h-3.5 text-text-muted transition-transform', userMenuOpen && 'rotate-180')} />
                   </button>
 
                   <AnimatePresence>
@@ -348,12 +348,17 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
               </Link>
             )}
 
-            {/* Mobile menu button */}
+            {/* Mobile menu button — 알림 배지 포함 */}
             <button
-              className="md:hidden p-2 rounded-xl hover:bg-surface text-text-muted hover:text-text-primary transition-all ml-1"
+              className="md:hidden relative p-2 rounded-xl hover:bg-surface text-text-muted hover:text-text-primary transition-all ml-1"
               onClick={() => setMobileMenuOpen(true)}
             >
               <Menu className="w-5 h-5" />
+              {unreadCount > 0 && (
+                <span className="absolute top-1 right-1 min-w-[16px] h-4 rounded-full bg-green-500 text-white text-[10px] font-bold flex items-center justify-center px-0.5 leading-none">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
             </button>
           </div>
         </div>
@@ -383,7 +388,7 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
                   <X className="w-5 h-5 text-text-muted" />
                 </button>
               </div>
-              <nav className="p-4 flex flex-col gap-1">
+              <nav className="p-4 flex flex-col gap-1 flex-1 overflow-y-auto">
                 {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
                   <Link
                     key={href}
@@ -400,10 +405,70 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
                     {label}
                   </Link>
                 ))}
+
+                {/* 알림 */}
+                {isAuthenticated && (
+                  <Link
+                    href="/notifications"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={cn(
+                      'flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all',
+                      isNavActive('/notifications')
+                        ? 'bg-brand/10 text-brand font-semibold'
+                        : 'text-text-secondary hover:bg-surface hover:text-text-primary'
+                    )}
+                  >
+                    <Bell className="w-5 h-5" />
+                    알림
+                    {unreadCount > 0 && (
+                      <span className="ml-auto min-w-[20px] h-5 rounded-full bg-green-500 text-white text-[11px] font-bold flex items-center justify-center px-1 leading-none">
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </span>
+                    )}
+                  </Link>
+                )}
+
+                {/* 프로필/설정/크레딧 — 구분선 */}
+                {isAuthenticated && user && (
+                  <>
+                    <div className="my-2 border-t border-border" />
+                    <button
+                      onClick={() => { setMobileMenuOpen(false); clearProfile(); router.push('/profiles'); }}
+                      className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-text-secondary hover:bg-surface hover:text-text-primary transition-all"
+                    >
+                      <span className="text-base w-5 h-5 flex items-center justify-center">{activeProfile?.avatarEmoji ?? '👤'}</span>
+                      프로필 전환
+                    </button>
+                    <Link
+                      href={`/profile/${(user as any).username}`}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-text-secondary hover:bg-surface hover:text-text-primary transition-all"
+                    >
+                      <User className="w-5 h-5" />프로필
+                    </Link>
+                    <Link
+                      href="/settings"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-text-secondary hover:bg-surface hover:text-text-primary transition-all"
+                    >
+                      <Settings className="w-5 h-5" />설정
+                    </Link>
+                    <Link
+                      href="/settings/credits"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-text-secondary hover:bg-surface hover:text-text-primary transition-all"
+                    >
+                      <span className="w-5 h-5 flex items-center justify-center text-sm font-bold text-amber-500">₩</span>
+                      크레딧 충전
+                    </Link>
+                  </>
+                )}
               </nav>
+
               {isAuthenticated && user && (
-                <div className="mt-auto p-4 border-t border-border">
-                  <div className="flex items-center gap-3 mb-3">
+                <div className="p-4 border-t border-border flex-shrink-0">
+                  {/* 유저 정보 */}
+                  <div className="flex items-center gap-3 mb-3 px-1">
                     <div className="w-10 h-10 rounded-full overflow-hidden bg-brand/15 flex items-center justify-center flex-shrink-0">
                       {user.avatarUrl ? (
                         <Image src={user.avatarUrl} alt={user.displayName} width={40} height={40} className="object-cover" />
@@ -411,18 +476,18 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
                         <span className="text-brand font-bold">{user.displayName[0]?.toUpperCase()}</span>
                       )}
                     </div>
-                    <div>
-                      <p className="text-text-primary font-semibold text-sm">{user.displayName}</p>
-                      <p className="text-text-muted text-xs">@{(user as any).username}</p>
+                    <div className="min-w-0">
+                      <p className="text-text-primary font-semibold text-sm truncate">{user.displayName}</p>
+                      <p className="text-text-muted text-xs truncate">@{(user as any).username}</p>
                     </div>
                   </div>
                   {(user as any).role === 'ADMIN' && (
                     <Link href="/admin" onClick={() => setMobileMenuOpen(false)}
-                      className="w-full flex items-center gap-2 text-sm text-amber-500 py-2 px-3 rounded-xl hover:bg-amber-50 font-medium mb-1">
+                      className="w-full flex items-center gap-2 text-sm text-amber-500 py-2.5 px-3 rounded-xl hover:bg-amber-50 font-medium mb-1 transition-all">
                       <ShieldCheck className="w-4 h-4" /> 관리자 패널
                     </Link>
                   )}
-                  <button onClick={handleLogout} className="w-full flex items-center gap-2 text-sm text-red-500 py-2 px-3 rounded-xl hover:bg-red-50">
+                  <button onClick={handleLogout} className="w-full flex items-center gap-2 text-sm text-red-500 py-2.5 px-3 rounded-xl hover:bg-red-50 transition-all">
                     <LogOut className="w-4 h-4" /> 로그아웃
                   </button>
                 </div>
