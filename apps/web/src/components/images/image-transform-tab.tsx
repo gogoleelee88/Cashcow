@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { cn } from '../../lib/utils';
 import { api } from '../../lib/api';
 import { Upload, Download, ChevronRight, Sparkles, RotateCcw, ZoomIn } from 'lucide-react';
@@ -139,10 +139,14 @@ export function ImageTransformTab({ ratio, count, credits, onNeedPayment }: Prop
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadedPreview, setUploadedPreview] = useState<string | null>(null);
   const [results, setResults] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading]       = useState(false);
+  const [loadingStage, setLoadingStage] = useState<'uploading' | 'processing'>('uploading');
   const [isDragging, setIsDragging] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError]           = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pollRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (pollRef.current) clearTimeout(pollRef.current); }, []);
 
   const cost = count * TRANSFORM_COST;
 
@@ -175,6 +179,7 @@ export function ImageTransformTab({ ratio, count, credits, onNeedPayment }: Prop
     if (credits < cost) { onNeedPayment(); return; }
 
     setLoading(true);
+    setLoadingStage('uploading');
     setError(null);
     setResults([]);
 
@@ -186,11 +191,30 @@ export function ImageTransformTab({ ratio, count, credits, onNeedPayment }: Prop
       formData.append('ratio', ratio);
 
       const res = await api.images.transform(formData);
-      setResults(res.data.images);
+      const { imageId } = res.data;
+      setLoadingStage('processing');
+
+      const poll = async () => {
+        try {
+          const jobRes = await api.images.pollJob(imageId);
+          const { status, urls, errorMsg } = jobRes.data;
+          if (status === 'COMPLETED') {
+            setResults(urls);
+            setLoading(false);
+          } else if (status === 'FAILED') {
+            setError(errorMsg ?? '이미지 변형에 실패했습니다.');
+            setLoading(false);
+          } else {
+            pollRef.current = setTimeout(poll, 2500);
+          }
+        } catch {
+          pollRef.current = setTimeout(poll, 3500);
+        }
+      };
+      pollRef.current = setTimeout(poll, 2000);
     } catch (err: any) {
       const msg = err?.response?.data?.error?.message ?? '이미지 변형에 실패했습니다. 다시 시도해 주세요.';
       setError(msg);
-    } finally {
       setLoading(false);
     }
   };
@@ -230,7 +254,7 @@ export function ImageTransformTab({ ratio, count, credits, onNeedPayment }: Prop
               {loading ? (
                 <>
                   <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  변형 중...
+                  {loadingStage === 'uploading' ? '업로드 중...' : '변형 중...'}
                 </>
               ) : (
                 <>

@@ -7,8 +7,9 @@ import { MainLayout } from '../layout/main-layout';
 import { useAuthStore } from '../../stores/auth.store';
 import { api } from '../../lib/api';
 import { AnimatePresence, motion } from 'framer-motion';
-import { X, Sparkles, ChevronLeft, ChevronRight, Plus, SlidersHorizontal } from 'lucide-react';
+import { X, Sparkles, ChevronLeft, ChevronRight, Plus, SlidersHorizontal, AlertCircle, Download, Heart } from 'lucide-react';
 import { ImageTransformTab } from './image-transform-tab';
+import { ImageLibraryTab } from './image-library-tab';
 
 // ── 상수 ────────────────────────────────────────────────────────────────────
 const IMAGE_GEN_COST = 190;
@@ -178,6 +179,17 @@ export function ImageGenerationPage() {
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [styleIndex, setStyleIndex] = useState(0);
   const VISIBLE_STYLES = 5;
+  // ── 생성 결과 ────────────────────────────────────────────────────────────────
+  type GenStatus = 'generating' | 'processing' | 'completed' | 'failed';
+  const [genResult, setGenResult] = useState<{
+    status: GenStatus; urls: string[]; imageId?: string; error?: string; isLiked: boolean;
+  } | null>(null);
+  const [genError, setGenError]     = useState('');
+  const [libRefreshKey, setLibRefreshKey] = useState(0);
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (pollRef.current) clearTimeout(pollRef.current); }, []);
+
   const [attachedImages, setAttachedImages] = useState<{ url: string; file: File }[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -230,10 +242,64 @@ export function ImageGenerationPage() {
 
   const handleGenerate = async () => {
     if (credits < cost) { setPaymentOpen(true); return; }
+    if (!prompt.trim()) { setGenError('프롬프트를 입력해 주세요.'); return; }
+
+    setGenError('');
     setGenerating(true);
-    // TODO: 실제 이미지 생성 API 연동
-    await new Promise(r => setTimeout(r, 1500));
-    setGenerating(false);
+    setGenResult({ status: 'generating', urls: [], isLiked: false });
+    if (pollRef.current) clearTimeout(pollRef.current);
+
+    try {
+      const res = await api.images.generate({ prompt: prompt.trim(), style: selectedStyle, ratio, count });
+      const { imageId } = res.data;
+      setGenResult(prev => prev ? { ...prev, imageId } : null);
+
+      const poll = async () => {
+        try {
+          const job = await api.images.pollJob(imageId);
+          const { status, urls, errorMsg } = job.data;
+          if (status === 'COMPLETED') {
+            setGenResult({ status: 'completed', urls, imageId, isLiked: false });
+            setGenerating(false);
+            setLibRefreshKey(k => k + 1);
+          } else if (status === 'FAILED') {
+            setGenResult({ status: 'failed', urls: [], imageId, error: errorMsg ?? '생성에 실패했습니다.', isLiked: false });
+            setGenerating(false);
+          } else {
+            setGenResult(prev => prev ? { ...prev, status: 'processing' } : null);
+            pollRef.current = setTimeout(poll, 2500);
+          }
+        } catch {
+          pollRef.current = setTimeout(poll, 3500);
+        }
+      };
+      pollRef.current = setTimeout(poll, 2500);
+    } catch (err: any) {
+      const msg = err?.response?.data?.error?.message ?? '생성에 실패했습니다.';
+      setGenResult({ status: 'failed', urls: [], error: msg, isLiked: false });
+      setGenerating(false);
+    }
+  };
+
+  const handleDownloadResult = async (url: string) => {
+    try {
+      const r = await fetch(url, { mode: 'cors' });
+      const blob = await r.blob();
+      const obj = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = obj; a.download = `photocard-${Date.now()}.png`;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(obj);
+    } catch { window.open(url, '_blank'); }
+  };
+
+  const handleLikeResult = async () => {
+    if (!genResult?.imageId) return;
+    const prev = genResult.isLiked;
+    setGenResult(r => r ? { ...r, isLiked: !r.isLiked } : null);
+    try { await api.images.toggleLike(genResult.imageId); }
+    catch { setGenResult(r => r ? { ...r, isLiked: prev } : null); }
   };
 
   const handlePromptHelper = async () => {
@@ -493,6 +559,13 @@ export function ImageGenerationPage() {
                   </div>
                 </div>
 
+                {/* 프롬프트 에러 */}
+                {genError && (
+                  <motion.p initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="text-xs text-brand px-1">
+                    {genError}
+                  </motion.p>
+                )}
+
                 {/* 고급상세 패널 */}
                 {showAdvanced && (
                   <motion.div
@@ -526,6 +599,111 @@ export function ImageGenerationPage() {
                   </motion.div>
                 )}
               </div>
+
+              {/* ── 생성 결과 패널 ── */}
+              <AnimatePresence>
+                {genResult && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 8 }}
+                    className="rounded-2xl border border-gray-200 bg-white overflow-hidden"
+                  >
+                    {(genResult.status === 'generating' || genResult.status === 'processing') && (
+                      <div className="p-8 flex flex-col items-center gap-5">
+                        {/* 스피너 */}
+                        <div className="relative w-14 h-14">
+                          <div className="absolute inset-0 rounded-full border-[3px] border-gray-100" />
+                          <div className="absolute inset-0 rounded-full border-[3px] border-t-brand animate-spin" />
+                          <div className="absolute inset-0 flex items-center justify-center text-lg">✦</div>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-gray-800 font-bold text-sm">
+                            {genResult.status === 'generating' ? 'AI가 포토카드를 그리고 있어요' : '이미지를 정교하게 다듬는 중이에요'}
+                          </p>
+                          <p className="text-gray-400 text-xs mt-1">보통 30초 ~ 1분 정도 걸려요</p>
+                        </div>
+                        {/* 스켈레톤 그리드 */}
+                        <div className={cn('w-full grid gap-3', count <= 1 ? 'grid-cols-1' : 'grid-cols-2')}>
+                          {Array.from({ length: count }).map((_, i) => (
+                            <div
+                              key={i}
+                              className="w-full rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 animate-pulse"
+                              style={{ aspectRatio: ratio.replace(':', '/'), minHeight: 100 }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {genResult.status === 'failed' && (
+                      <div className="p-8 flex flex-col items-center gap-4">
+                        <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center">
+                          <AlertCircle className="w-6 h-6 text-brand" />
+                        </div>
+                        <div className="text-center">
+                          <p className="text-gray-800 font-bold text-sm">생성에 실패했어요</p>
+                          <p className="text-gray-500 text-xs mt-1">{genResult.error}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setGenResult(null)}
+                            className="px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                          >닫기</button>
+                          <button
+                            onClick={handleGenerate}
+                            className="px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-bold hover:bg-gray-800 transition-colors"
+                          >다시 시도</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {genResult.status === 'completed' && genResult.urls.length > 0 && (
+                      <div className="p-5">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">✨</span>
+                            <span className="text-gray-800 font-bold text-sm">생성 완료!</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={handleLikeResult}
+                              className={cn(
+                                'w-8 h-8 rounded-full flex items-center justify-center border transition-all',
+                                genResult.isLiked
+                                  ? 'bg-brand border-brand text-white'
+                                  : 'border-gray-200 text-gray-400 hover:border-brand hover:text-brand'
+                              )}
+                            >
+                              <Heart className={cn('w-4 h-4', genResult.isLiked && 'fill-white')} />
+                            </button>
+                            <button onClick={() => setGenResult(null)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                        <div className={cn('grid gap-2', genResult.urls.length <= 1 ? 'grid-cols-1' : 'grid-cols-2')}>
+                          {genResult.urls.map((url, i) => (
+                            <div key={i} className="relative group rounded-xl overflow-hidden bg-gray-100">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={url} alt="" className="w-full" style={{ aspectRatio: ratio.replace(':', '/'), objectFit: 'cover' }} />
+                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-end justify-end p-2 opacity-0 group-hover:opacity-100">
+                                <button
+                                  onClick={() => handleDownloadResult(url)}
+                                  className="w-8 h-8 rounded-full bg-black/55 backdrop-blur-sm flex items-center justify-center text-white hover:bg-black/75 transition-colors"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-xs text-gray-400 mt-3 text-right">라이브러리에 자동 저장됐어요</p>
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           ) : activeTab === '포토카드 변형' ? (
             <ImageTransformTab
@@ -534,8 +712,13 @@ export function ImageGenerationPage() {
               credits={credits}
               onNeedPayment={() => setPaymentOpen(true)}
             />
+          ) : activeTab === '라이브러리' || activeTab === '좋아요' ? (
+            <ImageLibraryTab
+              mode={activeTab === '라이브러리' ? 'library' : 'liked'}
+              onNavigateToNew={() => setActiveTab('신규 생성')}
+              refreshKey={libRefreshKey}
+            />
           ) : (
-            /* 다른 탭 플레이스홀더 */
             <div className="flex items-center justify-center h-60 text-gray-300 text-sm">
               {activeTab} 준비 중
             </div>
@@ -545,7 +728,7 @@ export function ImageGenerationPage() {
         {/* ── 오른쪽 사이드바 (이미지 변형 탭 전용) ── */}
         <aside className={cn(
           'w-52 flex-shrink-0 border-l border-gray-100 overflow-y-auto py-6 px-4 bg-white',
-          activeTab === '신규 생성' && 'hidden'
+          (activeTab === '신규 생성' || activeTab === '라이브러리' || activeTab === '좋아요') && 'hidden'
         )}>
 
           {/* 이미지 비율 */}
