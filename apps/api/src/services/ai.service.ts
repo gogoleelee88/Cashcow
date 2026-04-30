@@ -667,6 +667,36 @@ export async function streamChatResponse(options: StreamOptions): Promise<void> 
 }
 
 // ─────────────────────────────────────────────
+// DYNAMIC GREETING GENERATION
+// ─────────────────────────────────────────────
+export async function generateConversationGreeting(
+  characterName: string,
+  systemPrompt: string,
+  fallback: string
+): Promise<string> {
+  try {
+    const result = await Promise.race<OpenAI.Chat.Completions.ChatCompletion | never>([
+      openai.chat.completions.create({
+        model: config.OPENAI_HAIKU_MODEL,
+        max_tokens: 300,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          {
+            role: 'user',
+            content: `[시스템] 지금 처음으로 상대방과 마주쳤습니다. 위에 정의된 ${characterName}의 성격, 말투, 관계를 완벽하게 반영해서 첫 마디를 해주세요.\n\n규칙:\n- "안녕하세요", "만나서 반갑습니다" 같은 generic 표현 절대 금지\n- 캐릭터의 실제 말투 그대로 (반말/존댓말, 애칭, 말버릇 모두 반영)\n- 관계 맥락에 맞는 자연스러운 첫 인사 (남편이면 배우자처럼, 친구면 친구처럼)\n- 100~200자 이내\n- 오직 첫 인사 대사만 출력 (설명, 따옴표, 앞뒤 주석 없이)`,
+          },
+        ],
+      }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+    ]);
+    const text = result.choices[0]?.message?.content?.trim() ?? '';
+    return text.length > 0 ? text : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+// ─────────────────────────────────────────────
 // CREDIT COST CALCULATION
 // ─────────────────────────────────────────────
 export function calculateCreditCost(

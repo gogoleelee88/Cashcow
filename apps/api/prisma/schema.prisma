@@ -438,6 +438,7 @@ model Conversation {
   relationshipLevel   Int       @default(0)  // 친밀도 0~100
   emotionalTone       String?              // "따뜻함", "긴장", "설렘" 등
   lastSessionSummary  String?   @db.Text  // 지난 세션 요약 (재진입 시 인사에 활용)
+  generatedGreeting   String?   @db.Text  // 동적 생성된 첫 인사 (캐릭터 컨셉 기반)
   lastMessageAt       DateTime?
   isActive            Boolean   @default(true)
   metadata            Json?

@@ -113,6 +113,7 @@ export interface Conversation {
   character?: CharacterListItem;
   lastMessage?: ChatMessage | null;
   lastMessageAt?: string | null;
+  generatedGreeting?: string | null;
   messageCount: number;
   title: string | null;
   isPinned: boolean;

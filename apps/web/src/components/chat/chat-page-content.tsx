@@ -645,6 +645,27 @@ function ChatWindow({
 
   const character = convData?.character;
 
+  // generatedGreeting이 아직 생성 중이면 폴링 (최대 10초)
+  const greetingReady = convData?.generatedGreeting != null;
+  const [greetingPolling, setGreetingPolling] = useState(false);
+  useEffect(() => {
+    if (localMessages.length > 0 || greetingReady) return;
+    setGreetingPolling(true);
+    const maxTries = 10;
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries++;
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] });
+      if (tries >= maxTries) { clearInterval(timer); setGreetingPolling(false); }
+    }, 1000);
+    return () => clearInterval(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [greetingReady, localMessages.length]);
+  useEffect(() => { if (greetingReady) setGreetingPolling(false); }, [greetingReady]);
+
+  const effectiveGreeting = convData?.generatedGreeting ?? character?.greeting ?? `안녕하세요! 저는 ${character?.name}입니다.`;
+
   return (
     <div className="flex flex-col h-full">
       {/* ── 상단 탭바 ── */}
@@ -734,10 +755,17 @@ function ChatWindow({
               <>
                 {localMessages.length === 0 && character && (
                   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                    <SceneOpening
-                      character={character}
-                      greeting={character.greeting || `안녕하세요! 저는 ${character.name}입니다.`}
-                    />
+                    {greetingPolling ? (
+                      <div className="flex flex-col items-center gap-3 py-16 text-gray-400">
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        <span className="text-xs">첫 인사를 준비하고 있어요...</span>
+                      </div>
+                    ) : (
+                      <SceneOpening
+                        character={character}
+                        greeting={effectiveGreeting}
+                      />
+                    )}
                   </motion.div>
                 )}
                 {localMessages.map((msg, i) => (
@@ -786,10 +814,14 @@ function ChatWindow({
                 {localMessages.length === 0 && character && (
                   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                     <KakaoDateSeparator date={new Date()} />
-                    <KakaoBubble
-                      content={character.greeting || `안녕하세요! 저는 ${character.name}입니다.`}
-                      character={character}
-                    />
+                    {greetingPolling ? (
+                      <TypingIndicator characterAvatarUrl={character?.avatarUrl} />
+                    ) : (
+                      <KakaoBubble
+                        content={effectiveGreeting}
+                        character={character}
+                      />
+                    )}
                   </motion.div>
                 )}
                 {localMessages.map((msg, i) => {

@@ -2,7 +2,8 @@ import type { FastifyPluginAsync } from 'fastify';
 import { prisma, prismaRead } from '../lib/prisma';
 import { requireAuth } from '../plugins/auth.plugin';
 import { chatRateLimit } from '../plugins/rate-limit.plugin';
-import { filterUserMessage, estimateTokens, extractEpisodicMemory, updateRelationshipState } from '../services/ai.service';
+import { filterUserMessage, estimateTokens, extractEpisodicMemory, updateRelationshipState, generateConversationGreeting } from '../services/ai.service';
+import { decrypt } from '../lib/encryption';
 import { enqueueMemoryCompression, enqueueAutoModeration } from '../services/queue.service';
 import { chatMessagesTotal, creditsConsumedTotal } from '../lib/metrics';
 import { logger } from '../lib/logger';
@@ -38,6 +39,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
       const result = conversations.map(({ messages, ...conv }) => ({
         ...conv,
         lastMessage: messages[0] ?? null,
+        generatedGreeting: (conv as any).generatedGreeting ?? null,
       }));
 
       return reply.send({ success: true, data: result });
@@ -54,6 +56,10 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
 
       const character = await prismaRead.character.findFirst({
         where: { id: characterId, visibility: { not: 'PRIVATE' }, isActive: true },
+        select: {
+          id: true, name: true, greeting: true, ageRating: true,
+          systemPromptEncrypted: true, systemPromptIv: true,
+        },
       });
 
       if (!character) {
@@ -97,6 +103,22 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
           where: { id: characterId },
           data: { chatCount: { increment: 1 } },
         });
+
+        // 캐릭터 시스템프롬프트 기반 동적 greeting 생성 (비동기, 응답 블로킹 안 함)
+        const systemPromptRaw = character.systemPromptEncrypted && character.systemPromptIv
+          ? decrypt(character.systemPromptEncrypted, character.systemPromptIv)
+          : '';
+
+        generateConversationGreeting(
+          character.name,
+          systemPromptRaw,
+          character.greeting
+        ).then((generated) => {
+          return prisma.conversation.update({
+            where: { id: conversation!.id },
+            data: { generatedGreeting: generated },
+          });
+        }).catch((err) => logger.warn({ err }, 'generateConversationGreeting failed'));
       }
 
       return reply.send({ success: true, data: conversation });
