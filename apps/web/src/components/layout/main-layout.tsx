@@ -86,6 +86,8 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
   const isKids = activeProfile?.isKids ?? false;
   const NAV_ITEMS = isKids ? NAV_ITEMS_KIDS : NAV_ITEMS_DEFAULT;
 
+  const [drawerChatTab, setDrawerChatTab] = useState<'episode' | 'party'>('episode');
+
   const { data: notifData } = useQuery({
     queryKey: ['notifications'],
     queryFn: () => api.users.notifications(),
@@ -93,6 +95,14 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
     refetchInterval: 60_000,
   });
   const unreadCount = (notifData as any)?.meta?.unreadCount ?? 0;
+
+  const { data: convData } = useQuery({
+    queryKey: ['conversations'],
+    queryFn: () => api.chat.conversations(),
+    enabled: isAuthenticated && mobileMenuOpen,
+    staleTime: 30_000,
+  });
+  const conversations: any[] = (convData as any)?.data ?? [];
 
   // 키즈 모드 body 클래스
   useEffect(() => {
@@ -428,39 +438,66 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
                   </Link>
                 )}
 
-                {/* 프로필/설정/크레딧 — 구분선 */}
-                {isAuthenticated && user && (
+                {/* 에피소드 / 파티챗 채팅 섹션 */}
+                {isAuthenticated && (
                   <>
                     <div className="my-2 border-t border-border" />
-                    <button
-                      onClick={() => { setMobileMenuOpen(false); clearProfile(); router.push('/profiles'); }}
-                      className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-text-secondary hover:bg-surface hover:text-text-primary transition-all"
-                    >
-                      <span className="text-base w-5 h-5 flex items-center justify-center">{activeProfile?.avatarEmoji ?? '👤'}</span>
-                      프로필 전환
-                    </button>
-                    <Link
-                      href={`/profile/${(user as any).username}`}
-                      onClick={() => setMobileMenuOpen(false)}
-                      className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-text-secondary hover:bg-surface hover:text-text-primary transition-all"
-                    >
-                      <User className="w-5 h-5" />프로필
-                    </Link>
-                    <Link
-                      href="/settings"
-                      onClick={() => setMobileMenuOpen(false)}
-                      className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-text-secondary hover:bg-surface hover:text-text-primary transition-all"
-                    >
-                      <Settings className="w-5 h-5" />설정
-                    </Link>
-                    <Link
-                      href="/settings/credits"
-                      onClick={() => setMobileMenuOpen(false)}
-                      className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-text-secondary hover:bg-surface hover:text-text-primary transition-all"
-                    >
-                      <span className="w-5 h-5 flex items-center justify-center text-sm font-bold text-amber-500">₩</span>
-                      크레딧 충전
-                    </Link>
+                    {/* 탭 */}
+                    <div className="flex mx-1 rounded-xl overflow-hidden border border-border">
+                      {(['episode', 'party'] as const).map((t) => (
+                        <button
+                          key={t}
+                          onClick={() => setDrawerChatTab(t)}
+                          className={cn(
+                            'flex-1 py-2 text-xs font-semibold transition-colors',
+                            drawerChatTab === t
+                              ? 'bg-gray-900 text-white'
+                              : 'text-text-secondary hover:bg-surface'
+                          )}
+                        >
+                          {t === 'episode' ? '에피소드' : '파티챗'}
+                        </button>
+                      ))}
+                    </div>
+                    {/* 대화 목록 */}
+                    <div className="mt-1 flex flex-col gap-0.5">
+                      {conversations.length === 0 ? (
+                        <p className="text-[11px] text-text-muted text-center py-3">대화가 없어요</p>
+                      ) : (
+                        conversations.slice(0, 6).map((conv: any) => {
+                          const char = conv.character;
+                          const lastMsg = conv.messages?.[0]?.content ?? '대화를 시작해보세요';
+                          return (
+                            <button
+                              key={conv.id}
+                              onClick={() => { router.push(`/chat?conversationId=${conv.id}`); setMobileMenuOpen(false); }}
+                              className="flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-surface transition-all w-full text-left"
+                            >
+                              <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 bg-brand/10">
+                                {char?.avatarUrl ? (
+                                  <Image src={char.avatarUrl} alt={char.name ?? ''} width={32} height={32} className="object-cover" />
+                                ) : (
+                                  <span className="w-full h-full flex items-center justify-center text-brand text-xs font-bold">
+                                    {char?.name?.[0] ?? '?'}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-semibold text-text-primary truncate">{char?.name ?? '알 수 없음'}</p>
+                                <p className="text-[11px] text-text-muted truncate">{lastMsg}</p>
+                              </div>
+                            </button>
+                          );
+                        })
+                      )}
+                      <Link
+                        href="/chat"
+                        onClick={() => setMobileMenuOpen(false)}
+                        className="text-[11px] text-brand font-medium text-center py-1.5 hover:underline"
+                      >
+                        전체보기
+                      </Link>
+                    </div>
                   </>
                 )}
               </nav>
@@ -481,9 +518,30 @@ export function MainLayout({ children, showSearch = true }: MainLayoutProps) {
                       <p className="text-text-muted text-xs truncate">@{(user as any).username}</p>
                     </div>
                   </div>
+                  {/* 프로필/설정/크레딧 */}
+                  <button
+                    onClick={() => { setMobileMenuOpen(false); clearProfile(); router.push('/profiles'); }}
+                    className="w-full flex items-center gap-2 text-sm text-text-secondary py-2.5 px-3 rounded-xl hover:bg-surface hover:text-text-primary transition-all"
+                  >
+                    <span className="text-base w-4 h-4 flex items-center justify-center">{activeProfile?.avatarEmoji ?? '👤'}</span>
+                    프로필 전환
+                  </button>
+                  <Link href={`/profile/${(user as any).username}`} onClick={() => setMobileMenuOpen(false)}
+                    className="w-full flex items-center gap-2 text-sm text-text-secondary py-2.5 px-3 rounded-xl hover:bg-surface hover:text-text-primary transition-all">
+                    <User className="w-4 h-4" /> 프로필
+                  </Link>
+                  <Link href="/settings" onClick={() => setMobileMenuOpen(false)}
+                    className="w-full flex items-center gap-2 text-sm text-text-secondary py-2.5 px-3 rounded-xl hover:bg-surface hover:text-text-primary transition-all">
+                    <Settings className="w-4 h-4" /> 설정
+                  </Link>
+                  <Link href="/settings/credits" onClick={() => setMobileMenuOpen(false)}
+                    className="w-full flex items-center gap-2 text-sm text-text-secondary py-2.5 px-3 rounded-xl hover:bg-surface hover:text-text-primary transition-all">
+                    <span className="w-4 h-4 flex items-center justify-center text-xs font-bold text-amber-500">₩</span>
+                    크레딧 충전
+                  </Link>
                   {(user as any).role === 'ADMIN' && (
                     <Link href="/admin" onClick={() => setMobileMenuOpen(false)}
-                      className="w-full flex items-center gap-2 text-sm text-amber-500 py-2.5 px-3 rounded-xl hover:bg-amber-50 font-medium mb-1 transition-all">
+                      className="w-full flex items-center gap-2 text-sm text-amber-500 py-2.5 px-3 rounded-xl hover:bg-amber-50 font-medium transition-all">
                       <ShieldCheck className="w-4 h-4" /> 관리자 패널
                     </Link>
                   )}
