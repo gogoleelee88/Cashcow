@@ -813,30 +813,7 @@ function ChatWindow({
 
   const character = convData?.character;
 
-  // generatedGreeting: 없으면 즉시 생성 요청 → 완료 후 캐시 갱신
-  const greetingReady = !!convData?.generatedGreeting;
-  const [greetingPolling, setGreetingPolling] = useState(false);
-  const greetingRequested = useRef(false);
-  useEffect(() => {
-    // 메시지 있거나 이미 있거나 로딩 중이면 불필요
-    if (localMessages.length > 0 || greetingReady || messagesLoading || !convData) {
-      setGreetingPolling(false);
-      return;
-    }
-    if (greetingRequested.current) return;
-    greetingRequested.current = true;
-    setGreetingPolling(true);
-    api.chat.generateGreeting(conversationId)
-      .then(() => {
-        queryClient.invalidateQueries({ queryKey: ['conversations'] });
-        queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] });
-      })
-      .catch(() => {})
-      .finally(() => setGreetingPolling(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [greetingReady, localMessages.length, messagesLoading, !!convData]);
-
-  const effectiveGreeting = convData?.generatedGreeting ?? character?.greeting ?? '';
+  const effectiveGreeting = character?.greeting ?? '';
 
   return (
     <div className="flex flex-col h-full">
@@ -927,17 +904,10 @@ function ChatWindow({
               <>
                 {localMessages.length === 0 && character && (
                   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                    {greetingPolling ? (
-                      <div className="flex flex-col items-center gap-3 py-16 text-gray-400">
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        <span className="text-xs">첫 인사를 준비하고 있어요...</span>
-                      </div>
-                    ) : (
-                      <SceneOpening
-                        character={character}
-                        greeting={effectiveGreeting}
-                      />
-                    )}
+                    <SceneOpening
+                      character={character}
+                      greeting={effectiveGreeting}
+                    />
                   </motion.div>
                 )}
                 {localMessages.map((msg, i) => (
@@ -986,14 +956,10 @@ function ChatWindow({
                 {localMessages.length === 0 && character && (
                   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                     <KakaoDateSeparator date={new Date()} />
-                    {greetingPolling ? (
-                      <TypingIndicator characterAvatarUrl={character?.avatarUrl} />
-                    ) : (
-                      <KakaoBubble
-                        content={effectiveGreeting}
-                        character={character}
-                      />
-                    )}
+                    <KakaoBubble
+                      content={effectiveGreeting}
+                      character={character}
+                    />
                   </motion.div>
                 )}
                 {localMessages.map((msg, i) => {

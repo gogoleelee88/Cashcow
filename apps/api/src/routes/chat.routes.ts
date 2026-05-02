@@ -2,8 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { prisma, prismaRead } from '../lib/prisma';
 import { requireAuth } from '../plugins/auth.plugin';
 import { chatRateLimit } from '../plugins/rate-limit.plugin';
-import { filterUserMessage, estimateTokens, extractEpisodicMemory, updateRelationshipState, generateConversationGreeting } from '../services/ai.service';
-import { decrypt } from '../lib/encryption';
+import { filterUserMessage, estimateTokens, extractEpisodicMemory, updateRelationshipState } from '../services/ai.service';
 import { enqueueMemoryCompression, enqueueAutoModeration } from '../services/queue.service';
 import { chatMessagesTotal, creditsConsumedTotal } from '../lib/metrics';
 import { logger } from '../lib/logger';
@@ -39,7 +38,6 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
       const result = conversations.map(({ messages, ...conv }) => ({
         ...conv,
         lastMessage: messages[0] ?? null,
-        generatedGreeting: (conv as any).generatedGreeting ?? null,
       }));
 
       return reply.send({ success: true, data: result });
@@ -56,10 +54,6 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
 
       const character = await prismaRead.character.findFirst({
         where: { id: characterId, visibility: { not: 'PRIVATE' }, isActive: true },
-        select: {
-          id: true, name: true, greeting: true, ageRating: true,
-          systemPromptEncrypted: true, systemPromptIv: true,
-        },
       });
 
       if (!character) {
@@ -103,62 +97,9 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
           where: { id: characterId },
           data: { chatCount: { increment: 1 } },
         });
-
-        // 캐릭터 시스템프롬프트 기반 동적 greeting 생성 (비동기, 응답 블로킹 안 함)
-        const systemPromptRaw = character.systemPromptEncrypted && character.systemPromptIv
-          ? decrypt(character.systemPromptEncrypted, character.systemPromptIv)
-          : '';
-
-        generateConversationGreeting(
-          character.name,
-          systemPromptRaw,
-          character.greeting
-        ).then((generated) => {
-          return prisma.conversation.update({
-            where: { id: conversation!.id },
-            data: { generatedGreeting: generated },
-          });
-        }).catch((err) => logger.warn({ err }, 'generateConversationGreeting failed'));
       }
 
       return reply.send({ success: true, data: conversation });
-    },
-  });
-
-  // ─────────────────────────────────────────────
-  // GENERATE GREETING FOR EXISTING CONVERSATION
-  // ─────────────────────────────────────────────
-  fastify.post('/conversations/:id/greeting', {
-    preHandler: [requireAuth],
-    handler: async (request, reply) => {
-      const { id } = request.params as { id: string };
-
-      const conversation = await prisma.conversation.findFirst({
-        where: { id, userId: request.userId!, isActive: true },
-        include: {
-          character: {
-            select: { id: true, name: true, greeting: true, systemPromptEncrypted: true, systemPromptIv: true },
-          },
-        },
-      });
-
-      if (!conversation) {
-        return reply.code(404).send({ success: false, error: { code: 'NOT_FOUND', message: '대화를 찾을 수 없습니다.' } });
-      }
-
-      const char = conversation.character;
-      const systemPromptRaw = char.systemPromptEncrypted && char.systemPromptIv
-        ? decrypt(char.systemPromptEncrypted, char.systemPromptIv)
-        : '';
-
-      const generated = await generateConversationGreeting(char.name, systemPromptRaw, char.greeting);
-
-      await prisma.conversation.update({
-        where: { id },
-        data: { generatedGreeting: generated },
-      });
-
-      return reply.send({ success: true, data: { generatedGreeting: generated } });
     },
   });
 

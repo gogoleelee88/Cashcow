@@ -417,9 +417,6 @@ export const api = {
 
     pinConversation: (conversationId: string) =>
       apiClient.post(`/api/chat/conversations/${conversationId}/pin`).then((r) => r.data),
-
-    generateGreeting: (conversationId: string) =>
-      apiClient.post(`/api/chat/conversations/${conversationId}/greeting`).then((r) => r.data),
   },
 
   payments: {
