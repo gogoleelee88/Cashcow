@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { Bell, BellOff, Check, CheckCheck, Heart, MessageCircle, Star, UserPlus, Crown } from 'lucide-react';
@@ -40,6 +41,9 @@ export function NotificationsContent() {
     refetchInterval: 30_000,
   });
 
+  const notifications = (data as any)?.data ?? [];
+  const unreadCount: number = (data as any)?.meta?.unreadCount ?? notifications.filter((n: any) => !n.isRead).length;
+
   const readAllMutation = useMutation({
     mutationFn: () => api.users.markAllNotificationsRead(),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
@@ -50,6 +54,14 @@ export function NotificationsContent() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
   });
 
+  // 페이지 진입 시 안 읽은 알림 자동 전체 읽음 처리
+  useEffect(() => {
+    if (isAuthenticated && !isLoading && unreadCount > 0) {
+      readAllMutation.mutate();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, isLoading]);
+
   if (!isAuthenticated) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
@@ -59,9 +71,6 @@ export function NotificationsContent() {
       </div>
     );
   }
-
-  const notifications = (data as any)?.data?.notifications ?? [];
-  const unreadCount = notifications.filter((n: any) => !n.isRead).length;
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
@@ -123,9 +132,12 @@ export function NotificationsContent() {
                   <Icon className="w-5 h-5" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className={cn('text-sm leading-relaxed', notification.isRead ? 'text-text-secondary' : 'text-text-primary font-medium')}>
-                    {notification.message}
+                  <p className={cn('text-sm font-medium leading-snug', notification.isRead ? 'text-text-secondary' : 'text-text-primary')}>
+                    {notification.title}
                   </p>
+                  {notification.body && (
+                    <p className="text-sm text-text-secondary leading-relaxed mt-0.5">{notification.body}</p>
+                  )}
                   <p className="text-text-muted text-xs mt-1">{formatRelativeTime(notification.createdAt)}</p>
                 </div>
                 {!notification.isRead && (

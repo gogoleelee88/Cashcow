@@ -172,13 +172,8 @@ Output ONLY the prompt — comma-separated, max 100 words, no explanation.`;
           });
 
           await tx.transaction.create({
-            data: {
-              userId,
-              type: 'USAGE',
-              amount: totalCost,
-              credits: -totalCost,
-              status: 'COMPLETED',
-            },
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            data: { userId, type: 'USAGE', amount: totalCost, credits: -totalCost, status: 'COMPLETED' } as any,
           });
 
           return tx.generatedImage.create({
@@ -276,13 +271,8 @@ Output ONLY the prompt — comma-separated, max 100 words, no explanation.`;
           });
 
           await tx.transaction.create({
-            data: {
-              userId,
-              type: 'USAGE',
-              amount: totalCost,
-              credits: -totalCost,
-              status: 'COMPLETED',
-            },
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            data: { userId, type: 'USAGE', amount: totalCost, credits: -totalCost, status: 'COMPLETED' } as any,
           });
 
           return tx.generatedImage.create({

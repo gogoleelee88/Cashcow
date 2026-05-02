@@ -173,9 +173,11 @@ model User {
   isActive         Boolean          @default(true)
   isBanned         Boolean          @default(false)
   banReason        String?
+  bannedUntil      DateTime?
   ageVerified      Boolean          @default(false)
   ageVerifiedAt    DateTime?
   lastLoginAt      DateTime?
+  preferredGenres  String           @default("[]") @db.Text
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 
@@ -201,12 +203,34 @@ model User {
   storyLikes       StoryLike[]
   storyFavorites   StoryFavorite[]
   generatedImages  GeneratedImage[]
+  characterDraft   CharacterDraft?
+  profiles         Profile[]
+  characterComments CharacterComment[]
+  commentReactions  CharacterCommentReaction[]
+  appeals           Appeal[]
 
   @@index([email])
   @@index([username])
   @@index([role])
   @@index([createdAt])
   @@map("users")
+}
+
+model Profile {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String   @db.VarChar(20)
+  isKids      Boolean  @default(false)
+  pinHash     String?
+  avatarEmoji String   @default("😊")
+  avatarColor String   @default("#E63325")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("profiles")
 }
 
 model OAuthAccount {
@@ -282,6 +306,11 @@ model Character {
   systemPromptEncrypted String             @db.Text  // AES-256-GCM encrypted
   systemPromptIv       String              // IV for decryption
   greeting             String              @db.Text
+  prologue             String?             @db.Text  // 채팅 시작 시 SceneOpening에 표시되는 프롤로그
+  exampleDialogues     Json?               // [{id, messages:[{id,role,content}]}]
+  playGuide            String?             @db.Text
+  suggestedReplies     Json?               // string[]
+  situationImages      Json?               // [{id, url, triggerKeywords:string[], description}] 최대 50개
   avatarUrl            String?
   avatarKey            String?             // S3 key
   backgroundUrl        String?
@@ -296,7 +325,11 @@ model Character {
   maxTokens            Int                 @default(1024)
   contextWindowSize    Int                 @default(20)  // # of messages to keep
   memoryEnabled        Boolean             @default(true)
+  detailDescription    String?             @db.Text  // 캐릭터 상세 설명 (최대 1000자)
+  commentDisabled      Boolean             @default(false)  // 댓글 기능 닫기
   voiceId              String?
+  voiceProvider        String?             // "elevenlabs" | "openai"
+  voiceSettings        Json?               // { stability, similarity_boost, style, speed }
   gender               CharacterGender     @default(NEUTRAL)
   audienceTarget       AudienceTarget      @default(ALL)
   isFanCreation        Boolean             @default(false)
@@ -308,7 +341,12 @@ model Character {
   monthlyChats         Int                 @default(0)
   isActive             Boolean             @default(true)
   isFeatured           Boolean             @default(false)
-  revenuePerChat       Int                 @default(1)   // Creator credits per chat
+  isOfficial           Boolean             @default(false)
+  revenuePerChat       Int                 @default(1)
+  reviewStatus         String              @default("AUTO_APPROVED") // AUTO_APPROVED | NEEDS_REVIEW | APPROVED | REJECTED
+  reviewNote           String?
+  reviewedBy           String?
+  reviewedAt           DateTime?
   creatorId            String
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
@@ -320,10 +358,12 @@ model Character {
   reports              Report[]
   memories             CharacterMemory[]
   storyCharacters      StoryCharacter[]
+  comments             CharacterComment[]
 
   @@index([creatorId])
   @@index([category])
   @@index([visibility])
+  @@index([reviewStatus])
   @@index([trendingScore(sort: Desc)])
   @@index([chatCount(sort: Desc)])
   @@index([likeCount(sort: Desc)])
@@ -333,7 +373,22 @@ model Character {
   @@index([audienceTarget])
   @@index([isFanCreation])
   @@index([gender])
+  @@index([isOfficial])
   @@map("characters")
+}
+
+model CharacterDraft {
+  id          String   @id @default(cuid())
+  userId      String
+  data        Json     // 폼 전체 데이터 (name, description, systemPrompt 등)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId])   // 유저당 1개 초안만 유지
+  @@index([userId])
+  @@map("character_drafts")
 }
 
 model CharacterLike {
@@ -369,20 +424,26 @@ model CharacterFavorite {
 // CONVERSATIONS & MESSAGES
 // ─────────────────────────────────────────────
 model Conversation {
-  id           String    @id @default(cuid())
-  characterId  String
-  userId       String
-  title        String?
-  isPinned     Boolean   @default(false)
-  messageCount Int       @default(0)
-  tokenCount   Int       @default(0)
-  summary      String?   @db.Text   // Compressed memory summary
-  summaryAt    DateTime?
-  lastMessageAt DateTime?
-  isActive     Boolean   @default(true)
-  metadata     Json?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id                  String    @id @default(cuid())
+  characterId         String
+  userId              String
+  title               String?
+  isPinned            Boolean   @default(false)
+  messageCount        Int       @default(0)
+  tokenCount          Int       @default(0)
+  summary             String?   @db.Text   // 단기 압축 요약
+  summaryAt           DateTime?
+  episodicMemory      Json?               // 중기 기억: {userFacts, keyEvents, relationshipMilestones}
+  episodicUpdatedAt   DateTime?
+  relationshipLevel   Int       @default(0)  // 친밀도 0~100
+  emotionalTone       String?              // "따뜻함", "긴장", "설렘" 등
+  lastSessionSummary  String?   @db.Text  // 지난 세션 요약 (재진입 시 인사에 활용)
+  generatedGreeting   String?   @db.Text  // 동적 생성된 첫 인사 (캐릭터 컨셉 기반)
+  lastMessageAt       DateTime?
+  isActive            Boolean   @default(true)
+  metadata            Json?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   character    Character @relation(fields: [characterId], references: [id])
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -406,14 +467,60 @@ model Message {
   creditCost     Int           @default(0)
   isFiltered     Boolean       @default(false)
   filterReason   String?
+  isHidden       Boolean       @default(false)
+  hiddenReason   String?
+  hiddenBy       String?
+  hiddenAt       DateTime?
   metadata       Json?
   createdAt      DateTime      @default(now())
 
   conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  flags          ModerationFlag[]
 
   @@index([conversationId])
   @@index([createdAt])
+  @@index([isHidden])
   @@map("messages")
+}
+
+model ModerationFlag {
+  id          String   @id @default(cuid())
+  messageId   String
+  category    String
+  confidence  Float
+  status      String   @default("PENDING")
+  autoHidden  Boolean  @default(false)
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  message     Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("moderation_flags")
+}
+
+model Appeal {
+  id          String    @id @default(cuid())
+  userId      String
+  type        String    // MESSAGE_HIDDEN | CHARACTER_HIDDEN | USER_BANNED
+  targetId    String    // messageId or characterId
+  reason      String    @db.Text
+  status      String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  adminNote   String?
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("appeals")
 }
 
 model CharacterMemory {
@@ -429,6 +536,23 @@ model CharacterMemory {
 
   @@index([characterId, userId])
   @@map("character_memories")
+}
+
+// 다중 대화 간 기억 공유 — 같은 (유저 × 캐릭터) 쌍의 기억은 새 대화방을 만들어도 이어짐
+model UserCharacterMemory {
+  id                  String    @id @default(cuid())
+  userId              String
+  characterId         String
+  cumulativeSummary   String?   @db.Text   // 누적 기억
+  userProfile         Json?               // 유저 팩트 JSON {name, age, likes, dislikes}
+  totalInteractions   Int       @default(0)
+  firstMetAt          DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([userId, characterId])
+  @@index([userId])
+  @@index([characterId])
+  @@map("user_character_memories")
 }
 
 // ─────────────────────────────────────────────
@@ -575,6 +699,9 @@ model Report {
   status       String   @default("PENDING")
   resolvedAt   DateTime?
   resolvedBy   String?
+  reviewedAt   DateTime?
+  reviewedBy   String?
+  resolveNote  String?
   createdAt    DateTime @default(now())
 
   reporter     User      @relation("Reporter", fields: [reporterId], references: [id])
@@ -633,6 +760,7 @@ model Story {
   trendingScore    Float         @default(0)
   isActive         Boolean       @default(true)
   isFeatured       Boolean       @default(false)
+  isOfficial       Boolean       @default(false)
   authorId         String
   systemPromptEncrypted String   @db.Text
   systemPromptIv   String
@@ -660,6 +788,7 @@ model Story {
   @@index([trendingScore(sort: Desc)])
   @@index([chatCount(sort: Desc)])
   @@index([createdAt(sort: Desc)])
+  @@index([isOfficial])
   @@map("stories")
 }
 
@@ -679,18 +808,21 @@ model StoryExample {
 }
 
 model StoryChapter {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   storyId     String
   title       String
-  content     String   @db.Text
+  content     String    @db.Text
   order       Int
-  isPublished Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isPublished Boolean   @default(false)
+  scheduledAt DateTime?
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  story       Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  story       Story     @relation(fields: [storyId], references: [id], onDelete: Cascade)
 
   @@index([storyId])
+  @@index([scheduledAt])
   @@map("story_chapters")
 }
 
@@ -952,6 +1084,23 @@ enum ImageGenStatus {
   FAILED
 }
 
+model Terms {
+  id          String   @id @default(cuid())
+  type        String   // TERMS_OF_SERVICE, PRIVACY_POLICY, etc.
+  version     String   // e.g. "1.0", "2.0"
+  title       String
+  content     String   @db.Text
+  isActive    Boolean  @default(false) // 현재 적용중인 버전
+  effectiveAt DateTime
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([type, isActive])
+  @@index([type, effectiveAt(sort: Desc)])
+  @@map("terms")
+}
+
 model GeneratedImage {
   id          String         @id @default(cuid())
   userId      String
@@ -974,4 +1123,75 @@ model GeneratedImage {
   @@index([userId, createdAt(sort: Desc)])
   @@index([userId, isLiked])
   @@map("generated_images")
+}
+
+model CharacterComment {
+  id          String   @id @default(cuid())
+  characterId String
+  userId      String
+  content     String   @db.VarChar(500)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reactions   CharacterCommentReaction[]
+
+  @@index([characterId, createdAt(sort: Desc)])
+  @@index([userId])
+  @@map("character_comments")
+}
+
+model CharacterCommentReaction {
+  id        String       @id @default(cuid())
+  commentId String
+  userId    String
+  type      String       // "LIKE" | "DISLIKE"
+  createdAt DateTime     @default(now())
+
+  comment   CharacterComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, userId])
+  @@index([commentId])
+  @@map("character_comment_reactions")
+}
+
+model NotificationBroadcast {
+  id          String   @id @default(cuid())
+  title       String
+  body        String
+  targetType  String   // "ALL" | "TIER" | "USER"
+  targetValue String?  // tier name or userId
+  sentCount   Int      @default(0)
+  sentBy      String
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt(sort: Desc)])
+  @@map("notification_broadcasts")
+}
+
+model Post {
+  id               String    @id @default(cuid())
+  slug             String    @unique
+  title            String
+  subtitle         String?
+  bannerImageUrl   String?
+  content          Json
+  category         String    @default("NOTICE")  // NOTICE | UPDATE | EVENT | MAINTENANCE
+  status           String    @default("DRAFT")   // DRAFT | PUBLISHED
+  isPinned         Boolean   @default(false)
+  isFeatured       Boolean   @default(false)
+  viewCount        Int       @default(0)
+  sendNotification Boolean   @default(false)
+  publishedAt      DateTime?
+  expiresAt        DateTime?
+  createdBy        String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([status, publishedAt(sort: Desc)])
+  @@index([isFeatured, status])
+  @@index([slug])
+  @@map("posts")
 }

@@ -6,7 +6,8 @@ import { encrypt, decrypt } from '../lib/encryption';
 import { requireAuth } from '../plugins/auth.plugin';
 import { searchRateLimit, uploadRateLimit } from '../plugins/rate-limit.plugin';
 import { logger } from '../lib/logger';
-import { generatePresignedUploadUrl, deleteS3Object } from '../services/s3.service';
+import { generatePresignedUploadUrl, deleteS3Object } from '../services/storage.service';
+import { scheduleChapterPublish, cancelScheduledChapter } from '../services/queue.service';
 // StoryCategory, CharacterVisibility, AgeRating types used as strings (Prisma client not yet generated)
 // import Anthropic from '@anthropic-ai/sdk'; // Anthropic 비활성화 - OpenAI로 전환
 import OpenAI from 'openai';
@@ -102,7 +103,7 @@ export const storyRoutes: FastifyPluginAsync = async (fastify) => {
       } = request.query as {
         page?: number;
         limit?: number;
-        category?: StoryCategory;
+        category?: string;
         sort?: string;
         q?: string;
       };
@@ -540,7 +541,8 @@ export const storyRoutes: FastifyPluginAsync = async (fastify) => {
         order:            z.number().int().default(count),
       }).parse(request.body);
 
-      const example = await prisma.storyExample.create({ data: { storyId, ...body } });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const example = await prisma.storyExample.create({ data: { storyId, ...body } as any });
       return reply.status(201).send({ data: example });
     },
   });
@@ -659,11 +661,12 @@ export const storyRoutes: FastifyPluginAsync = async (fastify) => {
       const { levels, ...rest } = body;
 
       const stat = await prisma.storyStat.create({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         data: {
           ...rest,
           startSettingId: settingId,
           levels: { create: levels.map((l, i) => ({ ...l, order: i })) },
-        },
+        } as any,
         include: { levels: { orderBy: { order: 'asc' } } },
       });
       return reply.status(201).send({ data: stat });
@@ -686,10 +689,11 @@ export const storyRoutes: FastifyPluginAsync = async (fastify) => {
         await tx.storyStatLevel.deleteMany({ where: { statId } });
         return tx.storyStat.update({
           where: { id: statId },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           data: {
             ...rest,
             levels: { create: levels.map((l, i) => ({ ...l, order: i })) },
-          },
+          } as any,
           include: { levels: { orderBy: { order: 'asc' } } },
         });
       });
@@ -769,7 +773,8 @@ export const storyRoutes: FastifyPluginAsync = async (fastify) => {
       }).parse(request.body);
 
       const media = await prisma.storyMediaImage.create({
-        data: { startSettingId: settingId, ...body },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        data: { startSettingId: settingId, ...body } as any,
       });
       return reply.status(201).send({ data: media });
     },
@@ -972,7 +977,6 @@ export const storyRoutes: FastifyPluginAsync = async (fastify) => {
       // 유효성 검사
       const systemPrompt = decrypt(story.systemPromptEncrypted, story.systemPromptIv);
       const errors: string[] = [];
-      if (!story.coverUrl)               errors.push('프로필 이미지를 등록해주세요.');
       if (!story.title?.trim())          errors.push('제목을 입력해주세요.');
       if (!story.description?.trim())    errors.push('소개를 입력해주세요.');
       if (!story.greeting?.trim())       errors.push('인사말(프롤로그)을 입력해주세요.');
@@ -1253,13 +1257,29 @@ export const storyRoutes: FastifyPluginAsync = async (fastify) => {
         data: { conversationId, role: 'USER', content: content.trim(), creditCost: 0 },
       });
 
-      // Set SSE headers
-      reply.raw.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no',
+      // Set SSE headers (manual CORS needed because raw streaming bypasses Fastify CORS plugin)
+      const reqOrigin = request.headers.origin;
+      if (reqOrigin) {
+        reply.raw.setHeader('Access-Control-Allow-Origin', reqOrigin);
+        reply.raw.setHeader('Access-Control-Allow-Credentials', 'true');
+      }
+      reply.raw.setHeader('Content-Type', 'text/event-stream');
+      reply.raw.setHeader('Cache-Control', 'no-cache');
+      reply.raw.setHeader('Connection', 'keep-alive');
+      reply.raw.setHeader('X-Accel-Buffering', 'no');
+      reply.raw.flushHeaders();
+
+      // Few-shot: inject creator's story examples before conversation history
+      const storyExamples = await prismaRead.storyExample.findMany({
+        where: { storyId: conversation.storyId },
+        orderBy: { order: 'asc' },
+        take: 3,
       });
+      const fewShotMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+      for (const ex of storyExamples) {
+        if (ex.userMessage?.trim()) fewShotMessages.push({ role: 'user', content: ex.userMessage });
+        if (ex.assistantMessage?.trim()) fewShotMessages.push({ role: 'assistant', content: ex.assistantMessage });
+      }
 
       const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [
         ...recentMessages.reverse().map((m: any) => ({
@@ -1282,6 +1302,7 @@ export const storyRoutes: FastifyPluginAsync = async (fastify) => {
           stream_options: { include_usage: true },
           messages: [
             { role: 'system', content: systemPrompt },
+            ...fewShotMessages,
             ...messages,
           ],
         });
@@ -1340,9 +1361,9 @@ export const storyRoutes: FastifyPluginAsync = async (fastify) => {
       const limitNum = Math.min(Math.max(Number(limit), 1), 50);
 
       const [total, stories] = await Promise.all([
-        prismaRead.story.count({ where: { authorId: userId } }),
+        prismaRead.story.count({ where: { authorId: userId, isActive: true } }),
         prismaRead.story.findMany({
-          where: { authorId: userId },
+          where: { authorId: userId, isActive: true },
           orderBy: { createdAt: 'desc' },
           skip: (pageNum - 1) * limitNum,
           take: limitNum,
@@ -1636,6 +1657,14 @@ ${statUnit ? `스탯 단위: ${statUnit}` : ''}
           await prisma.storyStartSetting.delete({ where: { id: serverSettings[i].id } }).catch(() => {});
         }
         result.startSettingIdMap = settingIdMap;
+
+        // story.greeting을 첫 번째 startSetting의 prologue와 동기화
+        if (startSettings.length > 0 && startSettings[0].prologue !== undefined) {
+          await prisma.story.update({
+            where: { id },
+            data: { greeting: startSettings[0].prologue },
+          });
+        }
       }
 
       // ── examples 동기화 (전체 교체) ──
@@ -1663,8 +1692,12 @@ ${statUnit ? `스탯 단위: ${statUnit}` : ''}
     handler: async (request, reply) => {
       const { storyId } = request.params as { storyId: string };
       const userId = request.userId!;
-      const story = await prismaRead.story.findFirst({ where: { id: storyId, authorId: userId } });
+      const story = await prismaRead.story.findFirst({ where: { id: storyId } });
       if (!story) return reply.status(404).send({ error: '스토리를 찾을 수 없습니다.' });
+      // 비공개 스토리는 작성자만 조회 가능
+      if (story.visibility === 'PRIVATE' && story.authorId !== userId) {
+        return reply.status(403).send({ error: '접근 권한이 없습니다.' });
+      }
 
       const settings = await prismaRead.storyStartSetting.findMany({
         where: { storyId },
@@ -1799,7 +1832,8 @@ ${statUnit ? `스탯 단위: ${statUnit}` : ''}
       });
       if (!setting) return reply.status(404).send({ error: '시작설정을 찾을 수 없습니다.' });
 
-      const note = await prisma.storyKeywordNote.create({ data: body });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const note = await prisma.storyKeywordNote.create({ data: body as any });
 
       await Promise.all([
         cache.del(`keyword-notes:${storyId}:all`),
@@ -1927,13 +1961,14 @@ ${statUnit ? `스탯 단위: ${statUnit}` : ''}
       const { rules, ...rest } = body;
 
       const ending = await prisma.storyEnding.create({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         data: {
           ...rest,
           storyId,
           rules: {
             create: rules.map((r, i) => ({ turnStart: r.turnStart, sortOrder: i })),
           },
-        },
+        } as any,
         include: { rules: { orderBy: { sortOrder: 'asc' } } },
       });
       return reply.status(201).send({ data: ending });
@@ -1993,28 +2028,49 @@ ${statUnit ? `스탯 단위: ${statUnit}` : ''}
   fastify.post('/preview-chat', {
     preHandler: [requireAuth],
     handler: async (request, reply) => {
-      const { systemPrompt, history, userMessage, characterName } = request.body as {
+      const { systemPrompt, history, userMessage, characterName, exampleDialogues } = request.body as {
         systemPrompt: string;
         history: Array<{ role: 'user' | 'assistant'; content: string }>;
         userMessage: string;
         characterName?: string;
+        exampleDialogues?: Array<{ id: string; messages: Array<{ role: 'character' | 'user'; content: string }> }>;
       };
 
       if (!userMessage?.trim()) {
         return reply.status(400).send({ error: '메시지를 입력해주세요.' });
       }
 
-      reply.raw.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no',
-      });
+      const reqOrigin2 = request.headers.origin;
+      if (reqOrigin2) {
+        reply.raw.setHeader('Access-Control-Allow-Origin', reqOrigin2);
+        reply.raw.setHeader('Access-Control-Allow-Credentials', 'true');
+      }
+      reply.raw.setHeader('Content-Type', 'text/event-stream');
+      reply.raw.setHeader('Cache-Control', 'no-cache');
+      reply.raw.setHeader('Connection', 'keep-alive');
+      reply.raw.setHeader('X-Accel-Buffering', 'no');
+      reply.raw.flushHeaders();
 
       try {
-        const baseSystem = systemPrompt?.trim()
+        let baseSystem = systemPrompt?.trim()
           ? systemPrompt
           : `당신은 ${characterName || 'AI 캐릭터'}입니다. 캐릭터에 맞게 자연스럽게 대화해주세요.`;
+
+        // 예시 대화를 few-shot으로 시스템 프롬프트에 포함
+        if (exampleDialogues && exampleDialogues.length > 0) {
+          const validExamples = exampleDialogues.filter(ex => ex.messages && ex.messages.length > 0);
+          if (validExamples.length > 0) {
+            const exampleText = validExamples.map((ex, i) => {
+              const lines = ex.messages.map(m =>
+                m.role === 'character'
+                  ? `${characterName || '캐릭터'}: ${m.content}`
+                  : `사용자: ${m.content}`
+              ).join('\n');
+              return `[예시 ${i + 1}]\n${lines}`;
+            }).join('\n\n');
+            baseSystem += `\n\n아래는 대화 예시입니다. 이 예시를 참고하여 캐릭터의 말투와 성격을 유지하세요:\n\n${exampleText}`;
+          }
+        }
 
         const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [
           ...((history ?? []).slice(-10) as Array<{ role: 'user' | 'assistant'; content: string }>),
@@ -2065,6 +2121,206 @@ ${statUnit ? `스탯 단위: ${statUnit}` : ''}
       });
       const text = (msg.choices[0].message.content ?? '');
       return reply.send({ epilogue: text.slice(0, 1000) });
+    },
+  });
+
+  // ─────────────────────────────────────────────
+  // CHAPTERS CRUD + SCHEDULED PUBLISH
+  // ─────────────────────────────────────────────
+
+  // GET /:storyId/chapters — 내 스토리 챕터 목록
+  fastify.get('/:storyId/chapters', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { storyId } = request.params as { storyId: string };
+      const userId = request.userId!;
+
+      const story = await prisma.story.findFirst({ where: { id: storyId, authorId: userId }, select: { id: true } });
+      if (!story) return reply.status(404).send({ error: '스토리를 찾을 수 없습니다.' });
+
+      const chapters = await prisma.storyChapter.findMany({
+        where: { storyId },
+        orderBy: { order: 'asc' },
+        select: { id: true, title: true, order: true, isPublished: true, scheduledAt: true, publishedAt: true, createdAt: true },
+      });
+      return reply.send({ data: chapters });
+    },
+  });
+
+  // POST /:storyId/chapters — 챕터 생성
+  fastify.post('/:storyId/chapters', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { storyId } = request.params as { storyId: string };
+      const userId = request.userId!;
+
+      const story = await prisma.story.findFirst({ where: { id: storyId, authorId: userId }, select: { id: true } });
+      if (!story) return reply.status(404).send({ error: '스토리를 찾을 수 없습니다.' });
+
+      const body = z.object({
+        title:       z.string().min(1).max(200),
+        content:     z.string().max(100000),
+        order:       z.number().int().optional(),
+        scheduledAt: z.string().datetime().optional(),
+      }).parse(request.body);
+
+      const count = await prisma.storyChapter.count({ where: { storyId } });
+      const order = body.order ?? count;
+
+      const chapter = await prisma.storyChapter.create({
+        data: {
+          storyId,
+          title:   body.title,
+          content: body.content,
+          order,
+          isPublished: false,
+          scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
+        },
+      });
+
+      if (body.scheduledAt) {
+        await scheduleChapterPublish(chapter.id, storyId, new Date(body.scheduledAt));
+      }
+
+      await cache.del(`story:detail:${storyId}`);
+      return reply.status(201).send({ data: chapter });
+    },
+  });
+
+  // PUT /:storyId/chapters/:chapterId — 챕터 수정
+  fastify.put('/:storyId/chapters/:chapterId', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { storyId, chapterId } = request.params as { storyId: string; chapterId: string };
+      const userId = request.userId!;
+
+      const story = await prisma.story.findFirst({ where: { id: storyId, authorId: userId }, select: { id: true } });
+      if (!story) return reply.status(404).send({ error: '스토리를 찾을 수 없습니다.' });
+
+      const existing = await prisma.storyChapter.findFirst({ where: { id: chapterId, storyId } });
+      if (!existing) return reply.status(404).send({ error: '챕터를 찾을 수 없습니다.' });
+
+      const body = z.object({
+        title:       z.string().min(1).max(200).optional(),
+        content:     z.string().max(100000).optional(),
+        order:       z.number().int().optional(),
+        scheduledAt: z.string().datetime().nullable().optional(),
+      }).parse(request.body);
+
+      if (body.scheduledAt !== undefined) {
+        await cancelScheduledChapter(chapterId);
+      }
+
+      const updated = await prisma.storyChapter.update({
+        where: { id: chapterId },
+        data: {
+          ...(body.title   !== undefined && { title:   body.title }),
+          ...(body.content !== undefined && { content: body.content }),
+          ...(body.order   !== undefined && { order:   body.order }),
+          ...(body.scheduledAt !== undefined && {
+            scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
+          }),
+        },
+      });
+
+      if (body.scheduledAt && !existing.isPublished) {
+        await scheduleChapterPublish(chapterId, storyId, new Date(body.scheduledAt));
+      }
+
+      await cache.del(`story:detail:${storyId}`);
+      return reply.send({ data: updated });
+    },
+  });
+
+  // DELETE /:storyId/chapters/:chapterId
+  fastify.delete('/:storyId/chapters/:chapterId', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { storyId, chapterId } = request.params as { storyId: string; chapterId: string };
+      const userId = request.userId!;
+
+      const story = await prisma.story.findFirst({ where: { id: storyId, authorId: userId }, select: { id: true } });
+      if (!story) return reply.status(404).send({ error: '스토리를 찾을 수 없습니다.' });
+
+      await cancelScheduledChapter(chapterId).catch(() => {});
+      await prisma.storyChapter.deleteMany({ where: { id: chapterId, storyId } });
+      await cache.del(`story:detail:${storyId}`);
+      return reply.status(204).send();
+    },
+  });
+
+  // POST /:storyId/chapters/:chapterId/publish — 즉시 발행
+  fastify.post('/:storyId/chapters/:chapterId/publish', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { storyId, chapterId } = request.params as { storyId: string; chapterId: string };
+      const userId = request.userId!;
+
+      const story = await prisma.story.findFirst({ where: { id: storyId, authorId: userId }, select: { id: true } });
+      if (!story) return reply.status(404).send({ error: '스토리를 찾을 수 없습니다.' });
+
+      await cancelScheduledChapter(chapterId).catch(() => {});
+
+      const updated = await prisma.storyChapter.update({
+        where: { id: chapterId },
+        data: { isPublished: true, publishedAt: new Date(), scheduledAt: null },
+      });
+
+      await cache.del(`story:detail:${storyId}`);
+      return reply.send({ data: updated });
+    },
+  });
+
+  // POST /:storyId/chapters/:chapterId/schedule — 예약 발행 설정
+  fastify.post('/:storyId/chapters/:chapterId/schedule', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { storyId, chapterId } = request.params as { storyId: string; chapterId: string };
+      const userId = request.userId!;
+
+      const story = await prisma.story.findFirst({ where: { id: storyId, authorId: userId }, select: { id: true } });
+      if (!story) return reply.status(404).send({ error: '스토리를 찾을 수 없습니다.' });
+
+      const { scheduledAt } = z.object({
+        scheduledAt: z.string().datetime(),
+      }).parse(request.body);
+
+      const publishAt = new Date(scheduledAt);
+      if (publishAt <= new Date()) {
+        return reply.status(400).send({ error: '예약 시각은 현재 시각 이후여야 합니다.' });
+      }
+
+      await cancelScheduledChapter(chapterId).catch(() => {});
+
+      const updated = await prisma.storyChapter.update({
+        where: { id: chapterId },
+        data: { scheduledAt: publishAt, isPublished: false },
+      });
+
+      await scheduleChapterPublish(chapterId, storyId, publishAt);
+
+      return reply.send({ data: updated });
+    },
+  });
+
+  // DELETE /:storyId/chapters/:chapterId/schedule — 예약 취소
+  fastify.delete('/:storyId/chapters/:chapterId/schedule', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { storyId, chapterId } = request.params as { storyId: string; chapterId: string };
+      const userId = request.userId!;
+
+      const story = await prisma.story.findFirst({ where: { id: storyId, authorId: userId }, select: { id: true } });
+      if (!story) return reply.status(404).send({ error: '스토리를 찾을 수 없습니다.' });
+
+      await cancelScheduledChapter(chapterId).catch(() => {});
+
+      const updated = await prisma.storyChapter.update({
+        where: { id: chapterId },
+        data: { scheduledAt: null },
+      });
+
+      return reply.send({ data: updated });
     },
   });
 };

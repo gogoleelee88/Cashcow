@@ -83,6 +83,17 @@ apiClient.interceptors.response.use(
 // API FUNCTIONS
 // ─────────────────────────────────────────────
 export const api = {
+  profiles: {
+    list: () => apiClient.get('/api/profiles').then((r) => r.data),
+    create: (data: { name: string; isKids: boolean; pin?: string; avatarEmoji?: string; avatarColor?: string }) =>
+      apiClient.post('/api/profiles', data).then((r) => r.data),
+    update: (id: string, data: { name?: string; isKids?: boolean; pin?: string | null; avatarEmoji?: string; avatarColor?: string }) =>
+      apiClient.put(`/api/profiles/${id}`, data).then((r) => r.data),
+    delete: (id: string) => apiClient.delete(`/api/profiles/${id}`).then((r) => r.data),
+    verifyPin: (id: string, pin: string) =>
+      apiClient.post(`/api/profiles/${id}/verify-pin`, { pin }).then((r) => r.data),
+  },
+
   auth: {
     register: (data: { email: string; password: string; username: string; displayName: string }) =>
       apiClient.post('/api/auth/register', data).then((r) => r.data),
@@ -299,6 +310,28 @@ export const api = {
 
     publish: (id: string) =>
       apiClient.post(`/api/stories/${id}/publish`).then((r) => r.data),
+
+    // Chapters
+    listChapters: (storyId: string) =>
+      apiClient.get(`/api/stories/${storyId}/chapters`).then((r) => r.data),
+
+    createChapter: (storyId: string, data: { title: string; content: string; order?: number; scheduledAt?: string }) =>
+      apiClient.post(`/api/stories/${storyId}/chapters`, data).then((r) => r.data),
+
+    updateChapter: (storyId: string, chapterId: string, data: { title?: string; content?: string; order?: number; scheduledAt?: string | null }) =>
+      apiClient.put(`/api/stories/${storyId}/chapters/${chapterId}`, data).then((r) => r.data),
+
+    deleteChapter: (storyId: string, chapterId: string) =>
+      apiClient.delete(`/api/stories/${storyId}/chapters/${chapterId}`).then((r) => r.data),
+
+    publishChapter: (storyId: string, chapterId: string) =>
+      apiClient.post(`/api/stories/${storyId}/chapters/${chapterId}/publish`).then((r) => r.data),
+
+    scheduleChapter: (storyId: string, chapterId: string, scheduledAt: string) =>
+      apiClient.post(`/api/stories/${storyId}/chapters/${chapterId}/schedule`, { scheduledAt }).then((r) => r.data),
+
+    cancelChapterSchedule: (storyId: string, chapterId: string) =>
+      apiClient.delete(`/api/stories/${storyId}/chapters/${chapterId}/schedule`).then((r) => r.data),
   },
 
   characters: {
@@ -340,6 +373,33 @@ export const api = {
 
     my: (params?: Record<string, unknown>) =>
       apiClient.get('/api/characters/my', { params }).then((r) => r.data),
+
+    getMyOne: (id: string) =>
+      apiClient.get(`/api/characters/my/${id}`).then((r) => r.data),
+
+    getDraft: () =>
+      apiClient.get('/api/characters/draft').then((r) => r.data),
+
+    saveDraft: (data: unknown) =>
+      apiClient.put('/api/characters/draft', data).then((r) => r.data),
+
+    deleteDraft: () =>
+      apiClient.delete('/api/characters/draft').then((r) => r.data),
+
+    listComments: (id: string, params?: { page?: number; limit?: number }) =>
+      apiClient.get(`/api/characters/${id}/comments`, { params }).then((r) => r.data),
+
+    createComment: (id: string, content: string) =>
+      apiClient.post(`/api/characters/${id}/comments`, { content }).then((r) => r.data),
+
+    deleteComment: (id: string, commentId: string) =>
+      apiClient.delete(`/api/characters/${id}/comments/${commentId}`).then((r) => r.data),
+
+    reactComment: (id: string, commentId: string, type: 'LIKE' | 'DISLIKE') =>
+      apiClient.post(`/api/characters/${id}/comments/${commentId}/react`, { type }).then((r) => r.data),
+
+    reportComment: (id: string, commentId: string, reason: string) =>
+      apiClient.post(`/api/characters/${id}/comments/${commentId}/report`, { reason }).then((r) => r.data),
   },
 
   chat: {
@@ -420,6 +480,14 @@ export const api = {
     /** 인증 완료 여부 폴링 */
     ageVerifyStatus: () =>
       apiClient.get('/api/users/me/age-verify/status').then((r) => r.data),
+
+    /** 선호장르 조회 */
+    getPreferences: () =>
+      apiClient.get('/api/users/me/preferences').then((r) => r.data),
+
+    /** 선호장르 저장 */
+    updatePreferences: (preferredGenres: string[]) =>
+      apiClient.put('/api/users/me/preferences', { preferredGenres }).then((r) => r.data),
   },
 
   images: {
@@ -447,6 +515,49 @@ export const api = {
 };
 
 // ─────────────────────────────────────────────
+// VOICE API
+// ─────────────────────────────────────────────
+const BASE_URL_RAW = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+
+export const voiceApi = {
+  getLibrary: () => apiClient.get('/api/voice/library').then((r) => r.data),
+
+  previewUrl: (voiceId: string) => `${BASE_URL_RAW}/api/voice/preview/${voiceId}`,
+
+  clone: async (name: string, audioBlob: Blob, fileName: string): Promise<{ voiceId: string; name: string }> => {
+    const form = new FormData();
+    form.append('name', name);
+    form.append('file', audioBlob, fileName);
+    // Content-Type을 undefined로 설정해 axios 기본값(application/json)을 제거하고
+    // 브라우저가 boundary 포함한 multipart/form-data를 자동 설정하도록 함
+    const r = await apiClient.post('/api/voice/clone', form, {
+      headers: { 'Content-Type': undefined },
+    });
+    return r.data.data;
+  },
+
+  deleteVoice: (voiceId: string) => apiClient.delete(`/api/voice/${voiceId}`).then((r) => r.data),
+
+  speak: async (text: string, voiceId: string, voiceSettings?: object): Promise<Blob> => {
+    const token = useAuthStore.getState().accessToken;
+    const res = await fetch(`${BASE_URL_RAW}/api/voice/speak`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ text: text.slice(0, 5000), voiceId, voiceSettings }),
+    });
+    if (!res.ok) throw new Error('TTS 요청 실패');
+    return res.blob();
+  },
+
+  transcribe: async (audioBlob: Blob): Promise<string> => {
+    const form = new FormData();
+    form.append('file', audioBlob, 'audio.webm');
+    const r = await apiClient.post('/api/voice/transcribe', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+    return r.data.data.text;
+  },
+};
+
+// ─────────────────────────────────────────────
 // STREAMING CHAT (SSE) — with reconnection recovery
 // ─────────────────────────────────────────────
 export function streamChatMessage(
@@ -457,6 +568,7 @@ export function streamChatMessage(
     onDelta: (text: string) => void;
     onDone: (data: { messageId: string; creditCost: number; remainingCredits: number }) => void;
     onError: (message: string) => void;
+    onImage?: (data: { imageId: string; imageUrl: string }) => void;
     signal?: AbortSignal;
   }
 ): void {
@@ -540,6 +652,8 @@ export function streamChatMessage(
                 callbacks.onDelta(data.text);
               } else if (eventType === 'done') {
                 callbacks.onDone(data);
+              } else if (eventType === 'image') {
+                callbacks.onImage?.(data);
               } else if (eventType === 'error') {
                 callbacks.onError(data.message || '오류가 발생했습니다.');
               }
@@ -657,6 +771,7 @@ export function streamPreviewChat(
     history: Array<{ role: 'user' | 'assistant'; content: string }>;
     userMessage: string;
     characterName?: string;
+    exampleDialogues?: Array<{ id: string; messages: Array<{ id: string; role: 'character' | 'user'; content: string }> }>;
   },
   accessToken: string,
   callbacks: {

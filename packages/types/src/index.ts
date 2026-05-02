@@ -27,6 +27,18 @@ export interface UserProfile extends User {
 }
 
 // ─────────────────────────────────────────────
+// PROFILE TYPES
+// ─────────────────────────────────────────────
+export interface Profile {
+  id: string;
+  name: string;
+  isKids: boolean;
+  avatarEmoji: string;
+  avatarColor: string;
+  createdAt: string;
+}
+
+// ─────────────────────────────────────────────
 // CHARACTER TYPES
 // ─────────────────────────────────────────────
 export type CharacterVisibility = 'PUBLIC' | 'PRIVATE' | 'UNLISTED';
@@ -66,6 +78,7 @@ export interface Character {
   isLiked?: boolean;
   isFavorited?: boolean;
   isFeatured?: boolean;
+  isOfficial?: boolean;
   isFanCreation?: boolean;
   gender?: CharacterGender;
   audienceTarget?: AudienceTarget;
@@ -98,8 +111,8 @@ export interface Conversation {
   characterId: string;
   userId: string;
   character?: CharacterListItem;
-  messages?: ChatMessage[];
-  lastMessage?: ChatMessage;
+  lastMessage?: ChatMessage | null;
+  lastMessageAt?: string | null;
   messageCount: number;
   title: string | null;
   isPinned: boolean;

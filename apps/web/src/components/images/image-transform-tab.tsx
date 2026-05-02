@@ -1,19 +1,45 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { cn } from '../../lib/utils';
 import { api } from '../../lib/api';
-import { Upload, Download, ChevronRight, Sparkles, RotateCcw, ZoomIn } from 'lucide-react';
+import { Upload, Download, ChevronLeft, ChevronRight, Sparkles, RotateCcw, ZoomIn, Check } from 'lucide-react';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const TRANSFORM_COST = 190;
+
+const STYLES = [
+  { name: '청초',   img: '/styles/청초.jpg' },
+  { name: '순정',   img: '/styles/순정.jpg' },
+  { name: '키치',   img: '/styles/키치.jpg' },
+  { name: '로판',   img: '/styles/로판.jpg' },
+  { name: '모에',   img: '/styles/모에.jpg' },
+  { name: '액션',   img: '/styles/액션.jpg' },
+  { name: '모던',   img: '/styles/모던.jpg' },
+  { name: '와일드', img: '/styles/와일드.jpg' },
+  { name: '남사친', img: '/styles/남사친.jpg' },
+  { name: '육아물', img: '/styles/육아물.jpg' },
+  { name: '집착',   img: '/styles/집착.jpg' },
+];
+
+const VISIBLE_STYLES = 5;
+
+const RATIOS = [
+  { label: '1:1',  w: 1,  h: 1  },
+  { label: '4:3',  w: 4,  h: 3  },
+  { label: '3:4',  w: 3,  h: 4  },
+  { label: '16:9', w: 16, h: 9  },
+  { label: '9:16', w: 9,  h: 16 },
+];
 
 interface Props {
   ratio: string;
   count: number;
   credits: number;
   onNeedPayment: () => void;
+  onRatioChange: (r: string) => void;
+  onCountChange: (n: number) => void;
 }
 
 // ── 업로드 일러스트 placeholder ──────────────────────────────────────────────
@@ -134,15 +160,21 @@ function ResultCard({ url, index }: { url: string; index: number }) {
 }
 
 // ── 메인 컴포넌트 ────────────────────────────────────────────────────────────
-export function ImageTransformTab({ ratio, count, credits, onNeedPayment }: Props) {
+export function ImageTransformTab({ ratio, count, credits, onNeedPayment, onRatioChange, onCountChange }: Props) {
+  const [styleIndex, setStyleIndex]     = useState(0);
+  const [selectedStyle, setSelectedStyle] = useState(STYLES[0].name);
   const [prompt, setPrompt] = useState('');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadedPreview, setUploadedPreview] = useState<string | null>(null);
   const [results, setResults] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading]       = useState(false);
+  const [loadingStage, setLoadingStage] = useState<'uploading' | 'processing'>('uploading');
   const [isDragging, setIsDragging] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError]           = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pollRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (pollRef.current) clearTimeout(pollRef.current); }, []);
 
   const cost = count * TRANSFORM_COST;
 
@@ -175,6 +207,7 @@ export function ImageTransformTab({ ratio, count, credits, onNeedPayment }: Prop
     if (credits < cost) { onNeedPayment(); return; }
 
     setLoading(true);
+    setLoadingStage('uploading');
     setError(null);
     setResults([]);
 
@@ -182,15 +215,35 @@ export function ImageTransformTab({ ratio, count, credits, onNeedPayment }: Prop
       const formData = new FormData();
       formData.append('image', uploadedFile);
       formData.append('prompt', prompt);
+      formData.append('style', selectedStyle);
       formData.append('count', String(count));
       formData.append('ratio', ratio);
 
       const res = await api.images.transform(formData);
-      setResults(res.data.images);
+      const { imageId } = res.data;
+      setLoadingStage('processing');
+
+      const poll = async () => {
+        try {
+          const jobRes = await api.images.pollJob(imageId);
+          const { status, urls, errorMsg } = jobRes.data;
+          if (status === 'COMPLETED') {
+            setResults(urls);
+            setLoading(false);
+          } else if (status === 'FAILED') {
+            setError(errorMsg ?? '이미지 변형에 실패했습니다.');
+            setLoading(false);
+          } else {
+            pollRef.current = setTimeout(poll, 2500);
+          }
+        } catch {
+          pollRef.current = setTimeout(poll, 3500);
+        }
+      };
+      pollRef.current = setTimeout(poll, 2000);
     } catch (err: any) {
       const msg = err?.response?.data?.error?.message ?? '이미지 변형에 실패했습니다. 다시 시도해 주세요.';
       setError(msg);
-    } finally {
       setLoading(false);
     }
   };
@@ -204,9 +257,111 @@ export function ImageTransformTab({ ratio, count, credits, onNeedPayment }: Prop
   };
 
   return (
-    <div className="max-w-4xl">
+    <div className="max-w-2xl mx-auto space-y-6">
+
+      {/* ── 포토카드 스타일 ── */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-gray-800 font-bold text-sm">
+            포토카드 스타일<span className="text-brand">*</span>
+          </p>
+          <div className="flex gap-1">
+            <button
+              onClick={() => setStyleIndex(i => Math.max(0, i - 1))}
+              disabled={styleIndex === 0}
+              className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 disabled:opacity-30 flex items-center justify-center transition-all"
+            >
+              <ChevronLeft className="w-4 h-4 text-gray-600" />
+            </button>
+            <button
+              onClick={() => setStyleIndex(i => Math.min(STYLES.length - VISIBLE_STYLES, i + 1))}
+              disabled={styleIndex >= STYLES.length - VISIBLE_STYLES}
+              className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 disabled:opacity-30 flex items-center justify-center transition-all"
+            >
+              <ChevronRight className="w-4 h-4 text-gray-600" />
+            </button>
+          </div>
+        </div>
+        <div className="flex gap-2 h-44">
+          {STYLES.slice(styleIndex, styleIndex + VISIBLE_STYLES).map(style => (
+            <button
+              key={style.name}
+              onClick={() => setSelectedStyle(style.name)}
+              className={cn(
+                'flex-1 relative rounded-xl overflow-hidden border-2 transition-all duration-200',
+                selectedStyle === style.name
+                  ? 'border-brand shadow-[0_0_0_2px_rgba(230,51,37,0.3)]'
+                  : 'border-transparent hover:border-gray-300'
+              )}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={style.img} alt={style.name} className="w-full h-full object-cover" />
+              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent pt-4 pb-1.5 px-1 text-center">
+                <span className="text-white text-[10px] font-semibold">{style.name}</span>
+              </div>
+              {selectedStyle === style.name && (
+                <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-brand flex items-center justify-center">
+                  <Check className="w-2.5 h-2.5 text-white" />
+                </div>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── 포토카드 비율 ── */}
+      <div>
+        <p className="text-gray-800 font-bold text-sm mb-3">
+          포토카드 비율<span className="text-brand">*</span>
+        </p>
+        <div className="flex gap-2 justify-between">
+          {RATIOS.map(r => (
+            <button
+              key={r.label}
+              onClick={() => onRatioChange(r.label)}
+              className={cn(
+                'flex-1 flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border text-xs font-medium transition-all',
+                ratio === r.label
+                  ? 'border-[#E8A020] bg-[#FFF8EC] text-[#E8A020]'
+                  : 'border-gray-200 text-gray-400 hover:border-gray-300'
+              )}
+            >
+              <div
+                className={cn('border-2 rounded-sm', ratio === r.label ? 'border-[#E8A020]' : 'border-gray-300')}
+                style={{ width: r.w <= r.h ? 14 : 20, height: r.h <= r.w ? 14 : 20 }}
+              />
+              <span>{r.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── 포토카드 개수 ── */}
+      <div>
+        <p className="text-gray-800 font-bold text-sm mb-1">
+          포토카드 개수<span className="text-brand">*</span>
+        </p>
+        <p className="text-gray-400 text-xs mb-3">포토카드 개수 설정에 맞게 단짠초코감자칩가 소비돼요</p>
+        <div className="flex gap-2 justify-between">
+          {[1, 2, 3, 4].map(n => (
+            <button
+              key={n}
+              onClick={() => onCountChange(n)}
+              className={cn(
+                'flex-1 py-2 rounded-xl border text-sm font-semibold transition-all',
+                count === n
+                  ? 'border-[#E8A020] bg-[#FFF8EC] text-[#E8A020]'
+                  : 'border-gray-200 text-gray-400 hover:border-gray-300'
+              )}
+            >
+              {n}개
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* ── 프롬프트 입력 ── */}
-      <div className="mb-6">
+      <div>
         <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-sm">
           <textarea
             value={prompt}
@@ -230,7 +385,7 @@ export function ImageTransformTab({ ratio, count, credits, onNeedPayment }: Prop
               {loading ? (
                 <>
                   <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  변형 중...
+                  {loadingStage === 'uploading' ? '업로드 중...' : '변형 중...'}
                 </>
               ) : (
                 <>
@@ -258,7 +413,7 @@ export function ImageTransformTab({ ratio, count, credits, onNeedPayment }: Prop
       </div>
 
       {/* ── 업로드 / 결과 패널 ── */}
-      <div className="flex gap-4 items-stretch">
+      <div className="flex gap-4 items-stretch" style={{ marginTop: 0 }}>
 
         {/* 왼쪽: 업로드 존 */}
         <div

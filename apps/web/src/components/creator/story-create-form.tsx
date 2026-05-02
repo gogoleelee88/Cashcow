@@ -3,12 +3,22 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, HelpCircle, Clock, History, X, Upload, Trash2, Wand2, ChevronUp, ChevronDown, AlertCircle, Megaphone, Plus, GripVertical, MessageSquare, ZoomIn, ZoomOut, Check, Loader2 } from 'lucide-react';
-import Cropper from 'react-easy-crop';
+import { ArrowLeft, HelpCircle, Clock, History, X, Upload, Trash2, Wand2, ChevronUp, ChevronDown, AlertCircle, Megaphone, Plus, GripVertical, MessageSquare, Check, Loader2 } from 'lucide-react';
+import { ImageCropModal, getCroppedImg } from '../ui/image-crop-modal';
 import { cn } from '../../lib/utils';
 import { useAuthStore } from '../../stores/auth.store';
 import { useStoryDraftStore, type DraftKeywordNote } from '../../stores/story-draft.store';
 import { api } from '../../lib/api';
+
+// ── data URL → Blob 변환 (CSP connect-src에서 data: 가 차단되므로 fetch 대신 사용) ──
+function dataUrlToBlob(dataUrl: string): Blob {
+  const [header, base64] = dataUrl.split(',');
+  const mime = header.match(/:(.*?);/)?.[1] ?? 'image/jpeg';
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
 
 // ── 자동저장 훅 ───────────────────────────────────────────────────────────
 function useAutoSave(initialStoryId?: string) {
@@ -41,6 +51,44 @@ function useAutoSave(initialStoryId?: string) {
       if (d.coverUrl)         setSquareImage(d.coverUrl,         d.coverKey ?? null);
       if (d.coverVerticalUrl) setVerticalImage(d.coverVerticalUrl, d.coverVerticalKey ?? null);
     }).catch(() => {});
+  }, [storyId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── storyId 확정 후, data URL로 임시 저장된 커버 이미지를 Supabase에 업로드 ──
+  useEffect(() => {
+    if (!storyId) return;
+
+    const uploadPending = async (
+      imageData: string | null,
+      variant: 'square' | 'vertical',
+      onDone: (url: string, key: string) => void,
+    ) => {
+      // Supabase URL이면 이미 업로드된 것 → 스킵
+      if (!imageData || imageData.startsWith('https://')) return;
+      // data URL인 경우 Supabase에 업로드
+      try {
+        const blob = imageData.startsWith('data:') ? dataUrlToBlob(imageData) : await fetch(imageData).then(r => r.blob());
+        const { data } = await api.stories.getCoverUploadUrl(storyId, {
+          contentType: 'image/jpeg',
+          variant,
+        });
+        await fetch(data.uploadUrl, {
+          method: 'PUT',
+          body: blob,
+          headers: { 'Content-Type': 'image/jpeg' },
+        });
+        await api.stories.confirmCoverUpload(storyId, {
+          variant,
+          url: data.publicUrl,
+          key: data.key,
+        });
+        onDone(data.publicUrl, data.key);
+      } catch {
+        // 업로드 실패 시 data URL 유지
+      }
+    };
+
+    uploadPending(squareImage, 'square', (url, key) => setSquareImage(url, key));
+    uploadPending(verticalImage, 'vertical', (url, key) => setVerticalImage(url, key));
   }, [storyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 이름 + 소개 debounce 저장 (800ms) ────────────────────────────────
@@ -527,155 +575,7 @@ function AgeVerificationModal({ onClose, onVerified }: { onClose: () => void; on
 // ─────────────────────────────────────────────
 // IMAGE UPLOAD AREA
 // ─────────────────────────────────────────────
-// ─────────────────────────────────────────────
-// IMAGE CROP UTILS
-// ─────────────────────────────────────────────
-interface CropArea { x: number; y: number; width: number; height: number }
 
-// 크롭 후 표시용 blob URL + localStorage용 압축 data URL 동시 반환
-async function getCroppedImg(imageSrc: string, pixelCrop: CropArea): Promise<{ blobUrl: string; dataUrl: string }> {
-  const image = new Image();
-  image.src = imageSrc;
-  await new Promise<void>((resolve, reject) => {
-    image.onload = () => resolve();
-    image.onerror = () => reject(new Error('image load failed'));
-  });
-
-  // 원본 품질 캔버스 (표시용 blob URL)
-  const canvas = document.createElement('canvas');
-  canvas.width = pixelCrop.width;
-  canvas.height = pixelCrop.height;
-  const ctx = canvas.getContext('2d')!;
-  ctx.drawImage(image, pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height, 0, 0, pixelCrop.width, pixelCrop.height);
-
-  // 저장용 압축 캔버스 (max 400px, localStorage 용량 절약)
-  const MAX = 400;
-  const scale = Math.min(1, MAX / Math.max(pixelCrop.width, pixelCrop.height));
-  const thumbCanvas = document.createElement('canvas');
-  thumbCanvas.width = Math.round(pixelCrop.width * scale);
-  thumbCanvas.height = Math.round(pixelCrop.height * scale);
-  const thumbCtx = thumbCanvas.getContext('2d')!;
-  thumbCtx.drawImage(canvas, 0, 0, thumbCanvas.width, thumbCanvas.height);
-  const dataUrl = thumbCanvas.toDataURL('image/jpeg', 0.75);
-
-  const blobUrl = await new Promise<string>((resolve) => {
-    canvas.toBlob((blob) => resolve(URL.createObjectURL(blob!)), 'image/jpeg', 0.95);
-  });
-
-  return { blobUrl, dataUrl };
-}
-
-// ─────────────────────────────────────────────
-// IMAGE CROP MODAL
-// ─────────────────────────────────────────────
-function ImageCropModal({
-  imageSrc,
-  aspect,
-  onConfirm,
-  onCancel,
-}: {
-  imageSrc: string;
-  aspect: number;
-  onConfirm: (blobUrl: string, dataUrl: string) => void;
-  onCancel: () => void;
-}) {
-  const [crop, setCrop] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(1);
-  const [croppedAreaPixels, setCroppedAreaPixels] = useState<CropArea | null>(null);
-  const [applying, setApplying] = useState(false);
-
-  const onCropComplete = useCallback((_: unknown, areaPixels: CropArea) => {
-    setCroppedAreaPixels(areaPixels);
-  }, []);
-
-  const handleConfirm = async () => {
-    if (!croppedAreaPixels) return;
-    setApplying(true);
-    try {
-      const { blobUrl, dataUrl } = await getCroppedImg(imageSrc, croppedAreaPixels);
-      onConfirm(blobUrl, dataUrl);
-    } finally {
-      setApplying(false);
-    }
-  };
-
-  const label = aspect === 1 ? '1:1 정방형' : '2:3 세로형';
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-      <div className="bg-white rounded-2xl shadow-2xl w-[480px] mx-4 overflow-hidden flex flex-col max-h-[90vh]">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
-          <div>
-            <h3 className="text-gray-900 font-bold text-sm">이미지 영역 설정</h3>
-            <p className="text-gray-400 text-xs mt-0.5">드래그하거나 핀치로 원하는 영역을 선택하세요 ({label})</p>
-          </div>
-          <button type="button" onClick={onCancel} className="text-gray-400 hover:text-gray-600 transition-colors">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Cropper area */}
-        <div className="relative flex-1 bg-gray-900" style={{ minHeight: 320 }}>
-          <Cropper
-            image={imageSrc}
-            crop={crop}
-            zoom={zoom}
-            aspect={aspect}
-            onCropChange={setCrop}
-            onZoomChange={setZoom}
-            onCropComplete={onCropComplete}
-            style={{
-              containerStyle: { borderRadius: 0 },
-              cropAreaStyle: { border: '2px solid #E63325' },
-            }}
-          />
-        </div>
-
-        {/* Zoom slider */}
-        <div className="flex-shrink-0 px-5 py-3 border-t border-gray-100 bg-gray-50">
-          <div className="flex items-center gap-3">
-            <button type="button" onClick={() => setZoom(z => Math.max(1, z - 0.1))} className="text-gray-500 hover:text-gray-700 transition-colors">
-              <ZoomOut className="w-4 h-4" />
-            </button>
-            <input
-              type="range"
-              min={1}
-              max={3}
-              step={0.01}
-              value={zoom}
-              onChange={(e) => setZoom(Number(e.target.value))}
-              className="flex-1 accent-brand"
-            />
-            <button type="button" onClick={() => setZoom(z => Math.min(3, z + 0.1))} className="text-gray-500 hover:text-gray-700 transition-colors">
-              <ZoomIn className="w-4 h-4" />
-            </button>
-            <span className="text-gray-400 text-xs w-10 text-right">{Math.round(zoom * 100)}%</span>
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="flex-shrink-0 flex gap-2 px-5 py-4 border-t border-gray-100">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors"
-          >
-            취소
-          </button>
-          <button
-            type="button"
-            onClick={handleConfirm}
-            disabled={applying}
-            className="flex-1 py-2.5 rounded-xl bg-gray-900 text-white text-sm font-bold hover:bg-gray-800 transition-colors disabled:opacity-50"
-          >
-            {applying ? '적용 중...' : '적용'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ─────────────────────────────────────────────
 // IMAGE UPLOAD AREA
@@ -689,6 +589,7 @@ function ImageUploadArea({
   onPreviewChange,
   uploading,
   externalPreview,
+  onGenerate,
 }: {
   label: string;
   required?: boolean;
@@ -698,6 +599,7 @@ function ImageUploadArea({
   onPreviewChange?: (url: string | null) => void;
   uploading?: boolean;
   externalPreview?: string | null;
+  onGenerate?: () => void;
 }) {
   const [preview, setPreview] = useState<string | null>(null);
   const [rawImageSrc, setRawImageSrc] = useState<string | null>(null);
@@ -716,7 +618,7 @@ function ImageUploadArea({
     e.target.value = '';
   };
 
-  const handleCropConfirm = (blobUrl: string, dataUrl: string) => {
+  const handleCropConfirm = (blobUrl: string, dataUrl: string, _blob: Blob) => {
     setPreview(blobUrl);       // 로컬 고화질 미리보기 (현재 세션)
     onPreviewChange?.(dataUrl); // 부모가 store에 저장 (압축 data URL → localStorage 유지)
     setShowCropper(false);
@@ -815,6 +717,7 @@ function ImageUploadArea({
               )}
               <button
                 type="button"
+                onClick={onGenerate}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors"
               >
                 <Wand2 className="w-3.5 h-3.5" />
@@ -960,13 +863,14 @@ function ProfileForm({
   squareImagePreview?: string | null;
   verticalImagePreview?: string | null;
 }) {
+  const router = useRouter();
   const [showAgeNotice, setShowAgeNotice] = useState(true);
   const [showAgeModal, setShowAgeModal] = useState(false);
   const [generatingName, setGeneratingName] = useState(false);
   const [uploadingSquare, setUploadingSquare] = useState(false);
   const [uploadingVertical, setUploadingVertical] = useState(false);
 
-  // ── S3 이미지 업로드 핸들러 ──────────────────────────────────────────────
+  // ── Supabase 이미지 업로드 핸들러 ──────────────────────────────────────────────
   const handleImageUpload = async (
     imageData: string | null,  // data URL (압축) or blob URL
     variant: 'square' | 'vertical',
@@ -975,45 +879,42 @@ function ProfileForm({
   ) => {
     if (!imageData) { onDone?.(null, null); return; }
 
-    // ── S3/R2 업로드 (스토리지 설정 후 주석 해제) ────────────────────────
-    // if (!storyId) { onDone?.(imageData); return; }
-    // setUploading(true);
-    // try {
-    //   // 1. data URL → Blob 객체
-    //   const fetchRes = await fetch(imageData);
-    //   const blob = await fetchRes.blob();
-    //
-    //   // 2. Presigned URL 요청
-    //   const { data } = await api.stories.getCoverUploadUrl(storyId, {
-    //     contentType: 'image/jpeg',
-    //     variant,
-    //   });
-    //
-    //   // 3. S3/R2에 PUT
-    //   await fetch(data.uploadUrl, {
-    //     method: 'PUT',
-    //     body: blob,
-    //     headers: { 'Content-Type': 'image/jpeg' },
-    //   });
-    //
-    //   // 4. 서버에 URL 확정
-    //   await api.stories.confirmCoverUpload(storyId, {
-    //     variant,
-    //     url: data.publicUrl,
-    //     key: data.key,
-    //   });
-    //
-    //   // 5. store에 CDN URL + key 저장
-    //   onDone?.(data.publicUrl, data.key);
-    // } catch {
-    //   onDone?.(blobUrl);
-    // } finally {
-    //   setUploading(false);
-    // }
-    // ────────────────────────────────────────────────────────────────────
+    // storyId가 없으면 data URL을 임시로 사용 (draft 생성 후 재업로드됨)
+    if (!storyId) { onDone?.(imageData); return; }
 
-    // 임시: 스토리지 미설정 상태 — 압축 data URL을 store에 저장 (localStorage로 유지됨)
-    onDone?.(imageData);
+    setUploading(true);
+    try {
+      // 1. data URL → Blob 객체 (data: URL은 CSP connect-src 차단 → atob 사용)
+      const blob = imageData.startsWith('data:') ? dataUrlToBlob(imageData) : await fetch(imageData).then(r => r.blob());
+
+      // 2. Presigned URL 요청
+      const { data } = await api.stories.getCoverUploadUrl(storyId, {
+        contentType: 'image/jpeg',
+        variant,
+      });
+
+      // 3. Supabase Storage에 PUT
+      await fetch(data.uploadUrl, {
+        method: 'PUT',
+        body: blob,
+        headers: { 'Content-Type': 'image/jpeg' },
+      });
+
+      // 4. 서버에 URL 확정 → DB 저장
+      await api.stories.confirmCoverUpload(storyId, {
+        variant,
+        url: data.publicUrl,
+        key: data.key,
+      });
+
+      // 5. store에 CDN URL + key 저장
+      onDone?.(data.publicUrl, data.key);
+    } catch {
+      // 업로드 실패 시 data URL로 폴백 (미리보기는 유지)
+      onDone?.(imageData);
+    } finally {
+      setUploading(false);
+    }
   };
 
   // ── 실시간 제목 중복 체크 (500ms debounce) ────────────────────────────
@@ -1108,6 +1009,7 @@ function ProfileForm({
         onPreviewChange={(blobUrl) =>
           handleImageUpload(blobUrl, 'square', setUploadingSquare, onSquareImageChange)
         }
+        onGenerate={() => router.push('/images')}
       />
 
       {/* Vertical image */}
@@ -1121,6 +1023,7 @@ function ProfileForm({
         onPreviewChange={(blobUrl) =>
           handleImageUpload(blobUrl, 'vertical', setUploadingVertical, onVerticalImageChange)
         }
+        onGenerate={() => router.push('/images')}
       />
 
       {/* Update notice */}
@@ -2802,7 +2705,7 @@ const MODEL_OPTIONS = [
   { label: '💭 일반챗', value: 'normal_chat' },
 ];
 
-function RegisterTab({ name, coverUrl }: { name: string; coverUrl?: string }) {
+function RegisterTab({ name, coverUrl, onVisibilityChange }: { name: string; coverUrl?: string; onVisibilityChange?: (v: string) => void }) {
   const [showAgeNotice, setShowAgeNotice] = useState(true);
   const [showAgeModal, setShowAgeModal] = useState(false);
   const [detailDesc, setDetailDesc] = useState('');
@@ -3071,7 +2974,7 @@ function RegisterTab({ name, coverUrl }: { name: string; coverUrl?: string }) {
                 name="visibility"
                 value={opt.value}
                 checked={visibility === opt.value}
-                onChange={() => setVisibility(opt.value as 'public' | 'private' | 'link')}
+                onChange={() => { const v = opt.value as 'public' | 'private' | 'link'; setVisibility(v); onVisibilityChange?.(v); }}
                 className="accent-brand mt-0.5"
               />
               <div>
@@ -3126,7 +3029,7 @@ function RegisterTab({ name, coverUrl }: { name: string; coverUrl?: string }) {
 // ─────────────────────────────────────────────
 // REGISTER RIGHT PANEL  (등록 탭 미리보기)
 // ─────────────────────────────────────────────
-function RegisterPreviewPanel({ name }: { name: string }) {
+function RegisterPreviewPanel({ name, coverImage }: { name: string; coverImage?: string | null }) {
   const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\. /g, '.').replace('.', '');
 
   return (
@@ -3134,8 +3037,13 @@ function RegisterPreviewPanel({ name }: { name: string }) {
       {/* Story card */}
       <div className="mx-4 mt-4 rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
         {/* Cover image area */}
-        <div className="relative bg-gradient-to-br from-brand/80 to-brand aspect-[4/3] flex items-center justify-center">
-          <div className="text-5xl select-none">😊</div>
+        <div className="relative bg-gradient-to-br from-brand/80 to-brand aspect-[4/3] flex items-center justify-center overflow-hidden">
+          {coverImage ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={coverImage} alt="커버" className="w-full h-full object-cover" />
+          ) : (
+            <div className="text-5xl select-none">😊</div>
+          )}
           <div className="absolute bottom-3 right-3 flex items-center gap-1 bg-black/40 text-white text-xs font-semibold px-2 py-1 rounded-full">
             <span>👍</span> 1.6K
           </div>
@@ -3779,13 +3687,125 @@ function ChatInputBar({ validation, inputValue, setInputValue, onSend, onLockedC
 // CRACKER CHARGE MODAL
 // ─────────────────────────────────────────────
 const CRACKER_PACKAGES = [
-  { id: 'cracker_200',   label: '200 크래커',    price: 2000,  crackers: 200,   bonus: 0,    popular: false },
-  { id: 'cracker_500',   label: '500 크래커',    price: 4900,  crackers: 500,   bonus: 50,   popular: false },
-  { id: 'cracker_1000',  label: '1,000 크래커',  price: 9600,  crackers: 1000,  bonus: 100,  popular: false },
-  { id: 'cracker_3000',  label: '3,000 크래커',  price: 28000, crackers: 3000,  bonus: 500,  popular: true  },
-  { id: 'cracker_5000',  label: '5,000 크래커',  price: 46000, crackers: 5000,  bonus: 1000, popular: false },
-  { id: 'cracker_10000', label: '10,000 크래커', price: 90000, crackers: 10000, bonus: 3000, popular: false },
+  { id: 'cracker_200',   label: '200 단짠초코감자칩',    price: 2000,  crackers: 200,   bonus: 0,    popular: false },
+  { id: 'cracker_500',   label: '500 단짠초코감자칩',    price: 4900,  crackers: 500,   bonus: 50,   popular: false },
+  { id: 'cracker_1000',  label: '1,000 단짠초코감자칩',  price: 9600,  crackers: 1000,  bonus: 100,  popular: false },
+  { id: 'cracker_3000',  label: '3,000 단짠초코감자칩',  price: 28000, crackers: 3000,  bonus: 500,  popular: true  },
+  { id: 'cracker_5000',  label: '5,000 단짠초코감자칩',  price: 46000, crackers: 5000,  bonus: 1000, popular: false },
+  { id: 'cracker_10000', label: '10,000 단짠초코감자칩', price: 90000, crackers: 10000, bonus: 3000, popular: false },
 ];
+
+// ── 임시저장 내역 모달 ─────────────────────────────────────────────────────
+function DraftHistoryModal({ onClose, currentStoryId }: { onClose: () => void; currentStoryId: string | null }) {
+  const router = useRouter();
+  const { reset } = useStoryDraftStore();
+  const [drafts, setDrafts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.stories.my({ limit: 50 }).then((res: any) => {
+      const all: any[] = res.data ?? [];
+      setDrafts(all.filter((s: any) => s.status === 'DRAFT'));
+    }).finally(() => setLoading(false));
+  }, []);
+
+  const handleOpen = (id: string) => {
+    if (id === currentStoryId) { onClose(); return; }
+    reset();
+    router.push(`/creator/story/${id}/edit`);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-20" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: -8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: -8 }}
+        transition={{ duration: 0.15 }}
+        className="relative z-10 bg-white rounded-2xl shadow-2xl w-[480px] max-w-[calc(100vw-2rem)] mx-4 overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* 헤더 */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="text-gray-900 font-bold text-base">임시저장 내역</h2>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* 안내 */}
+        <div className="mx-4 mt-3 mb-2 px-3 py-2 bg-gray-50 rounded-xl flex items-center gap-2 text-xs text-gray-500">
+          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-gray-400" />
+          미등록 스토리 1개당 총 50개까지 저장할 수 있어요
+        </div>
+
+        {/* 개수 */}
+        <div className="flex items-center justify-between px-6 py-2">
+          <span className="text-sm text-gray-500">총 <span className="font-semibold text-gray-800">{drafts.length}</span>개</span>
+        </div>
+
+        {/* 리스트 */}
+        <div className="max-h-[360px] overflow-y-auto px-4 pb-4">
+          {loading ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="w-6 h-6 text-gray-300 animate-spin" />
+            </div>
+          ) : drafts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-14 text-center">
+              <div className="w-14 h-14 mb-3 text-gray-200 flex items-center justify-center">
+                <svg viewBox="0 0 48 48" fill="none" className="w-12 h-12">
+                  <rect x="6" y="8" width="28" height="36" rx="3" fill="#e5e7eb" />
+                  <rect x="10" y="16" width="20" height="2.5" rx="1.25" fill="#9ca3af" />
+                  <rect x="10" y="22" width="14" height="2.5" rx="1.25" fill="#9ca3af" />
+                  <circle cx="36" cy="34" r="9" fill="#d1d5db" />
+                  <path d="M33 34h6M36 31v6" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              </div>
+              <p className="text-gray-400 text-sm">아직 임시저장한 스토리가 없어요</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {drafts.map((draft) => (
+                <button
+                  key={draft.id}
+                  onClick={() => handleOpen(draft.id)}
+                  className={cn(
+                    'w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-all hover:border-gray-300 hover:bg-gray-50',
+                    draft.id === currentStoryId
+                      ? 'border-blue-200 bg-blue-50'
+                      : 'border-gray-100'
+                  )}
+                >
+                  <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
+                    {draft.coverUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={draft.coverUrl} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-gray-200 to-gray-300" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">
+                      {draft.title?.trim() || '제목 없음'}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {new Date(draft.createdAt).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })} 저장
+                    </p>
+                  </div>
+                  {draft.id === currentStoryId && (
+                    <span className="text-xs text-blue-500 font-medium flex-shrink-0">현재 편집 중</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
+}
 
 function CrackerChargeModal({ onClose }: { onClose: () => void }) {
   const [selected, setSelected] = useState(CRACKER_PACKAGES[3].id);
@@ -3844,8 +3864,8 @@ function CrackerChargeModal({ onClose }: { onClose: () => void }) {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div className="flex items-center gap-2">
-            <span className="text-lg">◆</span>
-            <h2 className="text-gray-900 font-bold text-base">크래커 충전하기</h2>
+            <span className="text-lg">🍟🍫</span>
+            <h2 className="text-gray-900 font-bold text-base">단짠초코감자칩 충전하기</h2>
           </div>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-400 transition-colors">
             <X className="w-4 h-4" />
@@ -3869,7 +3889,7 @@ function CrackerChargeModal({ onClose }: { onClose: () => void }) {
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-gray-900 font-semibold text-sm">◆ {p.crackers.toLocaleString()}</span>
+                    <span className="text-gray-900 font-semibold text-sm">🍟🍫 {p.crackers.toLocaleString()}</span>
                     {p.bonus > 0 && (
                       <span className="px-1.5 py-0.5 bg-orange-100 text-orange-600 text-[10px] font-bold rounded">+{p.bonus.toLocaleString()} 보너스</span>
                     )}
@@ -3898,7 +3918,7 @@ function CrackerChargeModal({ onClose }: { onClose: () => void }) {
           <div className="flex items-center justify-between text-sm">
             <span className="text-gray-500">선택 패키지</span>
             <span className="font-semibold text-gray-900">
-              ◆ {pkg.crackers.toLocaleString()}
+              🍟🍫 {pkg.crackers.toLocaleString()}
               {pkg.bonus > 0 && <span className="text-orange-500"> +{pkg.bonus.toLocaleString()}</span>}
             </span>
           </div>
@@ -3956,6 +3976,12 @@ export function StoryCreateForm({ initialStoryId }: { initialStoryId?: string } 
     reset,
   } = useStoryDraftStore();
 
+  const [showDraftHistory, setShowDraftHistory] = useState(false);
+  const [publishErrors, setPublishErrors] = useState<string[]>([]);
+  const [publishedStoryId, setPublishedStoryId] = useState<string | null>(null);
+  const [registerVisibility, setRegisterVisibility] = useState<string>('private');
+  const [isAlreadyPublished, setIsAlreadyPublished] = useState(false);
+
   // ── 편집 모드: 기존 스토리 데이터 로딩 ────────────────────────────────
   const [editDataLoaded, setEditDataLoaded] = useState(false);
   useEffect(() => {
@@ -3972,6 +3998,7 @@ export function StoryCreateForm({ initialStoryId }: { initialStoryId?: string } 
         setActiveStartSettingId(d.startSettings[0].id);
       }
       if (d.examples?.length) setExamples(d.examples);
+      if (d.status && d.status !== 'DRAFT') setIsAlreadyPublished(true);
       setEditDataLoaded(true);
     }).catch(() => {
       setEditDataLoaded(true); // 실패해도 빈 폼으로 진행
@@ -3994,7 +4021,7 @@ export function StoryCreateForm({ initialStoryId }: { initialStoryId?: string } 
   // AI model selector
   const [selectedModel, setSelectedModel] = useState<ChatModel>(CHAT_MODELS[2]);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
-  // 크래커 충전 모달
+  // 단짠초코감자칩 충전 모달
   const [crackerModalOpen, setCrackerModalOpen] = useState(false);
 
   const getChatValidation = (): ChatValidation => {
@@ -4117,10 +4144,63 @@ export function StoryCreateForm({ initialStoryId }: { initialStoryId?: string } 
 
   return (
     <div className="h-screen flex flex-col bg-white overflow-hidden">
-      {/* 크래커 충전 모달 */}
+      {/* 단짠초코감자칩 충전 모달 */}
       <AnimatePresence>
         {crackerModalOpen && (
           <CrackerChargeModal onClose={() => setCrackerModalOpen(false)} />
+        )}
+      </AnimatePresence>
+
+      {/* 등록 성공 모달 */}
+      <AnimatePresence>
+        {publishedStoryId && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center" onClick={() => {}}>
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              className="relative z-10 bg-white rounded-2xl shadow-2xl w-[380px] mx-4 p-8 text-center"
+            >
+              <div className="text-5xl mb-4">🎉</div>
+              <h2 className="text-gray-900 font-bold text-xl mb-2">스토리가 등록됐어요!</h2>
+              <p className="text-gray-400 text-sm mb-8 leading-relaxed">
+                독자들이 이제 이야기를 시작할 수 있어요.
+              </p>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => {
+                    const id = publishedStoryId;
+                    reset();
+                    setPublishedStoryId(null);
+                    window.location.href = `/story/${id}`;
+                  }}
+                  className="w-full py-3 rounded-xl bg-gray-900 text-white text-sm font-bold hover:bg-gray-800 transition-colors"
+                >
+                  스토리 바로 보기
+                </button>
+                <button
+                  onClick={() => {
+                    reset();
+                    setPublishedStoryId(null);
+                    window.location.href = '/creator';
+                  }}
+                  className="w-full py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors"
+                >
+                  내 작품으로 가기
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* 임시저장 내역 모달 */}
+      <AnimatePresence>
+        {showDraftHistory && (
+          <DraftHistoryModal
+            onClose={() => setShowDraftHistory(false)}
+            currentStoryId={storyId}
+          />
         )}
       </AnimatePresence>
       {/* ── TOP BAR ── */}
@@ -4173,23 +4253,32 @@ export function StoryCreateForm({ initialStoryId }: { initialStoryId?: string } 
               </>
             )}
           </div>
-          <button type="button" className="p-2 rounded-xl border border-gray-200 text-gray-400 hover:bg-gray-50 transition-colors">
+          <button
+            type="button"
+            onClick={() => setShowDraftHistory(true)}
+            className="p-2 rounded-xl border border-gray-200 text-gray-400 hover:bg-gray-50 transition-colors"
+            title="임시저장 내역"
+          >
             <History className="w-4 h-4" />
           </button>
           <button
             type="button"
-            disabled={!storyId}
+            disabled={!storyId || saveStatus === 'saving'}
             onClick={async () => {
               if (!storyId) return;
+              setPublishErrors([]);
               try {
                 setSaveStatus('saving');
-                await api.stories.publish(storyId);
+                const visMap: Record<string, string> = { public: 'PUBLIC', private: 'PRIVATE', link: 'UNLISTED' };
+                await api.stories.updatePublishSettings(storyId, { visibility: visMap[registerVisibility] ?? 'PRIVATE' });
+                if (!isAlreadyPublished) await api.stories.publish(storyId);
                 setSaveStatus('saved');
-                reset();
-                router.push('/creator');
+                setPublishedStoryId(storyId);
               } catch (e: any) {
                 setSaveStatus('error');
-                alert(e?.response?.data?.details?.join('\n') ?? '배포에 실패했습니다.');
+                const details: string[] = e?.response?.data?.details ?? [];
+                const msg: string = e?.response?.data?.error ?? '등록에 실패했습니다.';
+                setPublishErrors(details.length > 0 ? details : [msg]);
               }
             }}
             className="px-5 py-2 rounded-xl bg-gray-900 text-white text-sm font-bold hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -4217,6 +4306,33 @@ export function StoryCreateForm({ initialStoryId }: { initialStoryId?: string } 
           </button>
         ))}
       </div>
+
+      {/* ── 등록 에러 배너 ── */}
+      <AnimatePresence>
+        {publishErrors.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="flex-shrink-0 bg-red-50 border-b border-red-100 px-6 py-3"
+          >
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-red-600 text-xs font-semibold mb-1">등록 전 완성이 필요한 항목이 있어요</p>
+                <ul className="space-y-0.5">
+                  {publishErrors.map((e, i) => (
+                    <li key={i} className="text-red-500 text-xs">• {e}</li>
+                  ))}
+                </ul>
+              </div>
+              <button onClick={() => setPublishErrors([])} className="text-red-300 hover:text-red-500 transition-colors">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── MAIN SPLIT ── */}
       <div className="flex-1 flex overflow-hidden min-h-0">
@@ -4285,7 +4401,7 @@ export function StoryCreateForm({ initialStoryId }: { initialStoryId?: string } 
               />
             </div>
             <div style={{ display: activeTab === 'register' ? 'flex' : 'none' }} className="flex-col flex-1 min-h-0 overflow-hidden">
-              <RegisterTab name={name} />
+              <RegisterTab name={name} onVisibilityChange={setRegisterVisibility} />
             </div>
           </div>
 
@@ -4396,7 +4512,7 @@ export function StoryCreateForm({ initialStoryId }: { initialStoryId?: string } 
               <div className="flex-shrink-0 px-4 py-3 border-b border-gray-100">
                 <span className="text-gray-700 font-semibold text-sm">미리보기</span>
               </div>
-              <RegisterPreviewPanel name={name} />
+              <RegisterPreviewPanel name={name} coverImage={squareImage} />
             </div>
           ) : (
             /* Chat preview for start/stat/other tabs */

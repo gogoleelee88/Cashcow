@@ -27,6 +27,11 @@ import { notificationRoutes } from './routes/notifications.routes';
 import { userRoutes } from './routes/users.routes';
 import { storyRoutes } from './routes/stories.routes';
 import { imageRoutes } from './routes/images.routes';
+import { adminRoutes } from './routes/admin/index';
+import { profileRoutes } from './routes/profiles.routes';
+import { voiceRoutes } from './routes/voice.routes';
+import { appealsRoutes } from './routes/appeals.routes';
+import { postsRoutes } from './routes/posts.routes';
 import { verifyAccessToken } from './services/auth.service';
 
 // ─────────────────────────────────────────────
@@ -116,6 +121,11 @@ async function registerRoutes(): Promise<void> {
   app.register(userRoutes, { prefix: '/api/users' });
   app.register(storyRoutes, { prefix: '/api/stories' });
   app.register(imageRoutes, { prefix: '/api/images' });
+  app.register(adminRoutes, { prefix: '/api/admin' });
+  app.register(profileRoutes, { prefix: '/api/profiles' });
+  app.register(voiceRoutes, { prefix: '/api/voice' });
+  app.register(appealsRoutes, { prefix: '/api/appeals' });
+  app.register(postsRoutes, { prefix: '/api/posts' });
 
   // 404 handler
   app.setNotFoundHandler((request, reply) => {

@@ -2,8 +2,8 @@ import type { FastifyPluginAsync } from 'fastify';
 import { prisma, prismaRead } from '../lib/prisma';
 import { requireAuth } from '../plugins/auth.plugin';
 import { chatRateLimit } from '../plugins/rate-limit.plugin';
-import { filterUserMessage, estimateTokens } from '../services/ai.service';
-import { enqueueMemoryCompression } from '../services/queue.service';
+import { filterUserMessage, estimateTokens, extractEpisodicMemory, updateRelationshipState } from '../services/ai.service';
+import { enqueueMemoryCompression, enqueueAutoModeration } from '../services/queue.service';
 import { chatMessagesTotal, creditsConsumedTotal } from '../lib/metrics';
 import { logger } from '../lib/logger';
 
@@ -24,17 +24,23 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
         take: Number(limit),
         include: {
           character: {
-            select: { id: true, name: true, avatarUrl: true, category: true },
+            select: { id: true, name: true, avatarUrl: true, category: true, greeting: true, prologue: true, playGuide: true, suggestedReplies: true, situationImages: true },
           },
           messages: {
             orderBy: { createdAt: 'desc' },
             take: 1,
+            where: { isHidden: false },
             select: { id: true, role: true, content: true, createdAt: true },
           },
         },
       });
 
-      return reply.send({ success: true, data: conversations });
+      const result = conversations.map(({ messages, ...conv }) => ({
+        ...conv,
+        lastMessage: messages[0] ?? null,
+      }));
+
+      return reply.send({ success: true, data: result });
     },
   });
 
@@ -125,7 +131,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
         take: Number(limit) + 1,
         select: {
           id: true, role: true, content: true, status: true,
-          isFiltered: true, createdAt: true,
+          isFiltered: true, isHidden: true, createdAt: true,
         },
       });
 
@@ -133,9 +139,13 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
       if (hasMore) messages.pop();
       messages.reverse();
 
+      const processed = messages.map((m) =>
+        m.isHidden ? { ...m, content: '[삭제된 메시지입니다.]' } : m
+      );
+
       return reply.send({
         success: true,
-        data: messages,
+        data: processed,
         meta: {
           hasMore,
           nextCursor: hasMore ? messages[0]?.createdAt.toISOString() : null,
@@ -185,6 +195,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
               id: true, name: true, model: true, maxTokens: true,
               systemPromptEncrypted: true, systemPromptIv: true,
               temperature: true, creatorId: true, revenuePerChat: true,
+              situationImages: true,
             },
           },
         },
@@ -229,6 +240,13 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
       reply.raw.setHeader('Cache-Control', 'no-cache');
       reply.raw.setHeader('Connection', 'keep-alive');
       reply.raw.setHeader('X-Accel-Buffering', 'no');
+      // CORS headers must be set manually here because reply.raw.flushHeaders()
+      // bypasses Fastify's onSend lifecycle where @fastify/cors normally injects them
+      const origin = request.headers.origin;
+      if (origin) {
+        reply.raw.setHeader('Access-Control-Allow-Origin', origin);
+        reply.raw.setHeader('Access-Control-Allow-Credentials', 'true');
+      }
       reply.raw.flushHeaders();
 
       const sendEvent = (event: string, data: unknown) => {
@@ -265,7 +283,7 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
             sendEvent('delta', { text });
           },
 
-          onComplete: async ({ inputTokens, outputTokens, fullText }) => {
+          onComplete: async ({ inputTokens, outputTokens, fullText, imageId }) => {
             const creditCost = calculateCreditCost(inputTokens, outputTokens, model);
 
             // Save assistant message
@@ -312,10 +330,47 @@ export const chatRoutes: FastifyPluginAsync = async (fastify) => {
             chatMessagesTotal.inc({ tier: user.subscriptionTier });
             creditsConsumedTotal.inc({ model: conversation.character.model }, creditCost);
 
-            // Trigger memory compression if conversation is long
+            // 상황 이미지 SSE 이벤트 (Phase 3)
+            if (imageId) {
+              type SituationImage = { id: string; url: string; triggerKeywords: string[]; description: string };
+              const situationImages = (conversation.character as any).situationImages as SituationImage[] | null;
+              const matchedImage = situationImages?.find((img) => img.id === imageId);
+              if (matchedImage) {
+                sendEvent('image', { imageId, imageUrl: matchedImage.url });
+              }
+            }
+
+            // 비동기 백그라운드 메모리 트리거들 (응답 지연 없음)
             const msgCount = await prisma.message.count({ where: { conversationId } });
-            if (msgCount > 50 && msgCount % 20 === 0) {
-              await enqueueMemoryCompression(conversationId);
+
+            // 자동 모더레이션: 모든 AI 응답 비동기 검수
+            enqueueAutoModeration({
+              messageId: assistantMessage.id,
+              content: fullText,
+              characterName: conversation.character.name,
+              conversationId,
+              userId: request.userId!,
+            }).catch((err) => logger.warn({ err, conversationId }, 'Auto moderation enqueue failed'));
+
+            // 계층 1: 20의 배수마다 압축 (20, 40, 60...)
+            if (msgCount % 20 === 0) {
+              enqueueMemoryCompression(conversationId).catch((err) =>
+                logger.warn({ err, conversationId }, 'Memory compression enqueue failed')
+              );
+            }
+
+            // 계층 2: 30의 배수마다 에피소딕 기억 추출
+            if (msgCount % 30 === 0) {
+              extractEpisodicMemory(conversationId).catch((err) =>
+                logger.warn({ err, conversationId }, 'Episodic memory extraction failed')
+              );
+            }
+
+            // 계층 3: 50의 배수마다 관계 상태 업데이트
+            if (msgCount % 50 === 0) {
+              updateRelationshipState(conversationId).catch((err) =>
+                logger.warn({ err, conversationId }, 'Relationship state update failed')
+              );
             }
 
             sendEvent('done', {

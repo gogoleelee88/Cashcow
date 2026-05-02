@@ -61,3 +61,19 @@ apps/api/prisma/migrations
 
 # Docker
 .docker-data
+
+# Tokens / credentials
+tokens.json
+
+# Playwright test artifacts
+pw_*.png
+pw_*.cjs
+
+# Temp / local scripts
+apps/api/Windows\ PowerShell.txt
+apps/api/test-prisma.js
+e2e/.auth/
+test-results/
+phase1_check.mjs
+test_*.png
+test_upload.cjs

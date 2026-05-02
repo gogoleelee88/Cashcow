@@ -32,7 +32,7 @@ export const aiRequestTotal = new Counter({
 export const aiRequestDuration = new Histogram({
   name: 'characterverse_ai_request_duration_seconds',
   help: 'AI API request duration',
-  labelNames: ['model'],
+  labelNames: ['model', 'status'],
   buckets: [0.5, 1, 2, 5, 10, 20, 30, 60],
   registers: [register],
 });

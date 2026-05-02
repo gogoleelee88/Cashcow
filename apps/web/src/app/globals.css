@@ -206,3 +206,37 @@
     -webkit-line-clamp: 3;
   }
 }
+
+/* ─── KIDS MODE THEME ─────────────────────────── */
+.kids-mode {
+  --background:       255 255 255;
+  --surface:          241 248 255;
+  --surface-elevated: 255 255 255;
+  --border:           186 224 255;
+  --border-strong:    100 180 255;
+  --text-primary:     20  40  80;
+  --text-secondary:   60  100 160;
+  --text-muted:       120 160 210;
+  --brand:            14  165 233;
+  --brand-light:      56  189 248;
+}
+
+.kids-mode header {
+  background: linear-gradient(135deg, #dbeafe 0%, #e0f2fe 100%) !important;
+  border-bottom-color: #bae6fd !important;
+}
+
+.kids-mode .character-card {
+  border-radius: 1.25rem !important;
+  box-shadow: 0 4px 16px rgba(14, 165, 233, 0.12) !important;
+}
+
+.kids-mode-banner {
+  background: linear-gradient(90deg, #0ea5e9, #38bdf8);
+  color: white;
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+  padding: 0.45rem 0;
+  text-align: center;
+}

@@ -126,13 +126,133 @@ export function filterAssistantResponse(content: string): { safe: boolean; filte
 }
 
 // ─────────────────────────────────────────────
+// AUTO MODERATION (GPT-4o-mini 2차 분류)
+// 키워드 필터 통과 후 비동기 검수
+// ─────────────────────────────────────────────
+export type ModerationCategory =
+  | 'SELF_HARM'
+  | 'SEXUAL_MINOR'
+  | 'REAL_PERSON'
+  | 'ILLEGAL'
+  | 'PRIVACY'
+  | 'MANIPULATION';
+
+export interface ModerationResult {
+  flagged: boolean;
+  category: ModerationCategory | null;
+  confidence: number;
+}
+
+export async function autoModerateMessage(content: string): Promise<ModerationResult> {
+  try {
+    const response = await openai.chat.completions.create({
+      model: config.OPENAI_HAIKU_MODEL,
+      max_tokens: 150,
+      temperature: 0,
+      messages: [
+        {
+          role: 'system',
+          content: `You are a content moderation AI. Analyze the text and return JSON only.
+Categories:
+- SELF_HARM: promotes or details self-harm, suicide methods (indirect expressions included)
+- SEXUAL_MINOR: sexual content involving minors
+- REAL_PERSON: defamation or impersonation of real people
+- ILLEGAL: promotes illegal activities
+- PRIVACY: attempts to extract personal information
+- MANIPULATION: emotional manipulation, financial coercion
+
+Respond ONLY with JSON:
+{"flagged": boolean, "category": "CATEGORY_NAME or null", "confidence": 0.0-1.0}`,
+        },
+        { role: 'user', content: content.slice(0, 1000) },
+      ],
+    });
+
+    const raw = response.choices[0].message.content ?? '{}';
+    const json = JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] ?? '{}');
+    return {
+      flagged: json.flagged === true && json.confidence >= 0.7,
+      category: json.category ?? null,
+      confidence: json.confidence ?? 0,
+    };
+  } catch {
+    return { flagged: false, category: null, confidence: 0 };
+  }
+}
+
+// ─────────────────────────────────────────────
+// CHARACTER PROMPT REVIEW
+// 캐릭터 등록 시 시스템 프롬프트 사전 검수
+// ─────────────────────────────────────────────
+export type CharacterReviewStatus = 'AUTO_APPROVED' | 'NEEDS_REVIEW' | 'REJECTED';
+
+export interface CharacterReviewResult {
+  status: CharacterReviewStatus;
+  note: string | null;
+}
+
+export async function reviewCharacterPrompt(
+  name: string,
+  description: string,
+  systemPrompt: string
+): Promise<CharacterReviewResult> {
+  try {
+    const content = `캐릭터명: ${name}\n설명: ${description}\n시스템 프롬프트: ${systemPrompt.slice(0, 2000)}`;
+
+    const response = await openai.chat.completions.create({
+      model: config.OPENAI_HAIKU_MODEL,
+      max_tokens: 200,
+      temperature: 0,
+      messages: [
+        {
+          role: 'system',
+          content: `AI 캐릭터 콘텐츠 검수 AI입니다. 캐릭터 정보를 검토하고 JSON만 반환하세요.
+
+판정 기준:
+- REJECTED: 미성년자 성적 묘사, 실제 인물 사칭, 자해/자살 조장, 불법 행위 명시적 지시
+- NEEDS_REVIEW: 성인 콘텐츠 암시, 폭력적 요소, 모호한 위험 표현
+- AUTO_APPROVED: 그 외 일반 캐릭터
+
+응답 형식 (JSON만):
+{"status": "AUTO_APPROVED|NEEDS_REVIEW|REJECTED", "note": "문제가 있을 경우 사유, 없으면 null"}`,
+        },
+        { role: 'user', content },
+      ],
+    });
+
+    const raw = response.choices[0].message.content ?? '{}';
+    const json = JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] ?? '{}');
+    return {
+      status: (json.status as CharacterReviewStatus) ?? 'NEEDS_REVIEW',
+      note: json.note ?? null,
+    };
+  } catch {
+    return { status: 'NEEDS_REVIEW', note: '자동 검수 실패 - 수동 검토 필요' };
+  }
+}
+
+// ─────────────────────────────────────────────
 // PERSONA DRIFT PREVENTION
 // Ensures character stays in character
 // ─────────────────────────────────────────────
+export interface EpisodicMemory {
+  userFacts: Record<string, unknown>;
+  keyEvents: Array<{ turn: number; event: string }>;
+  relationshipMilestones: string[];
+}
+
 export function buildSystemPrompt(
   decryptedSystemPrompt: string,
   characterName: string,
-  conversationSummary?: string
+  opts?: {
+    conversationSummary?: string;
+    episodicMemory?: EpisodicMemory | null;
+    relationshipLevel?: number;
+    emotionalTone?: string | null;
+    lastSessionSummary?: string | null;
+    userCharacterMemory?: { cumulativeSummary?: string | null; userProfile?: Record<string, unknown> | null } | null;
+    situationImages?: Array<{ id: string; description: string; triggerKeywords: string[] }> | null;
+  }
 ): string {
   const parts = [
     decryptedSystemPrompt,
@@ -145,11 +265,260 @@ export function buildSystemPrompt(
     `- 유해하거나 불법적인 행위를 조장하지 마세요.`,
   ];
 
-  if (conversationSummary) {
-    parts.push('', `[이전 대화 요약]`, conversationSummary);
+  if (opts?.conversationSummary) {
+    parts.push('', `[이전 대화 요약]`, opts.conversationSummary);
+  }
+
+  if (opts?.lastSessionSummary) {
+    parts.push('', `[지난 세션 요약]`, opts.lastSessionSummary);
+    parts.push(`- 위 내용을 바탕으로 자연스럽게 이어지는 대화를 이어가세요.`);
+  }
+
+  if (opts?.userCharacterMemory?.cumulativeSummary) {
+    parts.push('', `[누적 기억]`, opts.userCharacterMemory.cumulativeSummary);
+  }
+
+  if (opts?.userCharacterMemory?.userProfile && Object.keys(opts.userCharacterMemory.userProfile).length > 0) {
+    const profile = opts.userCharacterMemory.userProfile;
+    const profileLines = Object.entries(profile)
+      .filter(([, v]) => v !== null && v !== undefined)
+      .map(([k, v]) => `  ${k}: ${Array.isArray(v) ? (v as string[]).join(', ') : v}`);
+    if (profileLines.length > 0) {
+      parts.push('', `[유저 정보]`, ...profileLines);
+    }
+  }
+
+  if (opts?.episodicMemory) {
+    const em = opts.episodicMemory;
+    if (em.keyEvents && em.keyEvents.length > 0) {
+      parts.push('', `[중요 사건]`);
+      em.keyEvents.slice(-5).forEach((e) => parts.push(`  - (턴 ${e.turn}) ${e.event}`));
+    }
+    if (em.relationshipMilestones && em.relationshipMilestones.length > 0) {
+      parts.push('', `[관계 이정표]`, `  ${em.relationshipMilestones.join(' → ')}`);
+    }
+  }
+
+  if (opts?.relationshipLevel !== undefined && opts.relationshipLevel > 0) {
+    const levelDesc =
+      opts.relationshipLevel >= 80 ? '매우 친밀한 사이' :
+      opts.relationshipLevel >= 60 ? '서로 이름을 부르는 사이' :
+      opts.relationshipLevel >= 40 ? '친해지고 있는 사이' :
+      opts.relationshipLevel >= 20 ? '서로를 알아가는 사이' : '처음 만나는 사이';
+    const tone = opts.emotionalTone ? ` — 현재 분위기: ${opts.emotionalTone}` : '';
+    parts.push('', `[관계 상태] 친밀도 ${opts.relationshipLevel}/100 — ${levelDesc}${tone}`);
+  }
+
+  if (opts?.situationImages && opts.situationImages.length > 0) {
+    parts.push('', `[이미지 자동 출력 규칙 — 반드시 준수]`);
+    parts.push(`아래 각 상황이 대화에서 발생하면, 응답 본문을 모두 작성한 뒤 맨 마지막 줄에 해당 태그를 단독으로 출력하세요.`);
+    parts.push(`형식: [IMAGE:이미지ID] (대괄호 포함, 해당 줄에 이 태그만 위치, 다른 텍스트 금지)`);
+    parts.push(`태그를 출력해야 하는 상황 목록:`);
+    opts.situationImages.forEach((img, idx) => {
+      parts.push(`  ${idx + 1}. 상황: "${img.description}" → 출력할 태그: [IMAGE:${img.id}]`);
+    });
+    parts.push(`중요: 상황이 해당되면 반드시 태그를 출력해야 합니다. 생략하면 안 됩니다.`);
   }
 
   return parts.join('\n');
+}
+
+// ─────────────────────────────────────────────
+// EPISODIC MEMORY EXTRACTION (계층 2)
+// 30번째 메시지마다 중요 사건/팩트 추출
+// ─────────────────────────────────────────────
+export async function extractEpisodicMemory(conversationId: string): Promise<void> {
+  const [conversation, messages] = await Promise.all([
+    prisma.conversation.findUnique({ where: { id: conversationId } }),
+    prisma.message.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: 'asc' },
+      select: { role: true, content: true },
+    }),
+  ]);
+  if (!conversation || messages.length < 10) return;
+
+  const existing = (conversation.episodicMemory as unknown as EpisodicMemory | null) ?? {
+    userFacts: {}, keyEvents: [], relationshipMilestones: [],
+  };
+
+  const recentSlice = messages.slice(-30);
+  const dialogText = recentSlice
+    .map((m, i) => `${m.role === 'USER' ? '사용자' : 'AI'}: ${m.content.slice(0, 300)}`)
+    .join('\n');
+
+  const response = await openai.chat.completions.create({
+    model: config.OPENAI_HAIKU_MODEL,
+    max_tokens: 600,
+    temperature: 0.3,
+    messages: [
+      {
+        role: 'system',
+        content: `당신은 대화 분석 AI입니다. 대화에서 중요한 정보를 추출해 JSON으로 반환하세요.
+반드시 아래 형식으로만 응답하세요 (JSON만, 설명 없이):
+{
+  "userFacts": { "name": "이름이 밝혀진 경우만", "likes": ["좋아하는 것"], "dislikes": ["싫어하는 것"] },
+  "keyEvents": [{ "event": "중요한 사건 1문장" }],
+  "relationshipMilestones": ["관계 이정표"]
+}`,
+      },
+      { role: 'user', content: `대화:\n${dialogText}` },
+    ],
+  });
+
+  try {
+    const raw = response.choices[0].message.content ?? '{}';
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return;
+    const extracted = JSON.parse(jsonMatch[0]);
+
+    const merged: EpisodicMemory = {
+      userFacts: { ...existing.userFacts, ...extracted.userFacts },
+      keyEvents: [
+        ...existing.keyEvents,
+        ...(extracted.keyEvents ?? []).map((e: { event: string }) => ({
+          turn: messages.length,
+          event: e.event,
+        })),
+      ].slice(-20), // 최대 20개만 유지
+      relationshipMilestones: Array.from(
+        new Set([...existing.relationshipMilestones, ...(extracted.relationshipMilestones ?? [])])
+      ).slice(-10),
+    };
+
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { episodicMemory: merged as any, episodicUpdatedAt: new Date() },
+    });
+
+    // UserCharacterMemory 동기화
+    await syncUserCharacterMemory(conversation.userId, conversation.characterId, merged);
+
+    logger.info({ conversationId }, 'Episodic memory extracted');
+  } catch (err) {
+    logger.warn({ err, conversationId }, 'Failed to parse episodic memory JSON');
+  }
+}
+
+// ─────────────────────────────────────────────
+// RELATIONSHIP STATE UPDATE (계층 3)
+// 50번째 메시지마다 친밀도/감정 재계산
+// ─────────────────────────────────────────────
+export async function updateRelationshipState(conversationId: string): Promise<void> {
+  const [conversation, messages] = await Promise.all([
+    prisma.conversation.findUnique({ where: { id: conversationId } }),
+    prisma.message.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: 'asc' },
+      select: { role: true, content: true },
+      take: 50,
+    }),
+  ]);
+  if (!conversation) return;
+
+  const dialogText = messages
+    .map((m) => `${m.role === 'USER' ? '사용자' : 'AI'}: ${m.content.slice(0, 200)}`)
+    .join('\n');
+
+  const response = await openai.chat.completions.create({
+    model: config.OPENAI_HAIKU_MODEL,
+    max_tokens: 300,
+    temperature: 0.2,
+    messages: [
+      {
+        role: 'system',
+        content: `대화를 분석해 관계 상태를 JSON으로 반환하세요. JSON만 응답하세요:
+{
+  "relationshipLevel": 0~100 숫자,
+  "emotionalTone": "현재 감정 분위기 한 단어 (따뜻함/설렘/긴장/평온/슬픔 등)",
+  "lastSessionSummary": "이 대화를 1~2문장으로 요약 (다음에 만날 때 인사말에 활용할 내용)"
+}`,
+      },
+      { role: 'user', content: `대화:\n${dialogText}` },
+    ],
+  });
+
+  try {
+    const raw = response.choices[0].message.content ?? '{}';
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return;
+    const result = JSON.parse(jsonMatch[0]);
+
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: {
+        relationshipLevel: Math.min(100, Math.max(0, result.relationshipLevel ?? conversation.relationshipLevel)),
+        emotionalTone: result.emotionalTone ?? conversation.emotionalTone,
+        lastSessionSummary: result.lastSessionSummary ?? conversation.lastSessionSummary,
+      },
+    });
+
+    logger.info({ conversationId, level: result.relationshipLevel }, 'Relationship state updated');
+  } catch (err) {
+    logger.warn({ err, conversationId }, 'Failed to parse relationship state JSON');
+  }
+}
+
+// ─────────────────────────────────────────────
+// USER CHARACTER MEMORY SYNC (다중 대화 간 기억 공유)
+// ─────────────────────────────────────────────
+export async function syncUserCharacterMemory(
+  userId: string,
+  characterId: string,
+  episodic: EpisodicMemory
+): Promise<void> {
+  const existing = await prisma.userCharacterMemory.findUnique({
+    where: { userId_characterId: { userId, characterId } },
+  });
+
+  const mergedProfile = {
+    ...(existing?.userProfile as Record<string, unknown> ?? {}),
+    ...episodic.userFacts,
+  };
+
+  const summaryParts: string[] = [];
+  const profileEntries = Object.entries(mergedProfile).filter(([, v]) => v !== null && v !== undefined);
+  if (profileEntries.length > 0) {
+    summaryParts.push(
+      `유저 정보: ${profileEntries.map(([k, v]) => `${k}=${Array.isArray(v) ? (v as string[]).join(', ') : v}`).join(' / ')}`
+    );
+  }
+  if (episodic.keyEvents.length > 0) {
+    summaryParts.push(`주요 사건: ${episodic.keyEvents.slice(-5).map((e) => e.event).join(' / ')}`);
+  }
+  if (episodic.relationshipMilestones.length > 0) {
+    summaryParts.push(`관계 흐름: ${episodic.relationshipMilestones.join(' → ')}`);
+  }
+  const cumulativeSummary = summaryParts.length > 0 ? summaryParts.join('\n') : null;
+
+  if (existing) {
+    await prisma.userCharacterMemory.update({
+      where: { userId_characterId: { userId, characterId } },
+      data: {
+        userProfile: mergedProfile as any,
+        cumulativeSummary,
+        totalInteractions: { increment: 1 },
+        updatedAt: new Date(),
+      },
+    });
+  } else {
+    await prisma.userCharacterMemory.create({
+      data: { userId, characterId, userProfile: mergedProfile as any, cumulativeSummary, totalInteractions: 1 },
+    });
+  }
+}
+
+// ─────────────────────────────────────────────
+// SITUATION IMAGE TAG PARSER (Phase 3)
+// AI 응답에서 [IMAGE:id] 태그 추출
+// ─────────────────────────────────────────────
+export function parseImageTag(text: string): { cleanText: string; imageId: string | null } {
+  const match = text.match(/\[IMAGE:([^\]]+)\]\s*$/);
+  if (!match) return { cleanText: text, imageId: null };
+  return {
+    cleanText: text.slice(0, match.index).trimEnd(),
+    imageId: match[1],
+  };
 }
 
 // ─────────────────────────────────────────────
@@ -161,8 +530,8 @@ export interface StreamOptions {
   userId: string;
   userMessage: string;
   onChunk: (text: string) => void;
-  onComplete: (result: { inputTokens: number; outputTokens: number; fullText: string }) => void;
-  onError: (error: Error) => void;
+  onComplete: (result: { inputTokens: number; outputTokens: number; fullText: string; imageId?: string | null }) => Promise<void>;
+  onError: (error: Error) => Promise<void> | void;
   signal?: AbortSignal;
 }
 
@@ -179,18 +548,56 @@ export async function streamChatResponse(options: StreamOptions): Promise<void> 
 
     const systemPrompt = decrypt(character.systemPromptEncrypted, character.systemPromptIv);
 
-    // Fetch conversation history
-    const [conversation, historyMessages] = await Promise.all([
+    // Fetch conversation history + UserCharacterMemory in parallel
+    const [conversation, historyMessages, userCharMemory] = await Promise.all([
       prisma.conversation.findUniqueOrThrow({ where: { id: conversationId } }),
       prisma.message.findMany({
         where: { conversationId },
         orderBy: { createdAt: 'asc' },
-        take: 100, // Max 100 messages to process
+        take: 100,
+      }),
+      prisma.userCharacterMemory.findUnique({
+        where: { userId_characterId: { userId, characterId } },
       }),
     ]);
 
-    const summary = conversation.summary || undefined;
-    const fullSystem = buildSystemPrompt(systemPrompt, character.name, summary);
+    type SituationImage = { id: string; url: string; triggerKeywords: string[]; description: string };
+    const situationImages = (character.situationImages as SituationImage[] | null)?.map((img) => ({
+      id: img.id,
+      description: img.description,
+      triggerKeywords: img.triggerKeywords,
+    }));
+
+    const fullSystem = buildSystemPrompt(systemPrompt, character.name, {
+      conversationSummary: conversation.summary ?? undefined,
+      episodicMemory: (conversation.episodicMemory as unknown as EpisodicMemory | null) ?? null,
+      relationshipLevel: (conversation as any).relationshipLevel ?? 0,
+      emotionalTone: (conversation as any).emotionalTone ?? null,
+      lastSessionSummary: (conversation as any).lastSessionSummary ?? null,
+      userCharacterMemory: userCharMemory
+        ? { cumulativeSummary: userCharMemory.cumulativeSummary, userProfile: userCharMemory.userProfile as Record<string, unknown> | null }
+        : null,
+      situationImages: situationImages ?? null,
+    });
+
+    // Build few-shot messages from creator's example dialogues
+    // Format stored in DB: [{id, messages:[{id, role:'character'|'user', content}]}]
+    type ExampleMsg = { role: 'character' | 'user'; content: string };
+    type ExampleDialogue = { id: string; messages: ExampleMsg[] };
+    const exampleDialogues = character.exampleDialogues as ExampleDialogue[] | null;
+    const fewShotMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+    if (exampleDialogues && exampleDialogues.length > 0) {
+      for (const example of exampleDialogues.slice(0, 3)) {
+        for (const msg of example.messages) {
+          if (msg.content?.trim()) {
+            fewShotMessages.push({
+              role: msg.role === 'user' ? 'user' : 'assistant',
+              content: msg.content,
+            });
+          }
+        }
+      }
+    }
 
     // Convert to Anthropic format, respecting context window
     const formattedHistory = selectContextMessages(
@@ -217,6 +624,7 @@ export async function streamChatResponse(options: StreamOptions): Promise<void> 
         stream_options: { include_usage: true },
         messages: [
           { role: 'system', content: fullSystem },
+          ...fewShotMessages,
           ...formattedHistory,
         ],
       },
@@ -238,16 +646,19 @@ export async function streamChatResponse(options: StreamOptions): Promise<void> 
       }
     }
 
+    // Parse situation image tag before filtering
+    const { cleanText, imageId } = parseImageTag(fullText);
+
     // Filter final response
-    const filterResult = filterAssistantResponse(fullText);
-    const finalText = filterResult.safe ? fullText : filterResult.filtered!;
+    const filterResult = filterAssistantResponse(cleanText);
+    const finalText = filterResult.safe ? cleanText : filterResult.filtered!;
 
     timer({ model, status: 'success' });
     aiRequestTotal.inc({ model, status: 'success' });
     aiTokensUsed.inc({ model, type: 'input' }, inputTokens);
     aiTokensUsed.inc({ model, type: 'output' }, outputTokens);
 
-    onComplete({ inputTokens, outputTokens, fullText: finalText });
+    await onComplete({ inputTokens, outputTokens, fullText: finalText, imageId });
   } catch (err) {
     timer({ model: 'unknown', status: 'error' });
     aiRequestTotal.inc({ model: 'unknown', status: 'error' });

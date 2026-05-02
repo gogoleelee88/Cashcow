@@ -28,6 +28,7 @@ import { authRateLimit } from '../plugins/rate-limit.plugin';
 import { requireAuth } from '../plugins/auth.plugin';
 import { authEventsTotal } from '../lib/metrics';
 import { logger } from '../lib/logger';
+import { config } from '../config';
 
 const registerSchema = z.object({
   email: z.string().email('유효한 이메일을 입력해주세요'),
@@ -243,7 +244,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/oauth/google', {
     preHandler: [authRateLimit],
     handler: async (request, reply) => {
-      const redirectUri = `${fastify.config.API_BASE_URL}/api/auth/oauth/google/callback`;
+      const redirectUri = `${config.API_BASE_URL}/api/auth/oauth/google/callback`;
       const state = await generateOAuthState('google', redirectUri);
       const url = getGoogleAuthUrl(state, redirectUri);
       return reply.redirect(url);
@@ -255,7 +256,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       const { code, state, error } = request.query as Record<string, string>;
 
       if (error || !code || !state) {
-        return reply.redirect(`${fastify.config.WEB_BASE_URL}/login?error=oauth_cancelled`);
+        return reply.redirect(`${config.WEB_BASE_URL}/login?error=oauth_cancelled`);
       }
 
       try {
@@ -279,12 +280,12 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         authEventsTotal.inc({ event: 'login', provider: 'google' });
 
         // Redirect to web with tokens in fragment (never in query string)
-        const redirectUrl = new URL(`${fastify.config.WEB_BASE_URL}/auth/callback`);
+        const redirectUrl = new URL(`${config.WEB_BASE_URL}/auth/callback`);
         redirectUrl.hash = `access_token=${authTokens.accessToken}&refresh_token=${authTokens.refreshToken}`;
         return reply.redirect(redirectUrl.toString());
       } catch (err) {
         logger.error({ err }, 'Google OAuth callback error');
-        return reply.redirect(`${fastify.config.WEB_BASE_URL}/login?error=oauth_failed`);
+        return reply.redirect(`${config.WEB_BASE_URL}/login?error=oauth_failed`);
       }
     },
   });
@@ -295,7 +296,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/oauth/kakao', {
     preHandler: [authRateLimit],
     handler: async (request, reply) => {
-      const redirectUri = `${fastify.config.API_BASE_URL}/api/auth/oauth/kakao/callback`;
+      const redirectUri = `${config.API_BASE_URL}/api/auth/oauth/kakao/callback`;
       const state = await generateOAuthState('kakao', redirectUri);
       const url = getKakaoAuthUrl(state, redirectUri);
       return reply.redirect(url);
@@ -307,7 +308,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       const { code, state, error } = request.query as Record<string, string>;
 
       if (error || !code || !state) {
-        return reply.redirect(`${fastify.config.WEB_BASE_URL}/login?error=oauth_cancelled`);
+        return reply.redirect(`${config.WEB_BASE_URL}/login?error=oauth_cancelled`);
       }
 
       try {
@@ -340,12 +341,12 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         const authTokens = await createTokenPair(user, request.ip, request.headers['user-agent']);
         authEventsTotal.inc({ event: 'login', provider: 'kakao' });
 
-        const redirectUrl = new URL(`${fastify.config.WEB_BASE_URL}/auth/callback`);
+        const redirectUrl = new URL(`${config.WEB_BASE_URL}/auth/callback`);
         redirectUrl.hash = `access_token=${authTokens.accessToken}&refresh_token=${authTokens.refreshToken}`;
         return reply.redirect(redirectUrl.toString());
       } catch (err) {
         logger.error({ err }, 'Kakao OAuth callback error');
-        return reply.redirect(`${fastify.config.WEB_BASE_URL}/login?error=oauth_failed`);
+        return reply.redirect(`${config.WEB_BASE_URL}/login?error=oauth_failed`);
       }
     },
   });
@@ -399,6 +400,6 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
 };
 
 function sanitizeUser(user: any) {
-  const { passwordHash, creditBalance, ...rest } = user;
-  return { ...rest, credits: creditBalance };
+  const { passwordHash, ...rest } = user;
+  return rest;
 }

@@ -97,6 +97,12 @@ export const uploadRateLimit = createRateLimiter({
   keyPrefix: 'upload',
 });
 
+export const adminRateLimit = createRateLimiter({
+  windowSeconds: 60,
+  maxRequests: 1000,
+  keyPrefix: 'admin',
+});
+
 const rateLimitPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('onRequest', globalRateLimit);
 };

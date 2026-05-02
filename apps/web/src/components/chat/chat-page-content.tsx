@@ -4,44 +4,54 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
+import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ArrowLeft, Send, MoreHorizontal, Trash2, Pin, RefreshCw,
-  Zap, ChevronDown, Copy, Check, Info, AlertCircle,
-  MessageCircle, Settings, Sparkles
+  Send, MoreVertical, Pencil, Loader2, MessageCircle,
+  Sparkles, ChevronDown, BookOpen, LayoutList, Smile, Plus,
+  Mic, MicOff, Volume2, VolumeX, Play, Square, ChevronLeft,
+  Trash2, CheckCircle2, Circle,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { api, streamChatMessage } from '../../lib/api';
+import { api, streamChatMessage, voiceApi } from '../../lib/api';
 import { useAuthStore } from '../../stores/auth.store';
-import { useChatStore } from '../../stores/chat.store';
-import { formatRelativeTime, getCharacterAvatarUrl, formatCount } from '@characterverse/utils';
+import { getCharacterAvatarUrl } from '@characterverse/utils';
 import type { ChatMessage, Conversation } from '@characterverse/types';
-import { Sidebar } from '../layout/sidebar';
-import Link from 'next/link';
+import { MainLayout } from '../layout/main-layout';
 
-// ─────────────────────────────────────────────
-// MAIN LAYOUT: 3-column on desktop (sidebar | conversation list | chat)
-// ─────────────────────────────────────────────
+type UiStyle = 'story' | 'kakao';
+
+// ── 메인 컴포넌트 ─────────────────────────────────────────────────
 export function ChatPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const characterId = searchParams?.get('characterId');
   const conversationId = searchParams?.get('conversationId');
-  const { user, isAuthenticated, accessToken } = useAuthStore();
+  const { user, isAuthenticated, isLoading, accessToken } = useAuthStore();
   const queryClient = useQueryClient();
-
   const [activeConvId, setActiveConvId] = useState<string | null>(conversationId ?? null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState<'episode' | 'party'>('episode');
+  const [mobileShowList, setMobileShowList] = useState(!conversationId);
+  const [uiStyle, setUiStyle] = useState<UiStyle>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('chatUiStyle') as UiStyle) ?? 'story';
+    }
+    return 'story';
+  });
 
-  // Redirect to login if not authenticated
+  const toggleUiStyle = () => {
+    const next: UiStyle = uiStyle === 'story' ? 'kakao' : 'story';
+    setUiStyle(next);
+    localStorage.setItem('chatUiStyle', next);
+  };
+
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isLoading && !isAuthenticated) {
       router.push(`/login?redirect=/chat${characterId ? `?characterId=${characterId}` : ''}`);
     }
-  }, [isAuthenticated, router, characterId]);
+  }, [isLoading, isAuthenticated, router, characterId]);
 
-  // Auto-start conversation from characterId param
-  const startConversationMutation = useMutation({
+  const startConvMutation = useMutation({
     mutationFn: (charId: string) => api.chat.createConversation(charId),
     onSuccess: (res) => {
       const conv = res.data;
@@ -53,43 +63,421 @@ export function ChatPageContent() {
 
   useEffect(() => {
     if (characterId && !conversationId && isAuthenticated) {
-      startConversationMutation.mutate(characterId);
+      startConvMutation.mutate(characterId);
     }
   }, [characterId, conversationId, isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!isAuthenticated) return null;
+  if (isLoading || !isAuthenticated) return null;
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
-      {/* Global Sidebar */}
-      <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
+    <MainLayout showSearch={true}>
+      <div className="flex bg-white" style={{ height: 'calc(100vh - 56px)' }}>
 
-      {/* Desktop: shifted right by sidebar */}
-      <div className="flex flex-1 lg:ml-[240px] min-w-0">
-        {/* Conversation list (left panel) */}
-        <div className={cn(
-          'flex flex-col w-[280px] flex-shrink-0 border-r border-border bg-background-secondary',
-          'hidden md:flex'
-        )}>
-          <ConversationList
+        {/* ── 왼쪽 사이드바 ── */}
+        <aside
+          className={cn(
+            'hidden lg:flex flex-col w-[200px] flex-shrink-0 border-r transition-colors',
+            uiStyle === 'kakao' ? 'bg-white border-gray-200' : 'bg-white border-gray-100'
+          )}
+        >
+          {uiStyle === 'story' ? (
+            <>
+              {/* 스토리 스타일 사이드바 헤더 */}
+              <div className="flex border-b border-gray-100">
+                {(['episode', 'party'] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setSidebarTab(t)}
+                    className={cn(
+                      'flex-1 py-3 text-[12px] font-semibold transition-colors relative',
+                      sidebarTab === t ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'
+                    )}
+                  >
+                    {t === 'episode' ? '에피소드' : '파티챗'}
+                    {sidebarTab === t && (
+                      <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-gray-900 rounded-t" />
+                    )}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center justify-between px-3 py-2.5">
+                <span className="text-[11px] font-semibold text-gray-500 tracking-wide">채팅 히스토리</span>
+                <button className="flex items-center gap-0.5 text-[11px] text-gray-400 hover:text-gray-600 transition-colors">
+                  <Pencil className="w-3 h-3" />편집
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* 카카오 스타일 사이드바 헤더 */}
+              <div className="flex items-center justify-between px-3 py-3">
+                <span className="text-[15px] font-bold text-gray-900">채팅</span>
+                <div className="flex items-center gap-3">
+                  <button className="text-gray-500 hover:text-gray-700"><MessageCircle className="w-4 h-4" /></button>
+                  <button className="text-gray-500 hover:text-gray-700"><Plus className="w-4 h-4" /></button>
+                </div>
+              </div>
+              {/* 카카오 스타일 탭 */}
+              <div className="flex border-b border-gray-200">
+                {(['episode', 'party'] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setSidebarTab(t)}
+                    className={cn(
+                      'flex-1 py-2.5 text-[12px] font-semibold transition-colors relative',
+                      sidebarTab === t ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'
+                    )}
+                  >
+                    {t === 'episode' ? '에피소드' : '단톡'}
+                    {sidebarTab === t && (
+                      <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-gray-900 rounded-t" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* 대화 목록 */}
+          <div className="flex-1 overflow-y-auto hide-scrollbar">
+            <ConversationSidebar
+              activeConvId={activeConvId}
+              uiStyle={uiStyle}
+              onSelect={(id) => {
+                setActiveConvId(id);
+                router.replace(`/chat?conversationId=${id}`, { scroll: false });
+              }}
+            />
+          </div>
+        </aside>
+
+        {/* ── 모바일 전체화면 대화 목록 (lg 미만 + mobileShowList) ── */}
+        <div className={cn('flex-col flex-1 min-w-0 lg:hidden', mobileShowList ? 'flex' : 'hidden')}>
+          <MobileChatList
             activeConvId={activeConvId}
-            onSelectConversation={(id) => {
+            sidebarTab={sidebarTab}
+            setSidebarTab={setSidebarTab}
+            onSelect={(id) => {
               setActiveConvId(id);
+              setMobileShowList(false);
               router.replace(`/chat?conversationId=${id}`, { scroll: false });
             }}
           />
         </div>
 
-        {/* Chat area */}
-        <div className="flex-1 min-w-0">
+        {/* ── 메인 채팅 영역 (데스크탑 항상 / 모바일은 대화 선택 후) ── */}
+        <div className={cn('flex-col min-w-0', !mobileShowList ? 'flex flex-1' : 'hidden lg:flex lg:flex-1')}>
           {activeConvId ? (
             <ChatWindow
               conversationId={activeConvId}
               accessToken={accessToken!}
               user={user!}
+              uiStyle={uiStyle}
+              onToggleUiStyle={toggleUiStyle}
+              onBack={() => {
+                setMobileShowList(true);
+                setActiveConvId(null);
+                router.replace('/chat', { scroll: false });
+              }}
             />
           ) : (
-            <EmptyChatState onNewChat={() => router.push('/explore')} />
+            <EmptyChatState />
+          )}
+        </div>
+      </div>
+    </MainLayout>
+  );
+}
+
+// ── 모바일 전체화면 대화 목록 ──────────────────────────────────────
+function MobileChatList({
+  activeConvId, sidebarTab, setSidebarTab, onSelect,
+}: {
+  activeConvId: string | null;
+  sidebarTab: 'episode' | 'party';
+  setSidebarTab: (t: 'episode' | 'party') => void;
+  onSelect: (id: string) => void;
+}) {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ['conversations'],
+    queryFn: () => api.chat.conversations(),
+    refetchInterval: 30_000,
+  });
+  const conversations: Conversation[] = data?.data ?? [];
+
+  const [editMode, setEditMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [leaveTarget, setLeaveTarget] = useState<Conversation | null>(null);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const deleteMutation = useMutation({
+    mutationFn: (ids: string[]) => Promise.all(ids.map((id) => api.chat.deleteConversation(id))),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      setSelectedIds(new Set());
+      setEditMode(false);
+    },
+  });
+
+  const handleDeleteSelected = () => {
+    if (selectedIds.size === 0) return;
+    deleteMutation.mutate(Array.from(selectedIds));
+  };
+
+  const handleLeaveConfirm = () => {
+    if (!leaveTarget) return;
+    api.chat.deleteConversation(leaveTarget.id).then(() => {
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      setLeaveTarget(null);
+    });
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-white">
+      {/* 에피소드 / 파티챗 탭 */}
+      <div className="flex border-b border-gray-100 flex-shrink-0">
+        {(['episode', 'party'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setSidebarTab(t)}
+            className={cn(
+              'flex-1 py-3.5 text-sm font-semibold transition-colors relative',
+              sidebarTab === t ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'
+            )}
+          >
+            {t === 'episode' ? '에피소드' : '파티챗'}
+            {sidebarTab === t && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-900 rounded-t" />
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* 히스토리 헤더 */}
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-50">
+        {editMode ? (
+          <>
+            <span className="text-[13px] text-gray-500">{selectedIds.size}개 선택됨</span>
+            <button
+              onClick={() => { setEditMode(false); setSelectedIds(new Set()); }}
+              className="text-[13px] font-medium text-gray-500"
+            >
+              완료
+            </button>
+          </>
+        ) : (
+          <>
+            <span className="text-[12px] font-semibold text-gray-400 tracking-wide">채팅 히스토리</span>
+            <button
+              onClick={() => setEditMode(true)}
+              className="flex items-center gap-0.5 text-[12px] text-gray-400 hover:text-gray-600"
+            >
+              <Pencil className="w-3 h-3" />편집
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* 대화 목록 */}
+      <div className="flex-1 overflow-y-auto">
+        {isLoading ? (
+          <div className="p-4 space-y-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 px-1">
+                <div className="w-12 h-12 rounded-full bg-gray-100 animate-pulse flex-shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3 bg-gray-100 animate-pulse rounded w-1/3" />
+                  <div className="h-2.5 bg-gray-100 animate-pulse rounded w-2/3" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : conversations.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center">
+              <MessageCircle className="w-7 h-7 text-gray-300" />
+            </div>
+            <p className="text-sm text-gray-400">아직 대화가 없어요</p>
+            <Link href="/" className="text-sm text-brand font-medium hover:underline">캐릭터 탐색</Link>
+          </div>
+        ) : (
+          conversations.map((conv) => (
+            <MobileConvItem
+              key={conv.id}
+              conv={conv}
+              isActive={conv.id === activeConvId}
+              editMode={editMode}
+              selected={selectedIds.has(conv.id)}
+              onSelect={onSelect}
+              onToggleSelect={toggleSelect}
+              onLongPress={() => setLeaveTarget(conv)}
+            />
+          ))
+        )}
+      </div>
+
+      {/* 편집 모드 하단 삭제 버튼 */}
+      <AnimatePresence>
+        {editMode && (
+          <motion.div
+            initial={{ y: 80 }}
+            animate={{ y: 0 }}
+            exit={{ y: 80 }}
+            className="flex-shrink-0 p-4 border-t border-gray-100 bg-white"
+          >
+            <button
+              onClick={handleDeleteSelected}
+              disabled={selectedIds.size === 0 || deleteMutation.isPending}
+              className={cn(
+                'w-full py-3.5 rounded-2xl text-[15px] font-bold flex items-center justify-center gap-2 transition-colors',
+                selectedIds.size > 0
+                  ? 'bg-red-500 text-white active:bg-red-600'
+                  : 'bg-gray-100 text-gray-300 cursor-not-allowed'
+              )}
+            >
+              <Trash2 className="w-4 h-4" />
+              {selectedIds.size > 0 ? `${selectedIds.size}개 삭제` : '삭제'}
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 채팅 나가기 모달 */}
+      <AnimatePresence>
+        {leaveTarget && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 z-50"
+              onClick={() => setLeaveTarget(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.92 }}
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white rounded-3xl shadow-2xl w-[80vw] max-w-xs overflow-hidden"
+            >
+              <div className="px-6 pt-7 pb-5 text-center">
+                <p className="text-[16px] font-bold text-gray-900 mb-2">채팅 나가기</p>
+                <p className="text-[13px] text-gray-500 leading-relaxed">
+                  <span className="font-semibold text-gray-700">{leaveTarget.character?.name}</span>과의<br />
+                  채팅 기록이 모두 삭제돼요.<br />
+                  나가시겠어요?
+                </p>
+              </div>
+              <div className="flex border-t border-gray-100">
+                <button
+                  onClick={() => setLeaveTarget(null)}
+                  className="flex-1 py-4 text-[15px] text-gray-500 font-medium border-r border-gray-100 active:bg-gray-50"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleLeaveConfirm}
+                  className="flex-1 py-4 text-[15px] text-red-500 font-bold active:bg-red-50"
+                >
+                  나가기
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function MobileConvItem({ conv, isActive, editMode, selected, onSelect, onToggleSelect, onLongPress }: {
+  conv: Conversation;
+  isActive: boolean;
+  editMode: boolean;
+  selected: boolean;
+  onSelect: (id: string) => void;
+  onToggleSelect: (id: string) => void;
+  onLongPress: () => void;
+}) {
+  const [imgErr, setImgErr] = useState(false);
+  const char = conv.character;
+  const src = imgErr ? getCharacterAvatarUrl(null, char?.name ?? '') : char?.avatarUrl;
+  const lastMsg = (conv as any).lastMessage?.content ?? '대화를 시작해보세요';
+  const unreadCount: number = (conv as any).unreadCount ?? 0;
+
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const formatTime = (d: string) => {
+    if (!d) return '';
+    const diff = Date.now() - new Date(d).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return '방금';
+    if (mins < 60) return `${mins}분`;
+    const h = Math.floor(mins / 60);
+    if (h < 24) return `${h}시간`;
+    return `${Math.floor(h / 24)}일`;
+  };
+  const timeStr = formatTime((conv as any).lastMessageAt ?? (conv as any).updatedAt ?? '');
+
+  const handlePointerDown = () => {
+    if (editMode) return;
+    longPressTimer.current = setTimeout(() => { onLongPress(); }, 600);
+  };
+  const handlePointerUp = () => {
+    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+  };
+
+  const handleClick = () => {
+    if (editMode) { onToggleSelect(conv.id); return; }
+    onSelect(conv.id);
+  };
+
+  return (
+    <div
+      onClick={handleClick}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerLeave={handlePointerUp}
+      className={cn(
+        'flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-colors border-b border-gray-50 select-none',
+        isActive && !editMode ? 'bg-brand/5' : '',
+        selected ? 'bg-red-50' : 'active:bg-gray-50'
+      )}
+    >
+      {/* 편집 모드 체크박스 */}
+      {editMode && (
+        <div className="flex-shrink-0">
+          {selected
+            ? <CheckCircle2 className="w-5 h-5 text-red-500" />
+            : <Circle className="w-5 h-5 text-gray-300" />
+          }
+        </div>
+      )}
+
+      <div className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0 bg-gray-100">
+        {src
+          ? <Image src={src} alt={char?.name ?? ''} width={48} height={48} className="object-cover" onError={() => setImgErr(true)} />
+          : <div className="w-full h-full bg-brand/10 flex items-center justify-center text-brand text-base font-bold">{char?.name?.[0] ?? '?'}</div>
+        }
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between mb-0.5">
+          <p className="text-[14px] font-bold text-gray-900 truncate pr-1">{char?.name ?? '알 수 없음'}</p>
+          {!editMode && <span className="text-[11px] text-gray-400 flex-shrink-0">{timeStr}</span>}
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[13px] text-gray-500 truncate flex-1">{lastMsg}</p>
+          {!editMode && unreadCount > 0 && (
+            <span className="flex-shrink-0 min-w-[20px] h-5 rounded-full bg-brand text-white text-[11px] font-bold flex items-center justify-center px-1.5 leading-none">
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
           )}
         </div>
       </div>
@@ -97,163 +485,172 @@ export function ChatPageContent() {
   );
 }
 
-// ─────────────────────────────────────────────
-// CONVERSATION LIST
-// ─────────────────────────────────────────────
-function ConversationList({
+// ── 대화 목록 사이드바 ────────────────────────────────────────────
+function ConversationSidebar({
   activeConvId,
-  onSelectConversation,
+  uiStyle,
+  onSelect,
 }: {
   activeConvId: string | null;
-  onSelectConversation: (id: string) => void;
+  uiStyle: UiStyle;
+  onSelect: (id: string) => void;
 }) {
   const { data, isLoading } = useQuery({
     queryKey: ['conversations'],
     queryFn: () => api.chat.conversations(),
     refetchInterval: 30_000,
   });
-
   const conversations: Conversation[] = data?.data ?? [];
 
-  return (
-    <div className="flex flex-col h-full">
-      <div className="p-4 border-b border-border flex items-center justify-between">
-        <h2 className="font-semibold text-text-primary">대화</h2>
-        <Link href="/explore"
-          className="p-2 rounded-xl hover:bg-surface text-text-muted hover:text-brand-light transition-all">
-          <Sparkles className="w-4.5 h-4.5" />
-        </Link>
+  if (isLoading) {
+    return (
+      <div className="p-2 space-y-1">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-2 px-2 py-2">
+            <div className={cn('w-10 h-10 bg-gray-100 animate-pulse flex-shrink-0', uiStyle === 'kakao' ? 'rounded-xl' : 'rounded-full')} />
+            <div className="flex-1 space-y-1.5">
+              <div className="h-2.5 bg-gray-100 animate-pulse rounded w-3/4" />
+              <div className="h-2 bg-gray-100 animate-pulse rounded w-full" />
+            </div>
+          </div>
+        ))}
       </div>
+    );
+  }
 
-      <div className="flex-1 overflow-y-auto">
-        {isLoading ? (
-          <div className="p-3 space-y-2">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-3 p-3 rounded-xl">
-                <div className="w-10 h-10 rounded-full skeleton flex-shrink-0" />
-                <div className="flex-1 space-y-2">
-                  <div className="h-3.5 skeleton rounded-lg w-3/4" />
-                  <div className="h-3 skeleton rounded-lg w-full" />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : conversations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full py-12 text-center px-4">
-            <MessageCircle className="w-10 h-10 text-text-muted mb-3" />
-            <p className="text-text-secondary text-sm font-medium mb-1">대화가 없어요</p>
-            <p className="text-text-muted text-xs">캐릭터를 탐색하고 대화를 시작해보세요</p>
-            <Link href="/explore" className="btn-primary mt-4 text-sm py-2">
-              캐릭터 탐색
-            </Link>
-          </div>
-        ) : (
-          <div className="p-2">
-            {conversations.map((conv) => (
-              <ConversationItem
-                key={conv.id}
-                conversation={conv}
-                isActive={conv.id === activeConvId}
-                onClick={() => onSelectConversation(conv.id)}
-              />
-            ))}
-          </div>
-        )}
+  if (conversations.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+        <MessageCircle className="w-7 h-7 text-gray-200 mb-2" />
+        <p className="text-[11px] text-gray-400">아직 대화가 없어요</p>
+        <Link href="/" className="mt-3 text-[11px] text-brand hover:underline">캐릭터 탐색</Link>
       </div>
+    );
+  }
+
+  return (
+    <>
+      {conversations.map((conv) => (
+        <SidebarConvItem
+          key={conv.id}
+          conv={conv}
+          isActive={conv.id === activeConvId}
+          uiStyle={uiStyle}
+          onClick={() => onSelect(conv.id)}
+        />
+      ))}
+    </>
+  );
+}
+
+function SidebarConvItem({
+  conv, isActive, uiStyle, onClick,
+}: {
+  conv: Conversation;
+  isActive: boolean;
+  uiStyle: UiStyle;
+  onClick: () => void;
+}) {
+  const [imgErr, setImgErr] = useState(false);
+  const char = conv.character;
+  const src = imgErr ? getCharacterAvatarUrl(null, char?.name ?? '') : char?.avatarUrl;
+  const lastMsg = (conv as any).lastMessage?.content ?? '대화를 시작해보세요';
+
+  const formatTime = (d: string) => {
+    if (!d) return '';
+    const diff = Date.now() - new Date(d).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return `${mins}분`;
+    const h = Math.floor(mins / 60);
+    if (h < 24) return `${h}시간`;
+    return `${Math.floor(h / 24)}일`;
+  };
+  const timeStr = formatTime((conv as any).lastMessageAt ?? (conv as any).updatedAt ?? '');
+
+  if (uiStyle === 'kakao') {
+    return (
+      <div
+        onClick={onClick}
+        className={cn(
+          'flex items-center gap-2.5 px-3 py-3 cursor-pointer transition-colors',
+          isActive ? 'bg-gray-100' : 'hover:bg-gray-50'
+        )}
+      >
+        {/* 카카오 스타일: 둥근 사각형 아바타 */}
+        <div className="w-11 h-11 rounded-xl overflow-hidden flex-shrink-0 bg-gray-200">
+          {src
+            ? <Image src={src} alt={char?.name ?? ''} width={44} height={44} className="object-cover" onError={() => setImgErr(true)} />
+            : <div className="w-full h-full bg-yellow-400 flex items-center justify-center text-white text-sm font-bold">{char?.name?.[0] ?? '?'}</div>
+          }
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between mb-0.5">
+            <p className="text-[13px] font-bold text-gray-900 truncate pr-1">{char?.name ?? '알 수 없음'}</p>
+            <span className="text-[10px] text-gray-400 flex-shrink-0">{timeStr}</span>
+          </div>
+          <p className="text-[12px] text-gray-500 truncate">{lastMsg}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 스토리 스타일
+  return (
+    <div
+      onClick={onClick}
+      className={cn(
+        'flex items-start gap-2 px-2 py-2.5 cursor-pointer group transition-colors',
+        isActive ? 'bg-gray-50' : 'hover:bg-gray-50'
+      )}
+    >
+      <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 bg-gray-100 mt-0.5">
+        {src
+          ? <Image src={src} alt={char?.name ?? ''} width={32} height={32} className="object-cover" onError={() => setImgErr(true)} />
+          : <div className="w-full h-full bg-brand/10 flex items-center justify-center text-brand text-xs font-bold">{char?.name?.[0] ?? '?'}</div>
+        }
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between mb-0.5">
+          <p className="text-[12px] font-semibold text-gray-800 truncate pr-1">{char?.name ?? '알 수 없음'}</p>
+          <span className="text-[10px] text-gray-400 flex-shrink-0">{timeStr}</span>
+        </div>
+        <p className="text-[11px] text-gray-400 truncate leading-snug">{lastMsg}</p>
+      </div>
+      <button
+        className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 text-gray-400 hover:text-gray-600"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <MoreVertical className="w-3 h-3" />
+      </button>
     </div>
   );
 }
 
-function ConversationItem({
-  conversation,
-  isActive,
-  onClick,
-}: {
-  conversation: Conversation;
-  isActive: boolean;
-  onClick: () => void;
-}) {
-  const char = conversation.character;
-  const lastMsg = conversation.lastMessage;
-  const avatarSrc = char?.avatarUrl || getCharacterAvatarUrl(null, char?.name || '');
-
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        'w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all duration-150',
-        isActive
-          ? 'bg-brand/15 border border-brand/25'
-          : 'hover:bg-surface border border-transparent'
-      )}
-    >
-      <div className="relative flex-shrink-0">
-        <div className="w-10 h-10 rounded-full overflow-hidden ring-1 ring-border">
-          <Image
-            src={avatarSrc}
-            alt={char?.name || ''}
-            width={40}
-            height={40}
-            className="object-cover"
-          />
-        </div>
-        {conversation.isPinned && (
-          <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center">
-            <Pin className="w-2.5 h-2.5 text-white" />
-          </div>
-        )}
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between mb-0.5">
-          <span className="text-text-primary text-sm font-medium truncate">{char?.name}</span>
-          {lastMsg && (
-            <span className="text-text-muted text-xs flex-shrink-0 ml-1">
-              {formatRelativeTime(lastMsg.createdAt)}
-            </span>
-          )}
-        </div>
-        <p className="text-text-muted text-xs truncate">
-          {lastMsg
-            ? lastMsg.role === 'USER' ? `나: ${lastMsg.content}` : lastMsg.content
-            : '대화를 시작해보세요'}
-        </p>
-      </div>
-    </button>
-  );
-}
-
-// ─────────────────────────────────────────────
-// CHAT WINDOW
-// ─────────────────────────────────────────────
+// ── 채팅 윈도우 ───────────────────────────────────────────────────
 function ChatWindow({
-  conversationId,
-  accessToken,
-  user,
+  conversationId, accessToken, user, uiStyle, onToggleUiStyle, onBack,
 }: {
   conversationId: string;
   accessToken: string;
   user: any;
+  uiStyle: UiStyle;
+  onToggleUiStyle: () => void;
+  onBack?: () => void;
 }) {
   const [inputValue, setInputValue] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [showSuggest, setShowSuggest] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const queryClient = useQueryClient();
 
-  // Fetch conversation info
   const { data: convData } = useQuery({
     queryKey: ['conversation', conversationId],
-    queryFn: () =>
-      api.chat.conversations().then((r) =>
-        r.data.find((c: Conversation) => c.id === conversationId)
-      ),
+    queryFn: () => api.chat.conversations().then((r) => r.data.find((c: Conversation) => c.id === conversationId)),
   });
 
-  // Fetch messages
   const { data: messagesData, isLoading: messagesLoading } = useQuery({
     queryKey: ['messages', conversationId],
     queryFn: () => api.chat.messages(conversationId),
@@ -261,24 +658,69 @@ function ChatWindow({
   });
 
   const [localMessages, setLocalMessages] = useState<ChatMessage[]>([]);
+  const [situationImage, setSituationImage] = useState<{ imageId: string; imageUrl: string } | null>(null);
+  useEffect(() => { if (messagesData?.data) setLocalMessages(messagesData.data); }, [messagesData?.data]);
 
-  useEffect(() => {
-    if (messagesData?.data) {
-      setLocalMessages(messagesData.data);
+  // ── 음성 기능 state ──
+  const [autoPlay, setAutoPlay] = useState(false);
+  const [playingMsgId, setPlayingMsgId] = useState<string | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+
+  const playTTS = useCallback(async (text: string, msgId: string) => {
+    const voiceId = convData?.character?.voiceId;
+    const voiceSettings = convData?.character?.voiceSettings;
+    if (!voiceId) return;
+    if (playingMsgId === msgId) {
+      audioRef.current?.pause();
+      setPlayingMsgId(null);
+      return;
     }
-  }, [messagesData?.data]);
+    try {
+      setPlayingMsgId(msgId);
+      const blob = await voiceApi.speak(text, voiceId, voiceSettings ?? undefined);
+      const url = URL.createObjectURL(blob);
+      if (audioRef.current) { audioRef.current.pause(); URL.revokeObjectURL(audioRef.current.src); }
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => { setPlayingMsgId(null); URL.revokeObjectURL(url); };
+      audio.onerror = () => { setPlayingMsgId(null); };
+      await audio.play();
+    } catch { setPlayingMsgId(null); }
+  }, [convData?.character, playingMsgId]);
+
+  const startRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        try {
+          const text = await voiceApi.transcribe(blob);
+          if (text.trim()) setInputValue(text.trim());
+        } catch {}
+        setIsRecording(false);
+      };
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+    } catch { setIsRecording(false); }
+  }, []);
+
+  const stopRecording = useCallback(() => {
+    mediaRecorderRef.current?.stop();
+  }, []);
 
   const scrollToBottom = useCallback((smooth = true) => {
     messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'instant' });
   }, []);
-
-  useEffect(() => {
-    scrollToBottom(false);
-  }, [localMessages]);
-
-  useEffect(() => {
-    if (isStreaming) scrollToBottom();
-  }, [streamingContent, isStreaming, scrollToBottom]);
+  useEffect(() => { scrollToBottom(false); }, [localMessages]);
+  useEffect(() => { if (isStreaming) scrollToBottom(); }, [streamingContent, isStreaming, scrollToBottom]);
 
   const sendMessage = useCallback(async () => {
     const content = inputValue.trim();
@@ -287,8 +729,8 @@ function ChatWindow({
     setInputValue('');
     setIsStreaming(true);
     setStreamingContent('');
+    setShowSuggest(false);
 
-    // Optimistic: add user message immediately
     const tempUserMsg: ChatMessage = {
       id: `temp-${Date.now()}`,
       conversationId,
@@ -300,56 +742,41 @@ function ChatWindow({
     setLocalMessages((prev) => [...prev, tempUserMsg]);
 
     abortControllerRef.current = new AbortController();
+    let accumulated = '';
+    const stripImageTag = (text: string) => text.replace(/\[IMAGE:[^\]]+\]\s*$/g, '').trimEnd();
 
     streamChatMessage(conversationId, content, accessToken, {
       signal: abortControllerRef.current.signal,
-      onDelta: (text) => {
-        setStreamingContent((prev) => prev + text);
-      },
-      onDone: ({ messageId, creditCost, remainingCredits }) => {
+      onDelta: (text) => { accumulated += text; setStreamingContent(stripImageTag(accumulated)); },
+      onDone: ({ messageId, remainingCredits }) => {
+        const cleanContent = stripImageTag(accumulated);
         setIsStreaming(false);
-        const assistantMsg: ChatMessage = {
-          id: messageId,
-          conversationId,
-          role: 'ASSISTANT',
-          content: streamingContent,
-          status: 'SENT',
-          createdAt: new Date().toISOString(),
-        };
-        setLocalMessages((prev) => [...prev, assistantMsg]);
+        setLocalMessages((prev) => [
+          ...prev,
+          { id: messageId, conversationId, role: 'ASSISTANT', content: cleanContent, status: 'SENT', createdAt: new Date().toISOString() },
+        ]);
         setStreamingContent('');
         queryClient.invalidateQueries({ queryKey: ['conversations'] });
-        queryClient.setQueryData(['user'], (old: any) =>
-          old ? { ...old, creditBalance: remainingCredits } : old
-        );
+        queryClient.setQueryData(['user'], (old: any) => old ? { ...old, creditBalance: remainingCredits } : old);
+        if (autoPlay && convData?.character?.voiceId) {
+          playTTS(accumulated, messageId);
+        }
       },
+      onImage: (data) => { setSituationImage(data); },
       onError: (message) => {
         setIsStreaming(false);
         setStreamingContent('');
-        const errorMsg: ChatMessage = {
-          id: `error-${Date.now()}`,
-          conversationId,
-          role: 'ASSISTANT',
-          content: message,
-          status: 'ERROR',
-          createdAt: new Date().toISOString(),
-        };
-        setLocalMessages((prev) => [...prev, errorMsg]);
+        setSituationImage(null);
+        setLocalMessages((prev) => [
+          ...prev,
+          { id: `error-${Date.now()}`, conversationId, role: 'ASSISTANT', content: message, status: 'ERROR', createdAt: new Date().toISOString() },
+        ]);
       },
     });
-  }, [inputValue, isStreaming, conversationId, accessToken, streamingContent, queryClient]);
+  }, [inputValue, isStreaming, conversationId, accessToken, queryClient]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  };
-
-  const handleCopy = async (messageId: string, content: string) => {
-    await navigator.clipboard.writeText(content);
-    setCopiedId(messageId);
-    setTimeout(() => setCopiedId(null), 2000);
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
 
   const stopStreaming = () => {
@@ -358,302 +785,824 @@ function ChatWindow({
     if (streamingContent) {
       setLocalMessages((prev) => [
         ...prev,
-        {
-          id: `aborted-${Date.now()}`,
-          conversationId,
-          role: 'ASSISTANT',
-          content: streamingContent,
-          status: 'SENT',
-          createdAt: new Date().toISOString(),
-        },
+        { id: `aborted-${Date.now()}`, conversationId, role: 'ASSISTANT', content: streamingContent, status: 'SENT', createdAt: new Date().toISOString() },
       ]);
     }
     setStreamingContent('');
   };
 
+  // 지문 삽입: 커서 위치에 * * 넣고 사이에 포커스
+  const insertNarration = () => {
+    const el = inputRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? inputValue.length;
+    const end = el.selectionEnd ?? inputValue.length;
+    const selected = inputValue.slice(start, end);
+    const before = inputValue.slice(0, start);
+    const after = inputValue.slice(end);
+    const newValue = `${before}*${selected}*${after}`;
+    setInputValue(newValue);
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = selected ? start + 1 + selected.length + 1 : start + 1;
+      el.setSelectionRange(selected ? pos : start + 1, selected ? pos : start + 1);
+      el.style.height = 'auto';
+      el.style.height = `${Math.min(el.scrollHeight, 100)}px`;
+    });
+  };
+
   const character = convData?.character;
-  const avatarSrc = character?.avatarUrl || getCharacterAvatarUrl(null, character?.name || '');
+
+  const effectiveGreeting = character?.greeting ?? '';
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-background-secondary/80 backdrop-blur-sm">
-        <Link href="/chat" className="p-2 rounded-xl hover:bg-surface text-text-secondary hover:text-text-primary transition-all md:hidden">
-          <ArrowLeft className="w-5 h-5" />
-        </Link>
-
-        {character && (
-          <Link href={`/characters/${character.id}`} className="flex items-center gap-3 flex-1 min-w-0 hover:opacity-80 transition-opacity">
-            <div className="w-9 h-9 rounded-full overflow-hidden ring-2 ring-border flex-shrink-0">
-              <Image src={avatarSrc} alt={character.name} width={36} height={36} className="object-cover" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-text-primary font-semibold text-sm truncate">{character.name}</p>
-              <p className="text-text-muted text-xs truncate">{character.category}</p>
-            </div>
-          </Link>
-        )}
-
-        <div className="flex items-center gap-1 ml-auto">
-          <button className="p-2 rounded-xl hover:bg-surface text-text-muted hover:text-text-primary transition-all">
-            <Settings className="w-4.5 h-4.5" />
-          </button>
-          <button className="p-2 rounded-xl hover:bg-surface text-text-muted hover:text-text-primary transition-all">
-            <MoreHorizontal className="w-4.5 h-4.5" />
-          </button>
-        </div>
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
-        {messagesLoading ? (
-          <div className="space-y-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className={cn('flex gap-3', i % 2 === 0 ? '' : 'flex-row-reverse')}>
-                <div className="w-8 h-8 rounded-full skeleton flex-shrink-0" />
-                <div className={cn('space-y-1.5', i % 2 === 0 ? 'items-start' : 'items-end', 'flex flex-col')}>
-                  <div className="h-4 skeleton rounded-xl w-64" />
-                  <div className="h-4 skeleton rounded-xl w-48" />
+      {/* ── 상단 탭바 ── */}
+      {uiStyle === 'kakao' ? (
+        <div className="flex-shrink-0 bg-white border-b border-gray-200">
+          {/* 캐릭터 행 */}
+          <div className="flex items-center px-4 h-[52px]">
+            {/* 모바일 뒤로 가기 */}
+            {onBack && (
+              <button onClick={onBack} className="lg:hidden mr-2 p-1 -ml-1 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors">
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+            )}
+            {character && (
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl overflow-hidden bg-gray-200">
+                  {character.avatarUrl
+                    ? <Image src={character.avatarUrl} alt={character.name} width={32} height={32} className="object-cover" />
+                    : <div className="w-full h-full bg-yellow-400 flex items-center justify-center text-white text-xs font-bold">{character.name?.[0]}</div>
+                  }
                 </div>
+                <span className="text-[15px] font-bold text-gray-900">{character.name}</span>
               </div>
-            ))}
-          </div>
-        ) : (
-          <>
-            {/* Character greeting */}
-            {localMessages.length === 0 && character && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex items-start gap-3"
-              >
-                <div className="w-9 h-9 rounded-full overflow-hidden ring-2 ring-border flex-shrink-0 mt-1">
-                  <Image src={avatarSrc} alt={character.name} width={36} height={36} className="object-cover" />
-                </div>
-                <div className="max-w-[80%]">
-                  <div className="message-assistant rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed">
-                    {character.greeting || `안녕하세요! 저는 ${character.name}입니다. 무엇이든 물어보세요!`}
-                  </div>
-                </div>
-              </motion.div>
             )}
-
-            {/* Message list */}
-            {localMessages.map((message, index) => (
-              <MessageBubble
-                key={message.id}
-                message={message}
-                avatarSrc={message.role === 'ASSISTANT' ? avatarSrc : user.avatarUrl}
-                userName={message.role === 'USER' ? user.displayName : character?.name}
-                isCopied={copiedId === message.id}
-                onCopy={() => handleCopy(message.id, message.content)}
-                index={index}
-              />
-            ))}
-
-            {/* Streaming message */}
-            {isStreaming && (
-              <motion.div
-                initial={{ opacity: 0, y: 5 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex items-start gap-3"
+            <div className="flex items-center gap-2 ml-auto">
+              <button
+                onClick={onToggleUiStyle}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-gray-200 text-[11px] text-gray-500 hover:border-gray-300 transition-colors"
               >
-                <div className="w-9 h-9 rounded-full overflow-hidden ring-2 ring-border flex-shrink-0 mt-1">
-                  <Image src={avatarSrc} alt={character?.name || ''} width={36} height={36} className="object-cover" />
-                </div>
-                <div className="max-w-[80%]">
-                  <div className="message-assistant rounded-2xl rounded-tl-sm px-4 py-3 text-sm leading-relaxed">
-                    {streamingContent || (
-                      <div className="flex items-center gap-1 py-0.5">
-                        <span className="w-2 h-2 rounded-full bg-text-muted animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <span className="w-2 h-2 rounded-full bg-text-muted animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <span className="w-2 h-2 rounded-full bg-text-muted animate-bounce" style={{ animationDelay: '300ms' }} />
-                      </div>
-                    )}
-                    {streamingContent && (
-                      <span className="inline-block w-0.5 h-4 bg-brand ml-0.5 animate-pulse align-middle" />
-                    )}
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </>
-        )}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Input area */}
-      <div className="border-t border-border bg-background-secondary/80 backdrop-blur-sm px-4 py-4">
-        <div className="flex items-end gap-3 max-w-4xl mx-auto">
-          <div className="flex-1 relative">
-            <textarea
-              ref={inputRef}
-              value={inputValue}
-              onChange={(e) => {
-                setInputValue(e.target.value);
-                // Auto-resize
-                e.target.style.height = 'auto';
-                e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
-              }}
-              onKeyDown={handleKeyDown}
-              placeholder="메시지를 입력하세요... (Enter로 전송, Shift+Enter로 줄바꿈)"
-              rows={1}
-              disabled={isStreaming}
-              className={cn(
-                'w-full resize-none bg-surface border border-border rounded-2xl px-4 py-3 pr-12',
-                'text-text-primary placeholder-text-muted text-sm leading-relaxed',
-                'focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand/50',
-                'transition-all duration-200 max-h-40',
-                'disabled:opacity-60 disabled:cursor-not-allowed'
-              )}
-              style={{ minHeight: '48px' }}
-            />
+                <LayoutList className="w-3 h-3" />
+                카카오
+              </button>
+            </div>
           </div>
-
-          {isStreaming ? (
-            <button
-              onClick={stopStreaming}
-              className="flex-shrink-0 w-11 h-11 rounded-xl bg-red-500/20 hover:bg-red-500/30
-                         border border-red-500/30 text-red-400 flex items-center justify-center
-                         transition-all duration-200"
-            >
-              <div className="w-4 h-4 rounded-sm bg-red-400" />
-            </button>
-          ) : (
-            <button
-              onClick={sendMessage}
-              disabled={!inputValue.trim()}
-              className={cn(
-                'flex-shrink-0 w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200',
-                inputValue.trim()
-                  ? 'bg-brand hover:bg-brand-hover text-white shadow-brand hover:shadow-lg'
-                  : 'bg-surface text-text-muted border border-border cursor-not-allowed'
-              )}
-            >
-              <Send className="w-4.5 h-4.5" />
+        </div>
+      ) : (
+        <div className="flex items-center flex-shrink-0 px-3 bg-white border-b border-gray-100 h-[44px]">
+          {/* 모바일 뒤로 가기 */}
+          {onBack && (
+            <button onClick={onBack} className="lg:hidden mr-1 p-1 -ml-1 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors">
+              <ChevronLeft className="w-5 h-5" />
             </button>
           )}
+          {character && (
+            <Link
+              href={`/characters/${character.id}`}
+              className="text-[13px] text-gray-700 hover:text-gray-900 transition-colors font-semibold"
+            >
+              {character.name}
+            </Link>
+          )}
+          <div className="flex items-center gap-2 ml-auto">
+            <button
+              onClick={onToggleUiStyle}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-gray-200 text-[11px] text-gray-500 hover:border-gray-300 hover:text-gray-700 transition-colors"
+            >
+              <LayoutList className="w-3 h-3" />
+              스토리
+            </button>
+            <button className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200 text-[11px] text-gray-500 hover:border-gray-300 transition-colors">
+              <Sparkles className="w-3 h-3 text-brand" />
+              프로핏 1.0
+              <ChevronDown className="w-2.5 h-2.5 text-gray-400" />
+            </button>
+          </div>
         </div>
+      )}
 
-        <p className="text-text-muted text-xs text-center mt-2">
-          AI 응답은 실제 인물/사실과 다를 수 있습니다. 1 크레딧 / 메시지
+      {/* ── 플레이 가이드 패널 ── */}
+      {character?.playGuide && <PlayGuidePanel text={character.playGuide as string} characterId={character.id} />}
+
+      {/* ── 메시지 영역 ── */}
+      <div
+        className={cn(
+          'flex-1 overflow-y-auto transition-colors',
+          uiStyle === 'kakao' ? '' : 'bg-white'
+        )}
+        style={uiStyle === 'kakao' ? { backgroundColor: '#b2c7d9' } : {}}
+      >
+        {uiStyle === 'story' ? (
+          <div className="max-w-[640px] mx-auto px-5 py-8">
+            {messagesLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="w-5 h-5 text-gray-300 animate-spin" />
+              </div>
+            ) : (
+              <>
+                {localMessages.length === 0 && character && (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                    <SceneOpening
+                      character={character}
+                      greeting={effectiveGreeting}
+                    />
+                  </motion.div>
+                )}
+                {localMessages.map((msg, i) => (
+                  <motion.div
+                    key={msg.id}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.18, delay: Math.min(i * 0.008, 0.1) }}
+                  >
+                    {msg.role === 'ASSISTANT'
+                      ? <StoryBlock content={msg.content} characterName={character?.name} characterAvatarUrl={character?.avatarUrl} isError={msg.status === 'ERROR'} />
+                      : <UserMessage content={msg.content} user={user} />
+                    }
+                  </motion.div>
+                ))}
+                {isStreaming && (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                    {streamingContent
+                      ? <StoryBlock content={streamingContent} characterName={character?.name} characterAvatarUrl={character?.avatarUrl} isStreaming />
+                      : <TypingIndicator characterAvatarUrl={character?.avatarUrl} />
+                    }
+                  </motion.div>
+                )}
+                {situationImage && !isStreaming && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.97 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="mb-8"
+                  >
+                    <SituationImageCard imageUrl={situationImage.imageUrl} onClose={() => setSituationImage(null)} />
+                  </motion.div>
+                )}
+              </>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+        ) : (
+          /* ── 카카오 스타일 메시지 영역 ── */
+          <div className="px-4 py-4">
+            {messagesLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="w-5 h-5 text-white/60 animate-spin" />
+              </div>
+            ) : (
+              <>
+                {localMessages.length === 0 && character && (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                    <KakaoDateSeparator date={new Date()} />
+                    <KakaoBubble
+                      content={effectiveGreeting}
+                      character={character}
+                    />
+                  </motion.div>
+                )}
+                {localMessages.map((msg, i) => {
+                  const prev = localMessages[i - 1];
+                  const showDate = !prev || !isSameDay(new Date(msg.createdAt), new Date(prev.createdAt));
+                  return (
+                    <motion.div
+                      key={msg.id}
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.15 }}
+                    >
+                      {showDate && <KakaoDateSeparator date={new Date(msg.createdAt)} />}
+                      {msg.role === 'ASSISTANT'
+                        ? <KakaoBubble content={msg.content} character={character} isError={msg.status === 'ERROR'} />
+                        : <KakaoUserBubble content={msg.content} user={user} />
+                      }
+                    </motion.div>
+                  );
+                })}
+                {isStreaming && (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                    {streamingContent
+                      ? <KakaoBubble content={streamingContent} character={character} isStreaming />
+                      : <KakaoTypingIndicator />
+                    }
+                  </motion.div>
+                )}
+              </>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+        )}
+      </div>
+
+      {/* ── 입력 바 ── */}
+      {uiStyle === 'story' ? (
+        <StoryInputBar
+          inputValue={inputValue}
+          setInputValue={setInputValue}
+          isStreaming={isStreaming}
+          showSuggest={showSuggest}
+          setShowSuggest={setShowSuggest}
+          inputRef={inputRef}
+          handleKeyDown={handleKeyDown}
+          sendMessage={sendMessage}
+          stopStreaming={stopStreaming}
+          insertNarration={insertNarration}
+          suggestOptions={Array.isArray(character?.suggestedReplies) ? character.suggestedReplies as string[] : undefined}
+          hasVoice={!!character?.voiceId}
+          isRecording={isRecording}
+          onMicClick={isRecording ? stopRecording : startRecording}
+          autoPlay={autoPlay}
+          onAutoPlayToggle={() => setAutoPlay((v) => !v)}
+        />
+      ) : (
+        <KakaoInputBar
+          inputValue={inputValue}
+          setInputValue={setInputValue}
+          isStreaming={isStreaming}
+          showSuggest={showSuggest}
+          setShowSuggest={setShowSuggest}
+          inputRef={inputRef}
+          handleKeyDown={handleKeyDown}
+          sendMessage={sendMessage}
+          stopStreaming={stopStreaming}
+          insertNarration={insertNarration}
+          suggestOptions={Array.isArray(character?.suggestedReplies) ? character.suggestedReplies as string[] : undefined}
+          hasVoice={!!character?.voiceId}
+          isRecording={isRecording}
+          onMicClick={isRecording ? stopRecording : startRecording}
+          autoPlay={autoPlay}
+          onAutoPlayToggle={() => setAutoPlay((v) => !v)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── 날짜 동일 비교 ────────────────────────────────────────────────
+function isSameDay(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+// ── 씬 오프닝 ─────────────────────────────────────────────────────
+function SceneOpening({ character, greeting }: { character: any; greeting: string }) {
+  return (
+    <div className="mb-10">
+      {character.name && (
+        <p className="text-[12px] text-gray-400 mb-4 leading-relaxed">
+          [{character.name}의 이야기가 시작됩니다]
+        </p>
+      )}
+      {character.avatarUrl && (
+        <div className="relative w-full rounded-xl overflow-hidden mb-6 bg-gray-50" style={{ aspectRatio: '3/4', maxHeight: '420px' }}>
+          <Image src={character.avatarUrl} alt={character.name} fill className="object-cover" sizes="640px" />
+        </div>
+      )}
+      {character.prologue && (
+        <div className="mb-6 px-4 py-3 rounded-xl bg-gray-50 border border-gray-100">
+          <p className="text-[13px] text-gray-500 leading-[1.9] whitespace-pre-wrap italic">{character.prologue}</p>
+        </div>
+      )}
+      <StoryBlock content={greeting} characterName={character.name} />
+    </div>
+  );
+}
+
+// * ... * 지문 인라인 렌더링
+function renderNarration(text: string) {
+  const parts = text.split(/(\*[^*]+\*)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
+      return <em key={i} className="not-italic text-gray-400 text-[13px]">{part.slice(1, -1)}</em>;
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
+
+// ── 스토리 블록 ───────────────────────────────────────────────────
+function StoryBlock({
+  content, characterName, characterAvatarUrl, isStreaming, isError,
+}: {
+  content: string;
+  characterName?: string;
+  characterAvatarUrl?: string | null;
+  isStreaming?: boolean;
+  isError?: boolean;
+}) {
+  const [imgErr, setImgErr] = useState(false);
+  const cleanContent = content.replace(/\[IMAGE:[^\]]+\]\s*$/g, '').trimEnd();
+  const lines = cleanContent.split('\n');
+  return (
+    <div className={cn('mb-8', isError && 'opacity-50')}>
+      {characterName && (
+        <div className="flex items-center gap-2 mb-2">
+          <div className="w-6 h-6 rounded-full overflow-hidden flex-shrink-0 bg-gray-100">
+            {characterAvatarUrl && !imgErr
+              ? <Image src={characterAvatarUrl} alt={characterName} width={24} height={24} className="object-cover" onError={() => setImgErr(true)} />
+              : <div className="w-full h-full bg-brand/10 flex items-center justify-center text-brand text-[10px] font-bold">{characterName[0]}</div>
+            }
+          </div>
+          <span className="text-[11px] text-gray-400 font-medium">{characterName}</span>
+        </div>
+      )}
+      <div className="space-y-2.5">
+        {lines.map((line, i) => {
+          const trimmed = line.trim();
+          if (!trimmed) return <div key={i} className="h-1.5" />;
+
+          if (/^\[.+\]$/.test(trimmed)) {
+            return <p key={i} className="text-[12px] text-gray-400 leading-relaxed">{trimmed}</p>;
+          }
+
+          const dialogPipe = trimmed.match(/^(.+?)\s*\|\s*(.+)$/);
+          const dialogColon = trimmed.match(/^([가-힣a-zA-Z\s]{1,15})\s*[:：]\s*(.+)$/);
+          const dialog = dialogPipe || dialogColon;
+          if (dialog) {
+            return (
+              <p key={i} className="text-[14px] leading-relaxed">
+                <span className="font-bold text-gray-900">{dialog[1]}</span>
+                <span className="text-gray-500 mx-1">|</span>
+                <span className="text-gray-800">{dialog[2]}</span>
+              </p>
+            );
+          }
+
+          if (/^["'"'].+["'"']$/.test(trimmed)) {
+            return <p key={i} className="text-[14px] font-semibold text-gray-900 leading-relaxed italic">{trimmed}</p>;
+          }
+
+          if (trimmed.includes('*')) {
+            return (
+              <p key={i} className="text-[14px] text-gray-600 leading-[1.9]">
+                {renderNarration(trimmed)}
+                {isStreaming && i === lines.length - 1 && (
+                  <span className="inline-block w-0.5 h-4 bg-brand animate-pulse align-middle ml-0.5" />
+                )}
+              </p>
+            );
+          }
+
+          return (
+            <p key={i} className="text-[14px] text-gray-600 leading-[1.9]">
+              {trimmed}
+              {isStreaming && i === lines.length - 1 && (
+                <span className="inline-block w-0.5 h-4 bg-brand animate-pulse align-middle ml-0.5" />
+              )}
+            </p>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TypingIndicator({ characterAvatarUrl }: { characterAvatarUrl?: string | null }) {
+  const [imgErr, setImgErr] = useState(false);
+  return (
+    <div className="mb-6 flex items-center gap-2 h-7">
+      {characterAvatarUrl && !imgErr && (
+        <div className="w-6 h-6 rounded-full overflow-hidden flex-shrink-0 bg-gray-100">
+          <Image src={characterAvatarUrl} alt="" width={24} height={24} className="object-cover" onError={() => setImgErr(true)} />
+        </div>
+      )}
+      <div className="flex items-center gap-1">
+        {[0, 120, 240].map((d) => (
+          <span key={d} className="w-2 h-2 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: `${d}ms` }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function UserMessage({ content, user }: { content: string; user: any }) {
+  const [imgErr, setImgErr] = useState(false);
+  return (
+    <div className="flex flex-col items-end mb-6">
+      <div className="flex items-end gap-2">
+        <div className="max-w-[65%]">
+          {user?.displayName && <p className="text-[11px] text-gray-400 mb-1 text-right">{user.displayName}</p>}
+          <div className="px-4 py-2.5 bg-gray-100 rounded-2xl rounded-br-md text-[14px] text-gray-800 leading-relaxed whitespace-pre-wrap">
+            {content.includes('*') ? renderNarration(content) : content}
+          </div>
+        </div>
+        <div className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 bg-gray-100 mb-0.5">
+          {user?.avatarUrl && !imgErr
+            ? <Image src={user.avatarUrl} alt={user.displayName ?? ''} width={28} height={28} className="object-cover" onError={() => setImgErr(true)} />
+            : <div className="w-full h-full bg-brand/10 flex items-center justify-center text-brand text-xs font-bold">{user?.displayName?.[0]?.toUpperCase() ?? 'U'}</div>
+          }
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 카카오 스타일 컴포넌트 ────────────────────────────────────────
+
+function KakaoDateSeparator({ date }: { date: Date }) {
+  const label = date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+  return (
+    <div className="flex items-center justify-center my-4">
+      <span className="px-3 py-1 rounded-full text-[11px] text-white/80 font-medium" style={{ backgroundColor: 'rgba(0,0,0,0.2)' }}>
+        📅 {label}
+      </span>
+    </div>
+  );
+}
+
+function KakaoBubble({
+  content, character, isStreaming, isError,
+}: {
+  content: string;
+  character: any;
+  isStreaming?: boolean;
+  isError?: boolean;
+}) {
+  const [imgErr, setImgErr] = useState(false);
+  const cleanContent = content.replace(/\[IMAGE:[^\]]+\]\s*$/g, '').trimEnd();
+  const src = imgErr ? null : character?.avatarUrl;
+
+  return (
+    <div className={cn('flex items-start gap-2 mb-3', isError && 'opacity-50')}>
+      {/* 아바타 */}
+      <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0 bg-gray-300">
+        {src
+          ? <Image src={src} alt={character?.name ?? ''} width={40} height={40} className="object-cover" onError={() => setImgErr(true)} />
+          : <div className="w-full h-full bg-yellow-400 flex items-center justify-center text-white text-sm font-bold">{character?.name?.[0] ?? '?'}</div>
+        }
+      </div>
+      <div className="max-w-[70%]">
+        <p className="text-[12px] font-bold text-gray-800 mb-1">{character?.name}</p>
+        <div
+          className="px-3.5 py-2.5 rounded-2xl rounded-tl-sm text-[14px] text-gray-800 leading-relaxed whitespace-pre-wrap"
+          style={{ backgroundColor: '#ffffff' }}
+        >
+          {isStreaming && !cleanContent ? (
+            <span className="flex items-center gap-1 h-5">
+              {[0, 100, 200].map((d) => (
+                <span key={d} className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: `${d}ms` }} />
+              ))}
+            </span>
+          ) : (
+            <>
+              {cleanContent.includes('*') ? renderNarration(cleanContent) : cleanContent}
+              {isStreaming && cleanContent && (
+                <span className="inline-block w-0.5 h-4 bg-gray-500 animate-pulse align-middle ml-0.5" />
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function KakaoUserBubble({ content, user }: { content: string; user: any }) {
+  const [imgErr, setImgErr] = useState(false);
+  return (
+    <div className="flex justify-end items-end gap-2 mb-3">
+      <div
+        className="max-w-[70%] px-3.5 py-2.5 rounded-2xl rounded-tr-sm text-[14px] text-gray-900 leading-relaxed whitespace-pre-wrap"
+        style={{ backgroundColor: '#FFEB00' }}
+      >
+        {content.includes('*') ? renderNarration(content) : content}
+      </div>
+      <div className="w-9 h-9 rounded-xl overflow-hidden flex-shrink-0 bg-gray-200">
+        {user?.avatarUrl && !imgErr
+          ? <Image src={user.avatarUrl} alt={user.displayName ?? ''} width={36} height={36} className="object-cover" onError={() => setImgErr(true)} />
+          : <div className="w-full h-full bg-brand/20 flex items-center justify-center text-brand text-sm font-bold">{user?.displayName?.[0]?.toUpperCase() ?? 'U'}</div>
+        }
+      </div>
+    </div>
+  );
+}
+
+function KakaoTypingIndicator() {
+  return (
+    <div className="flex items-start gap-2 mb-3">
+      <div className="w-10 h-10 rounded-xl bg-gray-300 flex-shrink-0" />
+      <div className="px-3.5 py-3 rounded-2xl rounded-tl-sm bg-white flex items-center gap-1">
+        {[0, 100, 200].map((d) => (
+          <span key={d} className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: `${d}ms` }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── 스토리 입력바 ─────────────────────────────────────────────────
+function StoryInputBar({
+  inputValue, setInputValue, isStreaming, showSuggest, setShowSuggest,
+  inputRef, handleKeyDown, sendMessage, stopStreaming, insertNarration, suggestOptions,
+  hasVoice, isRecording, onMicClick, autoPlay, onAutoPlayToggle,
+}: InputBarProps) {
+  const options = (suggestOptions && suggestOptions.length > 0) ? suggestOptions : DEFAULT_SUGGEST_OPTIONS;
+  return (
+    <div className="flex-shrink-0 bg-white border-t border-gray-100 px-5 py-3">
+      <div className="max-w-[640px] mx-auto">
+        <AnimatePresence>
+          {showSuggest && (
+            <motion.div
+              initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }}
+              className="mb-2 flex flex-wrap gap-1.5"
+            >
+              {options.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => { setInputValue(s); setShowSuggest(false); inputRef.current?.focus(); }}
+                  className="px-3 py-1.5 rounded-full border border-gray-200 text-[12px] text-gray-600 bg-white hover:bg-gray-50 hover:border-gray-300 transition-colors"
+                >
+                  {s}
+                </button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <div className="rounded-2xl border border-gray-200 bg-white focus-within:border-gray-300 transition-colors overflow-hidden">
+          <div className="px-4 pt-3 pb-1">
+            <span className="text-[11px] text-gray-400 font-medium">메시지 보내기</span>
+          </div>
+          <textarea
+            ref={inputRef}
+            value={inputValue}
+            onChange={(e) => {
+              setInputValue(e.target.value);
+              e.target.style.height = 'auto';
+              e.target.style.height = `${Math.min(e.target.scrollHeight, 80)}px`;
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder=""
+            rows={1}
+            disabled={isStreaming}
+            className="w-full resize-none px-4 pb-2 text-[14px] text-gray-800 placeholder-gray-300 focus:outline-none bg-transparent leading-relaxed"
+            style={{ minHeight: '32px', maxHeight: '80px' }}
+          />
+          <div className="flex items-center gap-2 px-3 pb-3 pt-1">
+            <button
+              type="button"
+              onClick={insertNarration}
+              disabled={isStreaming}
+              className="flex-shrink-0 px-2.5 py-1 rounded-full border border-red-400 text-[12px] font-medium text-red-400 hover:bg-red-50 transition-colors disabled:opacity-40"
+            >
+              *행동하기*
+            </button>
+            <button
+              onClick={() => setShowSuggest((v) => !v)}
+              className={cn('flex-shrink-0 text-[12px] font-medium transition-colors', showSuggest ? 'text-brand' : 'text-gray-400 hover:text-brand')}
+            >
+              추천답변
+            </button>
+            <div className="flex-1" />
+            {hasVoice && (
+              <>
+                <button
+                  onClick={onAutoPlayToggle}
+                  title={autoPlay ? '자동재생 끄기' : '자동재생 켜기'}
+                  className={cn('w-8 h-8 rounded-full flex items-center justify-center transition-colors', autoPlay ? 'text-brand' : 'text-gray-300 hover:text-gray-500')}
+                >
+                  {autoPlay ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                </button>
+                <button
+                  onClick={onMicClick}
+                  title={isRecording ? '녹음 중지' : '음성 입력'}
+                  className={cn('w-8 h-8 rounded-full flex items-center justify-center transition-colors', isRecording ? 'bg-red-500 text-white animate-pulse' : 'text-gray-400 hover:text-brand')}
+                >
+                  {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                </button>
+              </>
+            )}
+            {isStreaming ? (
+              <button onClick={stopStreaming} className="w-9 h-9 rounded-full bg-red-400 flex items-center justify-center hover:bg-red-500 transition-colors">
+                <div className="w-3 h-3 rounded-sm bg-white" />
+              </button>
+            ) : (
+              <button
+                onClick={sendMessage}
+                disabled={!inputValue.trim()}
+                className={cn('w-9 h-9 rounded-full flex items-center justify-center transition-all', inputValue.trim() ? 'bg-brand hover:bg-brand-hover shadow-sm' : 'bg-gray-200')}
+              >
+                <Send className={cn('w-4 h-4', inputValue.trim() ? 'text-white' : 'text-gray-400')} />
+              </button>
+            )}
+          </div>
+        </div>
+        <p className="text-center text-[11px] text-gray-300 mt-2">
+          AI 응답은 실제 인물·사실과 다를 수 있습니다 · 1 크레딧 / 메시지
         </p>
       </div>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────
-// MESSAGE BUBBLE
-// ─────────────────────────────────────────────
-function MessageBubble({
-  message,
-  avatarSrc,
-  userName,
-  isCopied,
-  onCopy,
-  index,
-}: {
-  message: ChatMessage;
-  avatarSrc: string | null;
-  userName?: string;
-  isCopied: boolean;
-  onCopy: () => void;
-  index: number;
-}) {
-  const isUser = message.role === 'USER';
-  const isError = message.status === 'ERROR';
-
+// ── 카카오 입력바 ─────────────────────────────────────────────────
+function KakaoInputBar({
+  inputValue, setInputValue, isStreaming, showSuggest, setShowSuggest,
+  inputRef, handleKeyDown, sendMessage, stopStreaming, insertNarration, suggestOptions,
+  hasVoice, isRecording, onMicClick, autoPlay, onAutoPlayToggle,
+}: InputBarProps) {
+  const options = (suggestOptions && suggestOptions.length > 0) ? suggestOptions : DEFAULT_SUGGEST_OPTIONS;
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2, delay: Math.min(index * 0.02, 0.3) }}
-      className={cn('flex items-start gap-3 group', isUser && 'flex-row-reverse')}
-    >
-      {/* Avatar */}
-      {!isUser && (
-        <div className="w-9 h-9 rounded-full overflow-hidden ring-2 ring-border flex-shrink-0 mt-1">
-          {avatarSrc ? (
-            <Image src={avatarSrc} alt={userName || ''} width={36} height={36} className="object-cover" />
-          ) : (
-            <div className="w-full h-full bg-brand/20 flex items-center justify-center text-brand text-sm font-bold">
-              {(userName || 'A')[0].toUpperCase()}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Message content */}
-      <div className={cn('max-w-[75%] flex flex-col', isUser ? 'items-end' : 'items-start')}>
-        <div
-          className={cn(
-            'px-4 py-3 text-sm leading-relaxed rounded-2xl',
-            isUser ? 'message-user rounded-tr-sm' : 'message-assistant rounded-tl-sm',
-            isError && 'border-red-500/30 bg-red-500/10 text-red-300'
-          )}
-        >
-          {isError && <AlertCircle className="inline w-4 h-4 mr-1.5 -mt-0.5" />}
-          <span className="whitespace-pre-wrap">{message.content}</span>
-        </div>
-
-        {/* Actions */}
-        <div className={cn(
-          'flex items-center gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity',
-          isUser ? 'flex-row-reverse' : 'flex-row'
-        )}>
-          <span className="text-text-muted text-xs">
-            {formatRelativeTime(message.createdAt)}
-          </span>
-          <button
-            onClick={onCopy}
-            className="p-1 rounded-lg hover:bg-surface text-text-muted hover:text-text-primary transition-all"
+    <div className="flex-shrink-0 bg-white" style={{ borderTop: '1px solid #e5e5e5' }}>
+      {/* 추천답변 pills */}
+      <AnimatePresence>
+        {showSuggest && (
+          <motion.div
+            initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }}
+            className="px-4 pt-2.5 flex flex-wrap gap-1.5"
           >
-            {isCopied ? (
-              <Check className="w-3.5 h-3.5 text-emerald-400" />
-            ) : (
-              <Copy className="w-3.5 h-3.5" />
-            )}
-          </button>
-        </div>
+            {options.map((s) => (
+              <button
+                key={s}
+                onClick={() => { setInputValue(s); setShowSuggest(false); inputRef.current?.focus(); }}
+                className="px-3 py-1.5 rounded-full border border-gray-200 text-[12px] text-gray-600 bg-white hover:bg-gray-50 transition-colors"
+              >
+                {s}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 행동하기 / 추천답변 버튼 줄 */}
+      <div className="flex items-center gap-2 px-4 pt-2.5 pb-1.5">
+        <button
+          type="button"
+          onClick={insertNarration}
+          disabled={isStreaming}
+          className="px-2.5 py-[3px] rounded-full border border-red-400 text-[12px] font-medium text-red-400 hover:bg-red-50 transition-colors disabled:opacity-40 leading-snug"
+        >
+          *행동하기*
+        </button>
+        <button
+          onClick={() => setShowSuggest((v) => !v)}
+          className={cn('text-[12px] font-medium transition-colors', showSuggest ? 'text-brand' : 'text-gray-500 hover:text-brand')}
+        >
+          추천답변
+        </button>
       </div>
 
-      {/* User avatar */}
-      {isUser && (
-        <div className="w-9 h-9 rounded-full overflow-hidden ring-2 ring-border flex-shrink-0 mt-1">
-          {avatarSrc ? (
-            <Image src={avatarSrc} alt={userName || '나'} width={36} height={36} className="object-cover" />
-          ) : (
-            <div className="w-full h-full bg-brand/30 flex items-center justify-center text-brand text-sm font-bold">
-              {(userName || 'U')[0].toUpperCase()}
-            </div>
-          )}
-        </div>
-      )}
-    </motion.div>
+      {/* 입력 로우: 아이콘 + 텍스트 flat + 전송 */}
+      <div className="flex items-end px-3 pb-4 pt-0 gap-1">
+        {/* 이모지 */}
+        <button className="flex-shrink-0 w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors">
+          <Smile className="w-[22px] h-[22px]" />
+        </button>
+        {/* 첨부 */}
+        <button className="flex-shrink-0 w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors">
+          <Plus className="w-[22px] h-[22px]" />
+        </button>
+        {/* 마이크 */}
+        {hasVoice && (
+          <button
+            onClick={onMicClick}
+            title={isRecording ? '녹음 중지' : '음성 입력'}
+            className={cn('flex-shrink-0 w-9 h-9 flex items-center justify-center transition-colors', isRecording ? 'text-red-500 animate-pulse' : 'text-gray-400 hover:text-brand')}
+          >
+            {isRecording ? <MicOff className="w-[22px] h-[22px]" /> : <Mic className="w-[22px] h-[22px]" />}
+          </button>
+        )}
+
+        {/* 텍스트 입력 — 보더/배경 없는 flat 스타일 */}
+        <textarea
+          ref={inputRef}
+          value={inputValue}
+          onChange={(e) => {
+            setInputValue(e.target.value);
+            e.target.style.height = 'auto';
+            e.target.style.height = `${Math.min(e.target.scrollHeight, 100)}px`;
+          }}
+          onKeyDown={handleKeyDown}
+          placeholder="메시지 입력"
+          rows={1}
+          disabled={isStreaming}
+          className="flex-1 resize-none text-[14px] text-gray-800 placeholder-gray-400 focus:outline-none bg-transparent leading-relaxed py-2 px-1"
+          style={{ minHeight: '36px', maxHeight: '100px' }}
+        />
+
+        {/* 전송 버튼 */}
+        {isStreaming ? (
+          <button
+            onClick={stopStreaming}
+            className="flex-shrink-0 w-9 h-9 rounded-full bg-red-400 flex items-center justify-center hover:bg-red-500 transition-colors mb-0.5"
+          >
+            <div className="w-3 h-3 rounded-sm bg-white" />
+          </button>
+        ) : (
+          <button
+            onClick={sendMessage}
+            disabled={!inputValue.trim()}
+            className={cn(
+              'flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-all mb-0.5',
+              !inputValue.trim() && 'bg-gray-200'
+            )}
+            style={inputValue.trim() ? { backgroundColor: '#FFEB00' } : {}}
+          >
+            <Send className={cn('w-4 h-4 rotate-[-45deg]', inputValue.trim() ? 'text-gray-800' : 'text-gray-400')} />
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 
-// ─────────────────────────────────────────────
-// EMPTY STATE
-// ─────────────────────────────────────────────
-function EmptyChatState({ onNewChat }: { onNewChat: () => void }) {
+// ── 공통 타입 ─────────────────────────────────────────────────────
+const DEFAULT_SUGGEST_OPTIONS = ['네, 맞아요.', '계속 이야기해 주세요.', '흥미롭네요!', '더 자세히 알려주세요.'];
+
+interface InputBarProps {
+  inputValue: string;
+  setInputValue: (v: string) => void;
+  isStreaming: boolean;
+  showSuggest: boolean;
+  setShowSuggest: (v: boolean | ((prev: boolean) => boolean)) => void;
+  inputRef: React.RefObject<HTMLTextAreaElement>;
+  handleKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  sendMessage: () => void;
+  stopStreaming: () => void;
+  insertNarration: () => void;
+  suggestOptions?: string[];
+  hasVoice?: boolean;
+  isRecording?: boolean;
+  onMicClick?: () => void;
+  autoPlay?: boolean;
+  onAutoPlayToggle?: () => void;
+}
+
+// ── 플레이 가이드 패널 ───────────────────────────────────────────────
+function PlayGuidePanel({ text, characterId }: { text: string; characterId?: string }) {
+  const lsKey = characterId ? `playGuide-closed-${characterId}` : null;
+  const [open, setOpen] = useState(() => {
+    if (!lsKey || typeof window === 'undefined') return true;
+    return localStorage.getItem(lsKey) !== 'true';
+  });
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (lsKey) localStorage.setItem(lsKey, next ? 'false' : 'true');
+  };
+
   return (
-    <div className="flex flex-col items-center justify-center h-full text-center p-8">
-      <motion.div
-        animate={{ scale: [1, 1.05, 1] }}
-        transition={{ repeat: Infinity, duration: 3 }}
-        className="w-20 h-20 rounded-2xl bg-brand/15 border border-brand/25 flex items-center justify-center mb-6"
+    <div className="flex-shrink-0 border-b border-blue-100 bg-blue-50">
+      <button
+        type="button"
+        onClick={toggle}
+        className="w-full flex items-center gap-2 px-4 py-2.5 text-left"
       >
-        <MessageCircle className="w-10 h-10 text-brand-light" />
-      </motion.div>
-      <h2 className="text-text-primary font-bold text-xl mb-2">대화를 시작해보세요</h2>
-      <p className="text-text-muted text-sm mb-6 max-w-sm">
-        수백 명의 AI 캐릭터 중에서 선택하거나, 직접 만들어보세요.
-      </p>
-      <button onClick={onNewChat} className="btn-primary">
-        캐릭터 탐색하기
+        <BookOpen className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
+        <span className="text-[12px] font-semibold text-blue-600 flex-1">플레이 가이드</span>
+        <ChevronDown className={cn('w-3.5 h-3.5 text-blue-400 transition-transform', open ? '' : '-rotate-90')} />
       </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <p className="px-4 pb-3 text-[12px] text-blue-700 leading-relaxed whitespace-pre-wrap">{text}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ── 상황 이미지 카드 (Phase 3 킬러 기능) ───────────────────────────
+function SituationImageCard({ imageUrl, onClose }: { imageUrl: string; onClose: () => void }) {
+  return (
+    <div className="relative rounded-xl overflow-hidden bg-gray-50 border border-gray-100">
+      <Image
+        src={imageUrl}
+        alt="상황 이미지"
+        width={640}
+        height={640}
+        className="w-full h-auto object-contain"
+        style={{ maxHeight: '480px' }}
+      />
+      <button
+        onClick={onClose}
+        className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/40 flex items-center justify-center text-white text-[12px] hover:bg-black/60 transition-colors"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+// ── 빈 상태 ───────────────────────────────────────────────────────
+function EmptyChatState() {
+  return (
+    <div className="flex flex-col items-center justify-center h-full text-center px-8">
+      <div className="w-14 h-14 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center mb-4">
+        <BookOpen className="w-7 h-7 text-gray-200" />
+      </div>
+      <p className="text-[15px] font-semibold text-gray-700 mb-1">대화를 선택해주세요</p>
+      <p className="text-[13px] text-gray-400 mb-5">왼쪽에서 대화를 선택하거나 새 캐릭터와 대화해보세요.</p>
+      <Link href="/" className="px-5 py-2.5 rounded-full bg-brand text-white text-[13px] font-semibold hover:bg-brand-hover transition-colors">
+        캐릭터 탐색
+      </Link>
     </div>
   );
 }

@@ -1,12 +1,12 @@
 import { Queue, Worker, Job, QueueEvents } from 'bullmq';
-import { getBullRedis } from '../lib/redis';
+import { getBullRedis, cache } from '../lib/redis';
 import { logger } from '../lib/logger';
 import { alertCritical } from '../lib/slack';
 import { queueDepth, queueJobDuration } from '../lib/metrics';
 import { prisma } from '../lib/prisma';
 import OpenAI, { toFile } from 'openai';
 import { randomBytes } from 'crypto';
-import { uploadBufferToS3 } from './s3.service';
+import { uploadBufferToS3 } from './storage.service';
 import { config } from '../config';
 
 const connection = { client: getBullRedis() };
@@ -62,6 +62,16 @@ export const imageQueue = new Queue('image-generation', {
   },
 });
 
+export const autoModerationQueue = new Queue('auto-moderation', {
+  connection: getBullRedis(),
+  defaultJobOptions: {
+    attempts: 2,
+    backoff: { type: 'exponential', delay: 3000 },
+    removeOnComplete: { count: 500 },
+    removeOnFail: { count: 100 },
+  },
+});
+
 // ─────────────────────────────────────────────
 // JOB TYPES
 // ─────────────────────────────────────────────
@@ -106,6 +116,14 @@ export interface ImageJobData {
   sourceImageFilename?: string;
 }
 
+export interface AutoModerationJobData {
+  messageId: string;
+  content: string;
+  characterName: string;
+  conversationId: string;
+  userId: string;
+}
+
 // ─────────────────────────────────────────────
 // JOB PRODUCERS
 // ─────────────────────────────────────────────
@@ -139,6 +157,12 @@ export async function enqueueMemoryCompression(conversationId: string): Promise<
 export async function enqueueImageJob(data: ImageJobData): Promise<string> {
   const job = await imageQueue.add('process-image', data);
   return job.id!;
+}
+
+export async function enqueueAutoModeration(data: AutoModerationJobData): Promise<void> {
+  await autoModerationQueue.add('moderate-message', data, {
+    jobId: `moderate-${data.messageId}`,
+  });
 }
 
 // ─────────────────────────────────────────────
@@ -377,14 +401,82 @@ async function processImageJob(job: Job<ImageJobData>): Promise<void> {
 }
 
 // ─────────────────────────────────────────────
+// AUTO MODERATION PROCESSOR
+// ─────────────────────────────────────────────
+async function processAutoModeration(job: Job<AutoModerationJobData>): Promise<void> {
+  const { messageId, content, characterName, conversationId, userId } = job.data;
+
+  const { autoModerateMessage } = await import('./ai.service');
+  const { sendSlackAlert } = await import('../lib/slack');
+
+  const result = await autoModerateMessage(content);
+  if (!result.flagged || !result.category) return;
+
+  const autoHidden = result.confidence >= 0.9;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.moderationFlag.create({
+      data: {
+        messageId,
+        category: result.category!,
+        confidence: result.confidence,
+        status: 'PENDING',
+        autoHidden,
+      },
+    });
+
+    if (autoHidden) {
+      await tx.message.update({
+        where: { id: messageId },
+        data: {
+          isHidden: true,
+          hiddenReason: `자동 감지: ${result.category} (신뢰도 ${Math.round(result.confidence * 100)}%)`,
+          hiddenAt: new Date(),
+        },
+      });
+    }
+  });
+
+  const severity = result.confidence >= 0.9 ? 'critical' : 'warning';
+  await sendSlackAlert({
+    title: autoHidden ? '🚨 유해 메시지 자동 차단' : '⚠️ 유해 콘텐츠 의심 감지',
+    message: content.slice(0, 200),
+    severity,
+    fields: {
+      '카테고리': result.category!,
+      '신뢰도': `${Math.round(result.confidence * 100)}%`,
+      '캐릭터': characterName,
+      '자동차단': autoHidden ? '예' : '아니오',
+      '대화ID': conversationId,
+    },
+  });
+
+  logger.warn({ messageId, category: result.category, confidence: result.confidence, autoHidden }, 'Auto moderation flagged message');
+}
+
+// ─────────────────────────────────────────────
 // WORKERS
 // ─────────────────────────────────────────────
 let settlementWorker: Worker | null = null;
 let notificationWorker: Worker | null = null;
 let memoryWorker: Worker | null = null;
 let imageWorker: Worker | null = null;
+let chapterPublishWorker: Worker | null = null;
+let autoModerationWorker: Worker | null = null;
 
 export function startWorkers(): void {
+  chapterPublishWorker = new Worker(
+    'chapter-publish',
+    async (job: Job) => {
+      await processChapterPublish(job as Job<ChapterPublishJobData>);
+    },
+    { connection: getBullRedis(), concurrency: 5 }
+  );
+
+  chapterPublishWorker.on('failed', async (job, err) => {
+    logger.error({ jobId: job?.id, err }, 'Chapter publish job failed');
+  });
+
   settlementWorker = new Worker(
     'settlement',
     async (job: Job) => {
@@ -432,7 +524,15 @@ export function startWorkers(): void {
     { connection: getBullRedis(), concurrency: 3 }
   );
 
-  [settlementWorker, notificationWorker, memoryWorker, imageWorker].forEach((worker) => {
+  autoModerationWorker = new Worker(
+    'auto-moderation',
+    async (job: Job) => {
+      await processAutoModeration(job as Job<AutoModerationJobData>);
+    },
+    { connection: getBullRedis(), concurrency: 5 }
+  );
+
+  [settlementWorker, notificationWorker, memoryWorker, imageWorker, autoModerationWorker].forEach((worker) => {
     worker.on('failed', async (job, err) => {
       logger.error({ jobId: job?.id, queue: worker.name, err }, 'Job failed');
       if (job?.attemptsMade === job?.opts.attempts) {
@@ -449,10 +549,12 @@ export function startWorkers(): void {
 
 export async function stopWorkers(): Promise<void> {
   await Promise.all([
+    chapterPublishWorker?.close(),
     settlementWorker?.close(),
     notificationWorker?.close(),
     memoryWorker?.close(),
     imageWorker?.close(),
+    autoModerationWorker?.close(),
   ]);
 }
 
@@ -495,6 +597,58 @@ async function scheduleMonthlyCron(): Promise<void> {
   } catch (err) {
     logger.error({ err }, 'Failed to schedule monthly settlement cron');
   }
+}
+
+// ─────────────────────────────────────────────
+// CHAPTER PUBLISH QUEUE
+// ─────────────────────────────────────────────
+export const chapterPublishQueue = new Queue('chapter-publish', {
+  connection: getBullRedis(),
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: { type: 'exponential', delay: 2000 },
+    removeOnComplete: { count: 200 },
+    removeOnFail: { count: 100 },
+  },
+});
+
+export interface ChapterPublishJobData {
+  chapterId: string;
+  storyId: string;
+}
+
+export async function scheduleChapterPublish(
+  chapterId: string,
+  storyId: string,
+  scheduledAt: Date
+): Promise<string> {
+  const delay = Math.max(0, scheduledAt.getTime() - Date.now());
+  const job = await chapterPublishQueue.add(
+    'publish-chapter',
+    { chapterId, storyId } as ChapterPublishJobData,
+    {
+      jobId: `chapter-publish-${chapterId}`,
+      delay,
+    }
+  );
+  return job.id!;
+}
+
+export async function cancelScheduledChapter(chapterId: string): Promise<void> {
+  const job = await chapterPublishQueue.getJob(`chapter-publish-${chapterId}`);
+  if (job) await job.remove();
+}
+
+async function processChapterPublish(job: Job<ChapterPublishJobData>): Promise<void> {
+  const { chapterId, storyId } = job.data;
+
+  await prisma.storyChapter.update({
+    where: { id: chapterId },
+    data: { isPublished: true, publishedAt: new Date(), scheduledAt: null },
+  });
+
+  await cache.del(`story:detail:${storyId}`);
+  logger.info({ chapterId, storyId }, 'Chapter published via scheduled job');
 }
 
 // ─────────────────────────────────────────────

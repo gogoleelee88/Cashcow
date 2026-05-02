@@ -3,26 +3,62 @@ import { z } from 'zod';
 import { prisma, prismaRead } from '../lib/prisma';
 import { cache, CacheKeys } from '../lib/redis';
 import { encrypt, decrypt } from '../lib/encryption';
-import { generatePresignedUploadUrl, deleteS3Object } from '../services/s3.service';
+import { generatePresignedUploadUrl, uploadBufferToStorage, deleteS3Object } from '../services/storage.service';
 import { requireAuth, requireAgeVerification } from '../plugins/auth.plugin';
 import { searchRateLimit, uploadRateLimit } from '../plugins/rate-limit.plugin';
 import { logger } from '../lib/logger';
 import type { CharacterCategory, CharacterVisibility, AgeRating, AudienceTarget } from '@prisma/client';
+import { reviewCharacterPrompt } from '../services/ai.service';
+import { randomBytes } from 'crypto';
 
 const CACHE_TTL_CHARACTER_LIST = 120;  // 2 min
 const CACHE_TTL_CHARACTER_DETAIL = 300; // 5 min
 const CACHE_TTL_TRENDING = 600;         // 10 min
 const CACHE_TTL_RANKINGS = 300;         // 5 min
 
+const exampleMessageSchema = z.object({
+  id: z.string(),
+  role: z.enum(['character', 'user']),
+  content: z.string().max(2000),
+});
+const exampleDialogueSchema = z.object({
+  id: z.string(),
+  messages: z.array(exampleMessageSchema).max(50),
+});
+
+const situationImageSchema = z.object({
+  id: z.string(),
+  url: z.string().url(),
+  description: z.string().max(200),
+  triggerKeywords: z.array(z.string().max(50)).max(20).optional().default([]),
+});
+
 const createCharacterSchema = z.object({
   name: z.string().min(1).max(50),
   description: z.string().min(10).max(500),
+  detailDescription: z.string().max(1000).optional(),
   systemPrompt: z.string().min(20).max(10000),
   greeting: z.string().min(1).max(1000),
+  prologue: z.string().max(2000).optional(),
+  exampleDialogues: z.array(exampleDialogueSchema).max(20).optional(),
+  playGuide: z.string().max(2000).optional(),
+  suggestedReplies: z.array(z.string().max(100)).max(10).optional(),
+  situationImages: z.array(situationImageSchema).max(50).optional(),
   category: z.enum(['ANIME', 'GAME', 'MOVIE', 'BOOK', 'ORIGINAL', 'CELEBRITY', 'HISTORICAL', 'VTUBER', 'OTHER']),
   tags: z.array(z.string().max(30)).max(10).default([]),
   visibility: z.enum(['PUBLIC', 'PRIVATE', 'UNLISTED']).default('PUBLIC'),
   ageRating: z.enum(['ALL', 'TEEN', 'MATURE']).default('ALL'),
+  audienceTarget: z.enum(['ALL', 'MALE_ORIENTED', 'FEMALE_ORIENTED']).default('ALL'),
+  commentDisabled: z.boolean().default(false),
+  voiceProvider: z.enum(['elevenlabs', 'openai']).optional(),
+  voiceId: z.string().max(100).optional(),
+  voiceSettings: z.object({
+    stability: z.number().min(0).max(1).optional(),
+    similarity_boost: z.number().min(0).max(1).optional(),
+    style: z.number().min(0).max(1).optional(),
+    speed: z.number().min(0.5).max(2).optional(),
+  }).optional(),
+  imageKey: z.string().optional(),
   language: z.string().default('ko'),
   model: z.enum(['claude-haiku-3', 'claude-sonnet-4']).default('claude-haiku-3'),
   temperature: z.number().min(0).max(1).default(0.8),
@@ -127,6 +163,7 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
             monthlyChats: true,
             trendingScore: true,
             isFeatured: true,
+            isOfficial: true,
             isFanCreation: true,
             gender: true,
             audienceTarget: true,
@@ -192,6 +229,7 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
         select: {
           id: true, name: true, description: true, avatarUrl: true,
           category: true, chatCount: true, likeCount: true, greeting: true,
+          isFeatured: true, isOfficial: true, model: true,
           creator: { select: { id: true, username: true, displayName: true } },
         },
       });
@@ -260,6 +298,7 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
           monthlyChats: true,
           trendingScore: true,
           isFeatured: true,
+          isOfficial: true,
           isFanCreation: true,
           gender: true,
           audienceTarget: true,
@@ -367,21 +406,61 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
       // Encrypt system prompt at rest
       const { encrypted, iv } = encrypt(body.data.systemPrompt);
 
+      // 캐릭터 프롬프트 자동 검수 (비동기로 먼저 실행)
+      const review = await reviewCharacterPrompt(
+        body.data.name,
+        body.data.description,
+        body.data.systemPrompt
+      );
+
+      // REJECTED → 등록 차단
+      if (review.status === 'REJECTED') {
+        return reply.code(422).send({
+          success: false,
+          error: {
+            code: 'CHARACTER_REJECTED',
+            message: `캐릭터 등록이 거절되었습니다. 사유: ${review.note ?? '정책 위반'}`,
+          },
+        });
+      }
+
+      // imageKey → avatarUrl / avatarKey
+      const { config: cfg } = await import('../config');
+      const avatarKey = body.data.imageKey ?? null;
+      const avatarUrl = avatarKey
+        ? `${cfg.SUPABASE_URL}/storage/v1/object/public/characterverse/${avatarKey}`
+        : null;
+
       const character = await prisma.character.create({
         data: {
           name: body.data.name,
           description: body.data.description,
+          detailDescription: body.data.detailDescription ?? null,
+          avatarUrl,
+          avatarKey,
           systemPromptEncrypted: encrypted,
           systemPromptIv: iv,
           greeting: body.data.greeting,
+          prologue: body.data.prologue ?? null,
+          exampleDialogues: body.data.exampleDialogues as any ?? [],
+          playGuide: body.data.playGuide ?? null,
+          suggestedReplies: body.data.suggestedReplies as any ?? null,
+          situationImages: body.data.situationImages as any ?? null,
+          voiceProvider: body.data.voiceProvider ?? null,
+          voiceId: body.data.voiceId ?? null,
+          voiceSettings: body.data.voiceSettings as any ?? null,
           category: body.data.category,
           tags: body.data.tags,
           visibility: body.data.visibility,
           ageRating: body.data.ageRating,
+          audienceTarget: body.data.audienceTarget,
+          commentDisabled: body.data.commentDisabled,
           language: body.data.language,
           model: body.data.model,
           temperature: body.data.temperature,
           maxTokens: body.data.maxTokens,
+          reviewStatus: review.status,
+          reviewNote: review.note,
           creatorId: request.userId!,
         },
         include: { creator: { select: { id: true, username: true, displayName: true } } },
@@ -413,11 +492,27 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const updateData: any = { ...body.data };
+      delete updateData.imageKey;
+
       if (body.data.systemPrompt) {
         const { encrypted, iv } = encrypt(body.data.systemPrompt);
         updateData.systemPromptEncrypted = encrypted;
         updateData.systemPromptIv = iv;
         delete updateData.systemPrompt;
+      }
+      if (body.data.exampleDialogues !== undefined) {
+        updateData.exampleDialogues = body.data.exampleDialogues as any;
+      }
+      if (body.data.playGuide !== undefined) {
+        updateData.playGuide = body.data.playGuide;
+      }
+      if (body.data.suggestedReplies !== undefined) {
+        updateData.suggestedReplies = body.data.suggestedReplies as any;
+      }
+      if (body.data.imageKey) {
+        const { config: cfgPatch } = await import('../config');
+        updateData.avatarKey = body.data.imageKey;
+        updateData.avatarUrl = `${cfgPatch.SUPABASE_URL}/storage/v1/object/public/characterverse/${body.data.imageKey}`;
       }
 
       const updated = await prisma.character.update({
@@ -522,7 +617,77 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // ─────────────────────────────────────────────
-  // UPLOAD URL (Pre-signed S3)
+  // DIRECT MULTIPART UPLOAD (Supabase Storage)
+  // POST /api/characters/upload
+  // ─────────────────────────────────────────────
+  fastify.post('/upload', {
+    preHandler: [requireAuth, uploadRateLimit],
+    config: { rawBody: false },
+    handler: async (request, reply) => {
+      const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+      const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+
+      let fileBuffer: Buffer | null = null;
+      let mimetype = '';
+      let uploadType: 'avatar' | 'background' | 'situation' = 'avatar';
+
+      for await (const part of request.parts()) {
+        if (part.type === 'file' && part.fieldname === 'file') {
+          mimetype = part.mimetype;
+          if (!ALLOWED_TYPES.includes(mimetype)) {
+            return reply.code(400).send({
+              success: false,
+              error: { code: 'INVALID_TYPE', message: 'JPG, PNG, WebP, GIF만 업로드할 수 있어요.' },
+            });
+          }
+          fileBuffer = await part.toBuffer();
+        } else if (part.type === 'field' && part.fieldname === 'type') {
+          const val = part.value as string;
+          if (val === 'background') uploadType = 'background';
+          else if (val === 'situation') uploadType = 'situation';
+        }
+      }
+
+      if (!fileBuffer) {
+        return reply.code(400).send({
+          success: false,
+          error: { code: 'NO_FILE', message: '파일을 선택해 주세요.' },
+        });
+      }
+      if (fileBuffer.length > MAX_SIZE) {
+        return reply.code(400).send({
+          success: false,
+          error: { code: 'FILE_TOO_LARGE', message: '5MB 이하의 파일만 업로드할 수 있어요.' },
+        });
+      }
+
+      const ext = mimetype.split('/')[1].replace('jpeg', 'jpg');
+      const userId = request.userId!;
+      const folder = uploadType === 'background' ? 'characters/backgrounds'
+        : uploadType === 'situation' ? 'characters/situations'
+        : 'characters/avatars';
+      const filename = `${userId}/${randomBytes(16).toString('hex')}.${ext}`;
+      const key = `${folder}/${filename}`;
+
+      let url: string;
+      try {
+        url = await uploadBufferToStorage(fileBuffer, folder as any, filename, mimetype);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error({ err, userId, key, size: fileBuffer.length }, 'Character image upload to storage failed');
+        return reply.code(500).send({
+          success: false,
+          error: { code: 'STORAGE_ERROR', message: msg },
+        });
+      }
+
+      logger.info({ userId, key, size: fileBuffer.length }, 'Character image uploaded to Supabase');
+      return reply.send({ success: true, data: { url, key } });
+    },
+  });
+
+  // ─────────────────────────────────────────────
+  // UPLOAD URL (Pre-signed S3) — production only
   // ─────────────────────────────────────────────
   fastify.post('/upload-url', {
     preHandler: [requireAuth, uploadRateLimit],
@@ -532,8 +697,8 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
         type: 'avatar' | 'background';
       };
 
-      const path = type === 'background' ? 'characters/backgrounds' : 'characters/avatars';
-      const result = await generatePresignedUploadUrl(path, contentType, request.userId!);
+      const uploadPath = type === 'background' ? 'characters/backgrounds' : 'characters/avatars';
+      const result = await generatePresignedUploadUrl(uploadPath, contentType, request.userId!);
       return reply.send({ success: true, data: result });
     },
   });
@@ -541,6 +706,23 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
   // ─────────────────────────────────────────────
   // MY CHARACTERS
   // ─────────────────────────────────────────────
+  // GET /my/:id — 소유자용 캐릭터 상세 (시스템 프롬프트 포함)
+  fastify.get('/my/:id', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const character = await prisma.character.findFirst({
+        where: { id, creatorId: request.userId! },
+      });
+      if (!character) {
+        return reply.code(404).send({ success: false, error: { code: 'NOT_FOUND', message: '캐릭터를 찾을 수 없습니다.' } });
+      }
+      const { systemPromptEncrypted, systemPromptIv, ...rest } = character;
+      const systemPrompt = decrypt(systemPromptEncrypted, systemPromptIv);
+      return reply.send({ success: true, data: { ...rest, systemPrompt } });
+    },
+  });
+
   fastify.get('/my', {
     preHandler: [requireAuth],
     handler: async (request, reply) => {
@@ -590,20 +772,21 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
 
       const { name, concept, category, language } = body.data;
 
-      // OpenAI로 전환 (Anthropic 비활성화)
       const OpenAI = (await import('openai')).default;
       const { config: cfg } = await import('../config');
       const openai = new OpenAI({ apiKey: cfg.OPENAI_API_KEY });
 
       const langInstruction = language === 'ko' ? '한국어로 작성해주세요.' : 'Write in English.';
 
-      const response = await openai.chat.completions.create({
-        model: cfg.OPENAI_HAIKU_MODEL,
-        max_tokens: 1500,
-        messages: [
-          {
-            role: 'user',
-            content: `당신은 AI 캐릭터 제작 전문가입니다. 다음 정보를 바탕으로 캐릭터의 시스템 프롬프트와 첫 인사말을 생성해주세요.
+      let text: string;
+      try {
+        const response = await openai.chat.completions.create({
+          model: cfg.OPENAI_HAIKU_MODEL,
+          max_tokens: 1500,
+          messages: [
+            {
+              role: 'user',
+              content: `당신은 AI 캐릭터 제작 전문가입니다. 다음 정보를 바탕으로 캐릭터의 시스템 프롬프트와 첫 인사말을 생성해주세요.
 
 캐릭터 이름: ${name}
 캐릭터 개념: ${concept}
@@ -618,14 +801,19 @@ export const characterRoutes: FastifyPluginAsync = async (fastify) => {
 }
 
 JSON만 응답하고, 다른 텍스트는 포함하지 마세요.`,
-          },
-        ],
-      });
-
-      const text = response.choices[0].message.content ?? '';
+            },
+          ],
+        });
+        text = response.choices[0].message.content ?? '';
+      } catch (err: any) {
+        logger.error({ err, name, category }, 'OpenAI API call failed in /generate');
+        return reply.code(502).send({
+          success: false,
+          error: { code: 'AI_API_ERROR', message: `OpenAI 호출 실패: ${err?.message ?? '알 수 없는 오류'}` },
+        });
+      }
 
       try {
-        // Extract JSON from response (handle markdown code blocks)
         const jsonMatch = text.match(/\{[\s\S]*\}/);
         if (!jsonMatch) throw new Error('No JSON found');
         const generated = JSON.parse(jsonMatch[0]);
@@ -643,7 +831,7 @@ JSON만 응답하고, 다른 텍스트는 포함하지 마세요.`,
         logger.warn({ text }, 'Failed to parse AI generation response');
         return reply.code(500).send({
           success: false,
-          error: { code: 'GENERATION_FAILED', message: 'AI 생성에 실패했습니다. 직접 입력해주세요.' },
+          error: { code: 'GENERATION_FAILED', message: 'AI 응답 파싱 실패. 직접 입력해주세요.' },
         });
       }
     },
@@ -674,6 +862,191 @@ JSON만 응답하고, 다른 텍스트는 포함하지 마세요.`,
           characterId: id,
           reason,
           description,
+        },
+      });
+
+      return reply.send({ success: true });
+    },
+  });
+
+  // ─────────────────────────────────────────────
+  // CHARACTER DRAFT — SAVE
+  // ─────────────────────────────────────────────
+  fastify.put('/draft', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const userId = request.userId!;
+      const data = request.body as Record<string, unknown>;
+
+      await prisma.characterDraft.upsert({
+        where: { userId },
+        create: { userId, data: data as any },
+        update: { data: data as any, updatedAt: new Date() },
+      });
+
+      return reply.code(200).send({ success: true });
+    },
+  });
+
+  // ─────────────────────────────────────────────
+  // CHARACTER DRAFT — GET
+  // ─────────────────────────────────────────────
+  fastify.get('/draft', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const userId = request.userId!;
+
+      const draft = await prismaRead.characterDraft.findUnique({
+        where: { userId },
+        select: { data: true, updatedAt: true },
+      });
+
+      if (!draft) {
+        return reply.code(404).send({ success: false, error: { code: 'NOT_FOUND' } });
+      }
+
+      return reply.send({ success: true, data: draft });
+    },
+  });
+
+  // ─────────────────────────────────────────────
+  // CHARACTER DRAFT — DELETE
+  // ─────────────────────────────────────────────
+  fastify.delete('/draft', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const userId = request.userId!;
+
+      await prisma.characterDraft.deleteMany({ where: { userId } });
+
+      return reply.code(200).send({ success: true });
+    },
+  });
+
+  // ── COMMENTS ──────────────────────────────────────────────
+
+  fastify.get('/:id/comments', {
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const { page = '1', limit = '10' } = request.query as any;
+      const pageNum = Math.max(1, parseInt(page));
+      const limitNum = Math.min(50, parseInt(limit));
+      const skip = (pageNum - 1) * limitNum;
+
+      const userId = request.userId;
+
+      const [comments, total] = await Promise.all([
+        prismaRead.characterComment.findMany({
+          where: { characterId: id },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limitNum,
+          include: {
+            user: { select: { id: true, displayName: true, username: true, avatarUrl: true } },
+            reactions: { select: { type: true, userId: true } },
+          },
+        }),
+        prismaRead.characterComment.count({ where: { characterId: id } }),
+      ]);
+
+      const enriched = comments.map((c) => ({
+        ...c,
+        likeCount: c.reactions.filter((r) => r.type === 'LIKE').length,
+        dislikeCount: c.reactions.filter((r) => r.type === 'DISLIKE').length,
+        myReaction: userId ? (c.reactions.find((r) => r.userId === userId)?.type ?? null) : null,
+        reactions: undefined,
+      }));
+
+      return reply.send({ success: true, data: enriched, meta: { total, page: pageNum, limit: limitNum } });
+    },
+  });
+
+  fastify.post('/:id/comments', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const userId = request.userId!;
+      const body = z.object({ content: z.string().min(1).max(500) }).parse(request.body);
+
+      const character = await prismaRead.character.findUnique({ where: { id }, select: { id: true, commentDisabled: true } });
+      if (!character) return reply.code(404).send({ success: false, error: { message: '캐릭터를 찾을 수 없습니다.' } });
+      if (character.commentDisabled) return reply.code(403).send({ success: false, error: { message: '댓글이 비활성화된 캐릭터입니다.' } });
+
+      const comment = await prisma.characterComment.create({
+        data: { characterId: id, userId, content: body.content },
+        include: { user: { select: { id: true, displayName: true, username: true, avatarUrl: true } } },
+      });
+
+      return reply.code(201).send({ success: true, data: comment });
+    },
+  });
+
+  fastify.delete('/:id/comments/:commentId', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { id, commentId } = request.params as { id: string; commentId: string };
+      const userId = request.userId!;
+
+      const comment = await prismaRead.characterComment.findUnique({ where: { id: commentId } });
+      if (!comment || comment.characterId !== id) return reply.code(404).send({ success: false });
+
+      const user = await prismaRead.user.findUnique({ where: { id: userId }, select: { role: true } });
+      if (comment.userId !== userId && user?.role !== 'ADMIN') {
+        return reply.code(403).send({ success: false, error: { message: '권한이 없습니다.' } });
+      }
+
+      await prisma.characterComment.delete({ where: { id: commentId } });
+      return reply.send({ success: true });
+    },
+  });
+
+  // 댓글 좋아요/싫어요 토글
+  fastify.post('/:id/comments/:commentId/react', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { commentId } = request.params as { id: string; commentId: string };
+      const userId = request.userId!;
+      const { type } = z.object({ type: z.enum(['LIKE', 'DISLIKE']) }).parse(request.body);
+
+      const existing = await prismaRead.characterCommentReaction.findUnique({
+        where: { commentId_userId: { commentId, userId } },
+      });
+
+      if (existing) {
+        if (existing.type === type) {
+          // 같은 타입 → 취소
+          await prisma.characterCommentReaction.delete({ where: { id: existing.id } });
+          return reply.send({ success: true, action: 'removed', type });
+        } else {
+          // 다른 타입 → 전환
+          await prisma.characterCommentReaction.update({ where: { id: existing.id }, data: { type } });
+          return reply.send({ success: true, action: 'switched', type });
+        }
+      }
+
+      await prisma.characterCommentReaction.create({ data: { commentId, userId, type } });
+      return reply.send({ success: true, action: 'added', type });
+    },
+  });
+
+  // 댓글 신고
+  fastify.post('/:id/comments/:commentId/report', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const { id, commentId } = request.params as { id: string; commentId: string };
+      const userId = request.userId!;
+      const { reason } = z.object({ reason: z.string().min(1).max(200) }).parse(request.body);
+
+      const comment = await prismaRead.characterComment.findUnique({ where: { id: commentId } });
+      if (!comment || comment.characterId !== id) return reply.code(404).send({ success: false });
+
+      await prisma.report.create({
+        data: {
+          reporterId: userId,
+          reportedId: comment.userId,
+          characterId: id,
+          reason,
+          description: `댓글 신고: ${commentId}`,
         },
       });
 

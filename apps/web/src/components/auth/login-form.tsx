@@ -1,12 +1,29 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, AlertCircle, Loader2, ExternalLink } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/auth.store';
+
+function detectInAppBrowser(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent;
+  return /KAKAOTALK|Instagram|FBAN|FBIOS|FB_IAB|Line\/|NAVER|MicroMessenger|Whale\//.test(ua);
+}
+
+function openInExternalBrowser(url: string) {
+  const ua = navigator.userAgent;
+  const isAndroid = /Android/.test(ua);
+  if (isAndroid) {
+    window.location.href = `intent://${url.replace(/^https?:\/\//, '')}#Intent;scheme=https;package=com.android.chrome;end`;
+  } else {
+    // iOS — copy URL hint (can't force open Safari)
+    try { navigator.clipboard.writeText(url); } catch {}
+  }
+}
 
 export function LoginForm() {
   const [email, setEmail] = useState('');
@@ -14,10 +31,15 @@ export function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isInApp, setIsInApp] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams?.get('redirect') || '/';
   const { login } = useAuthStore();
+
+  useEffect(() => {
+    setIsInApp(detectInAppBrowser());
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,7 +50,7 @@ export function LoginForm() {
       const res = await api.auth.login({ email, password });
       if (res.success) {
         login(res.data.user, res.data.accessToken, res.data.refreshToken);
-        router.push(redirect);
+        router.push('/profiles');
       } else {
         setError(res.error?.message || '로그인에 실패했습니다.');
       }
@@ -40,49 +62,138 @@ export function LoginForm() {
   };
 
   const handleOAuth = (provider: string) => {
+    if (provider === 'google' && isInApp) {
+      const currentUrl = window.location.href;
+      const ua = navigator.userAgent;
+      if (/Android/.test(ua)) {
+        openInExternalBrowser(currentUrl);
+      } else {
+        setError('카카오톡 내 브라우저에서는 Google 로그인을 사용할 수 없습니다.\nSafari 또는 Chrome에서 열어주세요.');
+      }
+      return;
+    }
     window.location.href = api.auth.oauthUrl(provider);
   };
 
-  return (
-    <div className="min-h-screen bg-white flex">
-      {/* Left panel — brand */}
-      <div className="hidden lg:flex flex-col justify-center items-center flex-1 bg-gradient-to-br from-brand/5 to-brand/10 px-12">
-        <div className="max-w-sm text-center">
-          <Link href="/" className="inline-flex items-center gap-2 mb-8">
-            <div className="w-12 h-12 rounded-xl bg-brand flex items-center justify-center">
-              <span className="text-white font-black text-xl">C</span>
-            </div>
-            <span className="font-black text-2xl text-text-primary">crack<span className="text-brand">.</span></span>
-          </Link>
-          <h2 className="text-2xl font-bold text-text-primary mb-3">AI 스토리 플랫폼</h2>
-          <p className="text-text-secondary text-base leading-relaxed">
-            수천 개의 캐릭터와 스토리가 기다리고 있어요. 나만의 이야기를 만들어보세요.
-          </p>
-        </div>
-      </div>
+  const currentUrl = typeof window !== 'undefined' ? window.location.href : '';
+  const isAndroid = typeof navigator !== 'undefined' && /Android/.test(navigator.userAgent);
 
-      {/* Right panel — form */}
-      <div className="flex-1 flex items-center justify-center px-6 py-12">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-sm"
-        >
-          {/* Mobile logo */}
-          <div className="lg:hidden text-center mb-8">
+  return (
+    <div className="min-h-screen bg-white flex items-center justify-center px-6 py-12">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="w-full max-w-sm"
+      >
+          {/* Logo */}
+          <div className="text-center mb-10">
             <Link href="/" className="inline-flex items-center gap-2">
               <div className="w-10 h-10 rounded-xl bg-brand flex items-center justify-center">
-                <span className="text-white font-black text-base">C</span>
+                <span className="text-white font-black text-xl">Z</span>
               </div>
-              <span className="font-black text-xl text-text-primary">crack<span className="text-brand">.</span></span>
+              <span className="font-black text-3xl text-text-primary">Zac<span className="text-4xl">∞</span></span>
             </Link>
           </div>
 
-          <h1 className="text-2xl font-bold text-text-primary mb-2">로그인</h1>
-          <p className="text-text-muted text-sm mb-8">계정에 로그인하세요</p>
+          {isInApp && (
+            <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-200">
+              <p className="text-amber-800 text-sm font-semibold mb-1">인앱 브라우저 감지됨</p>
+              <p className="text-amber-700 text-xs leading-relaxed mb-3">
+                카카오톡 내 브라우저에서는 Google 로그인이 차단됩니다.
+                외부 브라우저(Chrome / Safari)에서 열어주세요.
+              </p>
+              {isAndroid ? (
+                <button
+                  onClick={() => openInExternalBrowser(currentUrl)}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-amber-800 underline underline-offset-2"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Chrome으로 열기
+                </button>
+              ) : (
+                <p className="text-xs text-amber-600">
+                  오른쪽 상단 ··· 메뉴 → <strong>외부 브라우저로 열기</strong>를 선택해주세요.
+                </p>
+              )}
+            </div>
+          )}
+
+
+          {/* Error */}
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-center gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm mb-5"
+            >
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              {error}
+            </motion.div>
+          )}
+
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-3">
+            {/* 이메일 — 라벨 인라인 */}
+            <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 pt-2.5 pb-2 focus-within:border-brand transition-colors">
+              <label className="block text-xs text-gray-400 mb-0.5">이메일</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="name@example.com"
+                required
+                autoComplete="email"
+                className="w-full bg-transparent text-sm text-gray-900 placeholder:text-gray-300 focus:outline-none"
+              />
+            </div>
+
+            {/* 비밀번호 — 라벨 인라인 */}
+            <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 pt-2.5 pb-2 focus-within:border-brand transition-colors">
+              <div className="flex items-center justify-between mb-0.5">
+                <label className="text-xs text-gray-400">비밀번호</label>
+                <Link href="/forgot-password" className="text-brand text-xs hover:underline">
+                  비밀번호 찾기
+                </Link>
+              </div>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  autoComplete="current-password"
+                  className="w-full bg-transparent text-sm text-gray-900 placeholder:text-gray-300 focus:outline-none pr-8"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-0 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading || !email || !password}
+              className="btn-primary w-full flex items-center justify-center gap-2 py-3"
+            >
+              {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+              {isLoading ? '로그인 중...' : '로그인'}
+            </button>
+          </form>
+
+          {/* 간편 로그인 divider */}
+          <div className="flex items-center gap-3 mt-6 mb-3">
+            <div className="flex-1 h-px bg-gray-200" />
+            <span className="text-xs text-gray-400 flex-shrink-0">간편 로그인</span>
+            <div className="flex-1 h-px bg-gray-200" />
+          </div>
 
           {/* OAuth buttons */}
-          <div className="space-y-3 mb-6">
+          <div className="space-y-3">
             <button
               onClick={() => handleOAuth('kakao')}
               className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl
@@ -103,84 +214,13 @@ export function LoginForm() {
             </button>
           </div>
 
-          <div className="flex items-center gap-3 mb-6">
-            <div className="flex-1 h-px bg-border" />
-            <span className="text-text-muted text-xs">또는 이메일로</span>
-            <div className="flex-1 h-px bg-border" />
-          </div>
-
-          {/* Error */}
-          {error && (
-            <motion.div
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex items-center gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm mb-5"
-            >
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              {error}
-            </motion.div>
-          )}
-
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-text-secondary text-sm font-medium mb-1.5">이메일</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@example.com"
-                required
-                autoComplete="email"
-                className="input-base"
-              />
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-text-secondary text-sm font-medium">비밀번호</label>
-                <Link href="/forgot-password" className="text-brand text-xs hover:underline">
-                  비밀번호 찾기
-                </Link>
-              </div>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  autoComplete="current-password"
-                  className="input-base pr-10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={isLoading || !email || !password}
-              className="btn-primary w-full flex items-center justify-center gap-2 py-3"
-            >
-              {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-              {isLoading ? '로그인 중...' : '로그인'}
-            </button>
-          </form>
-
           <p className="text-center text-text-muted text-sm mt-6">
             계정이 없으신가요?{' '}
             <Link href="/register" className="text-brand hover:underline font-semibold">
               회원가입
             </Link>
           </p>
-        </motion.div>
-      </div>
+      </motion.div>
     </div>
   );
 }

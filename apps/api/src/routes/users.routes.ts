@@ -2,9 +2,8 @@ import type { FastifyPluginAsync } from 'fastify';
 import { requireAuth } from '../plugins/auth.plugin';
 import { prismaRead, prisma } from '../lib/prisma';
 import { z } from 'zod';
-import fs from 'fs';
-import path from 'path';
 import crypto from 'crypto';
+import { uploadBufferToStorage } from '../services/storage.service';
 
 export const userRoutes: FastifyPluginAsync = async (fastify) => {
   // ─────────────────────────────────────────────
@@ -126,7 +125,7 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // ─────────────────────────────────────────────
-  // UPLOAD AVATAR (local storage)
+  // UPLOAD AVATAR (Supabase Storage)
   // ─────────────────────────────────────────────
   fastify.post('/me/avatar', {
     preHandler: [requireAuth],
@@ -143,19 +142,10 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const ext = data.mimetype.split('/')[1].replace('jpeg', 'jpg');
-      const filename = `${crypto.randomBytes(16).toString('hex')}.${ext}`;
-      const uploadDir = path.join(process.cwd(), 'uploads', 'avatars', userId);
-      fs.mkdirSync(uploadDir, { recursive: true });
-      const filePath = path.join(uploadDir, filename);
+      const filename = `${userId}/${crypto.randomBytes(16).toString('hex')}.${ext}`;
 
-      await new Promise<void>((resolve, reject) => {
-        const ws = fs.createWriteStream(filePath);
-        data.file.pipe(ws);
-        ws.on('finish', resolve);
-        ws.on('error', reject);
-      });
-
-      const publicUrl = `${process.env.API_BASE_URL}/uploads/avatars/${userId}/${filename}`;
+      const fileBuffer = await data.toBuffer();
+      const publicUrl = await uploadBufferToStorage(fileBuffer, 'avatars', filename, data.mimetype);
 
       const updated = await prisma.user.update({
         where: { id: userId },
@@ -320,7 +310,8 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
 
       const profile = await prisma.creatorProfile.upsert({
         where: { userId },
-        create: { userId, ...body.data },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        create: { userId, ...body.data } as any,
         update: body.data,
       });
 
@@ -616,6 +607,53 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
         verifiedAt: user?.ageVerifiedAt ?? null,
         justVerified: !!doneRaw, // 방금 인증 완료됐는지 (축하 UI용)
       });
+    },
+  });
+
+  // ─────────────────────────────────────────────
+  // GET PREFERRED GENRES
+  // ─────────────────────────────────────────────
+  fastify.get('/me/preferences', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const userId = request.userId!;
+      const user = await prismaRead.user.findUnique({
+        where: { id: userId },
+        select: { preferredGenres: true },
+      });
+      if (!user) return reply.code(404).send({ success: false });
+      let genres: string[] = [];
+      try { genres = JSON.parse(user.preferredGenres ?? '[]'); } catch { genres = []; }
+      return reply.send({ success: true, data: { preferredGenres: genres } });
+    },
+  });
+
+  // ─────────────────────────────────────────────
+  // UPDATE PREFERRED GENRES
+  // ─────────────────────────────────────────────
+  fastify.put('/me/preferences', {
+    preHandler: [requireAuth],
+    handler: async (request, reply) => {
+      const userId = request.userId!;
+      const VALID_GENRES = ['romance', 'rofan', 'sf-fantasy', 'martial', 'bl', 'simulation'];
+      const schema = z.object({
+        preferredGenres: z.array(z.string()).max(6).refine(
+          (arr) => arr.every((g) => VALID_GENRES.includes(g)),
+          { message: '유효하지 않은 장르가 포함되어 있습니다.' }
+        ),
+      });
+      const body = schema.safeParse(request.body);
+      if (!body.success) {
+        return reply.code(400).send({ success: false, error: { code: 'INVALID_GENRES', message: body.error.issues[0]?.message } });
+      }
+      const updated = await prisma.user.update({
+        where: { id: userId },
+        data: { preferredGenres: JSON.stringify(body.data.preferredGenres) },
+        select: { preferredGenres: true },
+      });
+      let genres: string[] = [];
+      try { genres = JSON.parse(updated.preferredGenres ?? '[]'); } catch { genres = []; }
+      return reply.send({ success: true, data: { preferredGenres: genres } });
     },
   });
 };

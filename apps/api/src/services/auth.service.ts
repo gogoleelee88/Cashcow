@@ -19,6 +19,8 @@ export interface AccessTokenPayload {
   role: string;
   tier: string;
   type: 'access';
+  iat?: number;
+  exp?: number;
 }
 
 export interface RefreshTokenPayload {
@@ -57,7 +59,8 @@ export function generateAccessToken(user: User): string {
     type: 'access',
   };
   return sign(payload, config.JWT_ACCESS_SECRET, {
-    expiresIn: config.JWT_ACCESS_EXPIRES_IN,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expiresIn: config.JWT_ACCESS_EXPIRES_IN as any,
     issuer: 'characterverse',
     audience: 'characterverse-client',
   });

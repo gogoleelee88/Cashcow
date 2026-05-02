@@ -31,16 +31,23 @@ const envSchema = z.object({
   OPENAI_HAIKU_MODEL: z.string().default('gpt-4o-mini'),
   OPENAI_SONNET_MODEL: z.string().default('gpt-4o'),
 
+  // ElevenLabs
+  ELEVENLABS_API_KEY: z.string().optional(),
+
   // Anthropic (비활성화 - OpenAI로 전환됨)
   ANTHROPIC_API_KEY: z.string().optional().default('disabled'),
   ANTHROPIC_HAIKU_MODEL: z.string().default('claude-haiku-4-5-20251001'),
   ANTHROPIC_SONNET_MODEL: z.string().default('claude-sonnet-4-6'),
 
-  // AWS
-  AWS_REGION: z.string().default('ap-northeast-2'),
+  // Supabase Storage
+  SUPABASE_URL: z.string().url(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string(),
+
+  // AWS (비활성화)
+  AWS_REGION: z.string().default('ap-northeast-2').optional(),
   AWS_ACCESS_KEY_ID: z.string().optional(),
   AWS_SECRET_ACCESS_KEY: z.string().optional(),
-  AWS_S3_BUCKET: z.string().default('characterverse-assets'),
+  AWS_S3_BUCKET: z.string().default('characterverse-assets').optional(),
   AWS_CLOUDFRONT_URL: z.string().optional(),
 
   // OAuth

@@ -116,7 +116,7 @@ export function HomeContent() {
                 수천 개의 AI 캐릭터 및 스토리와 대화하고, 나만의 세계를 창조해보세요.
               </p>
               <div className="flex items-center gap-3 justify-center md:justify-start">
-                <Link href="/register" className="btn-primary flex items-center gap-2">
+                <Link href="/login" className="btn-primary flex items-center gap-2">
                   무료로 시작하기
                   <ArrowRight className="w-4 h-4" />
                 </Link>
